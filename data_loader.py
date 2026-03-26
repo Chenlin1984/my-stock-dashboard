@@ -6,7 +6,12 @@ except Exception:
 import yfinance as yf
 import pandas as pd
 import datetime
-from FinMind.data import DataLoader
+try:
+    from FinMind.data import DataLoader        # [Fixed] try/except 避免 Cloud 因版本問題崩潰
+except ImportError as _e:
+    DataLoader = None
+    import warnings
+    warnings.warn(f"FinMind 未安裝或版本不相容，FinMind 功能將停用：{_e}")
 import streamlit as st
 from stock_names import get_stock_name
 
@@ -15,7 +20,7 @@ class StockDataLoader:
 
     def __init__(self):
         import os
-        self.dl = DataLoader()
+        self.dl = DataLoader() if DataLoader is not None else None  # [Fixed] DataLoader 未安裝時不崩潰
         _fm_token    = os.environ.get('FINMIND_TOKEN', '')
         _fm_user     = os.environ.get('FINMIND_USER', '')
         _fm_password = os.environ.get('FINMIND_PASSWORD', '')
