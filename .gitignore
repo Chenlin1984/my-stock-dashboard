@@ -1,5 +1,24 @@
-temp/
+# Secrets - NEVER commit
+.streamlit/secrets.toml
+
+# Notebook (contains hardcoded API keys)
+*.ipynb
 .ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
 .env
+
+# Temp / cache
+temp/
+*.pkl
+*.cache
 *.csv
 *.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
