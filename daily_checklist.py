@@ -407,6 +407,9 @@ def fetch_adl(days=60, token=None):
             progress=False, auto_adjust=True
         )
         if not _twii.empty:
+            # [Fix] yfinance 新版可能回傳 MultiIndex columns，需先攤平
+            if isinstance(_twii.columns, pd.MultiIndex):
+                _twii.columns = _twii.columns.get_level_values(0)
             _twii = _twii.dropna(subset=['Close'])
             for _ix in _twii.index:
                 _dk = str(_ix)[:10].replace('-', '')
