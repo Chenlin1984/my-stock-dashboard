@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-03-30 | 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-03-30（Bug 修復批次完成）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -28,19 +28,16 @@
 
 ## 目前開發進度
 
-### 進行中
-- **任務**：為 `scoring_engine.py` 與 `risk_control.py` 撰寫單元測試
-- **已完成**：
-  - `pytest.ini`（測試設定）
-  - `tests/conftest.py`（共用 fixture）
-  - `tests/test_risk_control.py`（45 個測試，涵蓋全部函數）
-- **待完成**：
-  - `tests/test_scoring_engine.py`（尚未寫入）
-  - 執行測試、修正失敗項目
-  - Commit & push 所有未追蹤檔案
-
-### 已完成
-- 測試覆蓋率分析報告（提交 `claude/analyze-test-coverage-070Kf` 分支）
+### 已完成（本輪）
+- **164 個單元測試**：`tests/test_risk_control.py` (57) + `tests/test_scoring_engine.py` (107)，全數通過
+- **CLAUDE.md**：建立含 §1~§6 六大治理協議
+- **STATE.md**：本檔案，追蹤開發狀態
+- **Bug 修復批次（已 push）**：
+  - `data_loader.py:592`：修正 `list-1` TypeError，季財報資料可正常解析
+  - `app.py` Tab1 §3：inst/margin fallback 到 `_last_inst`/`_last_margin` session_state 快取
+  - `app.py` Tab1 §4：`df_li_show` 數值欄 `ffill()` 補齊 NaN
+  - `leading_indicators.py`：正值→藍色(#58a6ff)，負值→紅色(#f85149)
+  - `app.py` Tab2 §D：rev/qtr fallback 到 `_last_rev_{sid}`/`_last_qtr_{sid}` session_state 快取
 
 ---
 
@@ -48,8 +45,9 @@
 
 | 優先 | 位置 | 問題描述 |
 |---|---|---|
-| 🔴 高 | `app.py` Tab1 §4 | 外資先行指標數值未完整顯示，需改為抓最後一次有效數據（fallback to last known） |
-| 🔴 高 | `app.py` Tab1 §3 | 三大法人＋融資無資料，需改為抓最後一次有效數據 |
-| 🔴 高 | `app.py` Tab2 §C | 財報領先指標（財報 YoY）無法抓取，需確認 FinMind/GoodInfo API 呼叫邏輯 |
-| 🔴 高 | `app.py` Tab2 §D | 月營收趨勢無法抓取，需確認 FinMind 月營收 API 呼叫邏輯 |
-| 🟡 中 | `stop-hook-git-check.sh` | `no_pr_reminder` 文字與 Claude 系統提示詞重複，可清理 |
+| ✅ 已修 | `data_loader.py:592` | list-1 TypeError 導致季財報永遠無法解析 |
+| ✅ 已修 | `app.py` Tab1 §3 | 三大法人＋融資 API 失敗時無 fallback |
+| ✅ 已修 | `app.py` Tab1 §4 | 外資先行指標部分欄位 NaN，無 ffill |
+| ✅ 已修 | `leading_indicators.py` | 正/負值顏色配置錯誤 |
+| ✅ 已修 | `app.py` Tab2 §D | 月營收/季財報無 fallback 快取 |
+| ✅ 已修 | `stop-hook-git-check.sh` | `no_pr_reminder` 重複文字已清除 |

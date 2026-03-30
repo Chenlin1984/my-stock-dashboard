@@ -987,12 +987,12 @@ def render_leading_table(df):
         if v is None or (isinstance(v, float) and pd.isna(v)): return ""
         try: n = float(v)
         except: return ""
-        if col in BRACKET and n < 0: return "color:#2ea043;font-weight:bold;"
-        if col in BRACKET and n > 0: return "color:#da3633;font-weight:bold;"
-        if col in SPOT and n < 0: return "color:#2ea043;"
-        if col in SPOT and n > 0: return "color:#da3633;"
-        if col == "韭菜指數" and n > 10: return "color:#2ea043;font-weight:bold;"   # 散戶大幅看多→警戒
-        if col == "韭菜指數" and n < -10: return "color:#da3633;font-weight:bold;"  # 散戶大幅看空→機會
+        if col in BRACKET and n > 0: return "color:#58a6ff;font-weight:bold;"
+        if col in BRACKET and n < 0: return "color:#f85149;font-weight:bold;"
+        if col in SPOT and n > 0: return "color:#58a6ff;"
+        if col in SPOT and n < 0: return "color:#f85149;"
+        if col == "韭菜指數" and n > 10: return "color:#f85149;font-weight:bold;"   # 散戶大幅看多→警戒（紅色）
+        if col == "韭菜指數" and n < -10: return "color:#58a6ff;font-weight:bold;"  # 散戶大幅看空→機會（藍色）
         return ""
     h = (
         "<style>\n"
