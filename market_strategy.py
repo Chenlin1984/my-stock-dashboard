@@ -39,7 +39,7 @@ def fetch_market_data():
             return {'foreign_net': foreign_net, 'date': date_str}
     except Exception as e:
         print(f'[MarketStrategy] TWSE 法人數據失敗: {e}')
-    return {'foreign_net': 0, 'date': ''}
+    return {'foreign_net': None, 'date': ''}  # None 表示資料取得失敗，非「零」
 
 
 # ── 核心：市場狀態判斷 (§5.1) ─────────────────────────────────
@@ -188,7 +188,7 @@ def get_market_assessment(df_index=None, foreign_net=None):
 
     if foreign_net is None:
         mkt = fetch_market_data()
-        foreign_net = mkt.get('foreign_net', 0)
+        foreign_net = mkt.get('foreign_net') or 0  # None(API失敗) → 0 避免 TypeError
 
     # P9修正: 傳入前一日MA值，讓斜率過濾生效
     ma60_prev  = float(df_index['Close'].rolling(60).mean().iloc[-2])  if len(df_index) >= 61 else None
