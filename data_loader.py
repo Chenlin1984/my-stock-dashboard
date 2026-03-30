@@ -589,7 +589,7 @@ class StockDataLoader:
                             headers={'Authorization': f'Bearer {_tok_q}'} if _tok_q else {},
                             timeout=25)
                         _jd_q = _resp_q.json()
-                        print(f'[季財報REST/{_ds_q}] {stock_id} status={_jd_q.get("status")}, rows={len(_jd_q.get("data",[])-1 if isinstance(_jd_q.get("data",[]),list) else 0)+1}')
+                        print(f'[季財報REST/{_ds_q}] {stock_id} status={_jd_q.get("status")}, rows={len(_jd_q.get("data",[]))}')
                         if _jd_q.get('status') == 200 and _jd_q.get('data'):
                             _df_q_tmp = pd.DataFrame(_jd_q['data'])
                             break

@@ -1829,6 +1829,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 inst=inst, inst_date=inst_date, margin=margin,
                 adl=df_adl_raw)
             st.session_state['cl_ts'] = _tw_now_str()
+            # 快取最後一次有效的法人/融資資料，供 API 失敗時 fallback 使用
+            if inst:
+                st.session_state['_last_inst'] = inst
+                st.session_state['_last_inst_date'] = inst_date
+            if margin:
+                st.session_state['_last_margin'] = margin
 
             # [BUG FIX] 寬鬆條件：有任何 DataFrame（即使全 '-'）都存入 session_state
             # 原本 not df_li_a.empty 在 rows 有骨架但全 None 時仍為 True，但若某個版本回 None 或空 DF 則捨棄
@@ -2014,6 +2020,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     tw     = {n:s for n,s in cd.get('tw',{}).items()   if s is not None and not s.empty}
     tech   = {n:s for n,s in cd.get('tech',{}).items() if s is not None and not s.empty}
     inst   = cd.get('inst', {}); margin = cd.get('margin')
+    _inst_is_cached = False; _margin_is_cached = False
+    if not inst and st.session_state.get('_last_inst'):
+        inst = st.session_state['_last_inst']; _inst_is_cached = True
+    if not margin and st.session_state.get('_last_margin'):
+        margin = st.session_state['_last_margin']; _margin_is_cached = True
     df_adl = cd.get('adl')  # 騰落指標 DataFrame
 
     # ── 市場狀態卡：用已載入的真實資料渲染 ────────────────
@@ -2289,7 +2300,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _f_net = inst[_fk]['net'] if _fk else 0
             _t_net = inst[_tk]['net'] if _tk else 0
             _total_net = round(_f_net + _t_net, 2)
-            st.caption(f'三大法人現貨  {cd.get("inst_date","")}  '
+            _inst_date_show = st.session_state.get('_last_inst_date', cd.get('inst_date', '')) if _inst_is_cached else cd.get('inst_date', '')
+            _cached_label = '　⚠️ 快取資料' if _inst_is_cached else ''
+            st.caption(f'三大法人現貨  {_inst_date_show}{_cached_label}  '
                        f'| 外資 {_f_net:+.1f}億  投信 {_t_net:+.1f}億  合計 {_total_net:+.1f}億')
             st.plotly_chart(bar_chart_institutional(inst),use_container_width=True,config={'displayModeBar':False})
             _mkt_ref = st.session_state.get('mkt_info',{})
@@ -2304,9 +2317,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             elif _now_h < 16:
                 st.warning('⏳ 收盤後資料更新中（約15:30~16:00），請稍後重試')
             else:
-                st.warning('⚠️ 三大法人資料取得失敗，請點擊「更新全部總經數據」重試')
+                st.warning('⚠️ 三大法人資料取得失敗，無歷史快取可顯示，請點擊「更新全部總經數據」重試')
     with s3r:
         st.markdown(margin_card(margin),unsafe_allow_html=True)
+        if _margin_is_cached:
+            st.caption('⚠️ 快取資料（最後已知融資餘額）')
         if margin:
             mc = '#f85149' if margin>3400 else ('#d29922' if margin>2500 else '#3fb950')
             ml = '🔴極度危險' if margin>3400 else ('🟡警戒' if margin>2500 else '🟢安全')
@@ -2362,6 +2377,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     df_li_show = st.session_state.get('li_latest')
 
     if df_li_show is not None and not df_li_show.empty:
+        # 向前填補 NaN（各欄位用最後一次有效數值補齊，避免 API 部分失敗造成空格）
+        _li_num_cols = [c for c in df_li_show.columns if c != '日期']
+        df_li_show = df_li_show.copy()
+        df_li_show[_li_num_cols] = df_li_show[_li_num_cols].ffill()
 
         # ── ① 資料期間 caption ─────────────────────────────────────────
         _li_dates = df_li_show['日期'].tolist() if '日期' in df_li_show.columns else []
@@ -3199,6 +3218,11 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
                 'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
                 'health':health2,'details':details2,'price':cur_price2,
             }
+            # 快取最後一次成功抓到的月營收/季財報，供下次失敗時 fallback
+            if rev2 is not None and not rev2.empty:
+                st.session_state[f'_last_rev_{sid2}'] = rev2
+            if qtr2 is not None and not qtr2.empty:
+                st.session_state[f'_last_qtr_{sid2}'] = qtr2
 
     t2d = st.session_state.get('t2_data')
     if not t2d:
@@ -3213,6 +3237,12 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
         yearly2=t2d['yearly']; cl2=t2d['cl']; cx2=t2d['cx']
         _cl_src2=t2d.get('cl_src',''); _cx_src2=t2d.get('cx_src',''); _fin_errs2=t2d.get('fin_errs',[])
         rev2=t2d['rev']; qtr2=t2d['qtr']
+        # Fallback 到快取（若本次抓取失敗）
+        _rev2_cached = False; _qtr2_cached = False
+        if (rev2 is None or rev2.empty) and st.session_state.get(f'_last_rev_{sid2}') is not None:
+            rev2 = st.session_state[f'_last_rev_{sid2}']; _rev2_cached = True
+        if (qtr2 is None or qtr2.empty) and st.session_state.get(f'_last_qtr_{sid2}') is not None:
+            qtr2 = st.session_state[f'_last_qtr_{sid2}']; _qtr2_cached = True
 
         # ══ 0. 停利停損 + 支撐壓力 ═══════════════════════════════
         st.markdown('---')
@@ -3956,11 +3986,16 @@ padding:12px 16px;margin:8px 0;">
             '<br>🔴 <b>連續3個月YoY<0%</b> = 業績衰退，要小心'
             '</div>', unsafe_allow_html=True)
         if rev2 is not None and not rev2.empty:
+            if _rev2_cached:
+                st.caption('⚠️ 月營收使用快取資料（本次 API 未回應）')
             st.plotly_chart(plot_revenue_chart(rev2,sid2,name2),
                             use_container_width=True,config={'displayModeBar':False})
         else:
-            st.warning('⚠️ 月營收數據暫無（請確認 FINMIND_TOKEN 是否正確）')
+            st.warning('⚠️ 月營收數據暫無（請確認 FINMIND_TOKEN 是否正確，或重新載入）')
+            st.caption('💡 首次查詢需網路抓取，若持續失敗請檢查 Token 或稍後重試')
         if qtr2 is not None and not qtr2.empty:
+            if _qtr2_cached:
+                st.caption('⚠️ 季財報使用快取資料（本次 API 未回應）')
             st.plotly_chart(plot_quarterly_chart(qtr2,sid2,name2),
                             use_container_width=True,config={'displayModeBar':False})
         with st.expander('📖 孫慶龍 結論', expanded=True):

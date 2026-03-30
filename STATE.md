@@ -1,0 +1,53 @@
+# STATE.md — 台股 AI 戰情室
+
+> 上次更新：2026-03-30（Bug 修復批次完成）| 分支：`claude/analyze-test-coverage-070Kf`
+
+---
+
+## 核心檔案摘要
+
+| 檔案 | 一句話簡介 |
+|---|---|
+| `app.py` | 主 Streamlit UI，含所有 Tab 頁面與使用者互動邏輯（5531 行） |
+| `data_loader.py` | 從 yfinance / FinMind 抓取股價、財報、月營收等原始資料 |
+| `scoring_engine.py` | 多因子評分引擎：趨勢/動能/籌碼/量價/風險/基本面加權計算 |
+| `risk_control.py` | 單股停損停利 + 部位計算 + 組合風控（RiskController 類別） |
+| `backtest_engine.py` | 回測框架：MA Cross / MA+RSI 策略，計算 CAGR、盈虧比 |
+| `ai_engine.py` | Google Gemini AI 整合：新聞摘要、趨勢分析、每日報告生成 |
+| `chart_plotter.py` | Plotly 圖表渲染：K 線、月營收、季報、合併走勢圖 |
+| `leading_indicators.py` | 期貨未平倉、PCR、三大法人、ADL 等總體市場先行指標 |
+| `daily_checklist.py` | 每日盤前清單：法人追蹤、融資餘額、ADL 動能掃描 |
+| `market_strategy.py` | 多/空/中性市場狀態判斷 + 建議持股曝險比例 |
+| `v4_strategy_engine.py` | V4.0 進階選股策略引擎（含回測能力） |
+| `v5_modules.py` | 基本面領先指標、布林突破、股息殖利率等 V5 模組 |
+| `financial_debug_helper.py` | FinMind / GoodInfo 財務資料除錯與欄位映射工具 |
+| `config.py` | 全域設定常數（權重/風控參數/回測設定） |
+| `stock_names.py` | 台股代號與中文名稱對照查詢表 |
+
+---
+
+## 目前開發進度
+
+### 已完成（本輪）
+- **164 個單元測試**：`tests/test_risk_control.py` (57) + `tests/test_scoring_engine.py` (107)，全數通過
+- **CLAUDE.md**：建立含 §1~§6 六大治理協議
+- **STATE.md**：本檔案，追蹤開發狀態
+- **Bug 修復批次（已 push）**：
+  - `data_loader.py:592`：修正 `list-1` TypeError，季財報資料可正常解析
+  - `app.py` Tab1 §3：inst/margin fallback 到 `_last_inst`/`_last_margin` session_state 快取
+  - `app.py` Tab1 §4：`df_li_show` 數值欄 `ffill()` 補齊 NaN
+  - `leading_indicators.py`：正值→藍色(#58a6ff)，負值→紅色(#f85149)
+  - `app.py` Tab2 §D：rev/qtr fallback 到 `_last_rev_{sid}`/`_last_qtr_{sid}` session_state 快取
+
+---
+
+## 待修復 Bug 清單
+
+| 優先 | 位置 | 問題描述 |
+|---|---|---|
+| ✅ 已修 | `data_loader.py:592` | list-1 TypeError 導致季財報永遠無法解析 |
+| ✅ 已修 | `app.py` Tab1 §3 | 三大法人＋融資 API 失敗時無 fallback |
+| ✅ 已修 | `app.py` Tab1 §4 | 外資先行指標部分欄位 NaN，無 ffill |
+| ✅ 已修 | `leading_indicators.py` | 正/負值顏色配置錯誤 |
+| ✅ 已修 | `app.py` Tab2 §D | 月營收/季財報無 fallback 快取 |
+| ✅ 已修 | `stop-hook-git-check.sh` | `no_pr_reminder` 重複文字已清除 |
