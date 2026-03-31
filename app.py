@@ -1620,8 +1620,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # ── FinMind Token 狀態提示（不發 API，只檢查 env 是否有值）───
     _fm_tok_now = _get_fm_token()
     if not _fm_tok_now:
-        st.warning('⚠️ FINMIND_TOKEN 未設定 → 匿名模式（每小時600次）。'
-                   '填入 Cell 1 後重新執行 Cell 1 + Cell 4（asyncio）再重啟 Streamlit 即生效。')
+        st.error(
+            '🔑 **FINMIND_TOKEN 未設定** — 以下功能無法使用：月營收、合約負債/資本支出、'
+            '先行指標（期貨/選擇權/法人留倉）\n\n'
+            '**設定步驟（Streamlit Cloud）：**\n'
+            '1. 前往 https://finmindtrade.com 免費註冊並取得 API Token\n'
+            '2. Streamlit Cloud → 你的 App → **Settings → Secrets**\n'
+            '3. 新增一行：`FINMIND_TOKEN = "your_token_here"`\n'
+            '4. 按 Save → App 自動重啟後即生效'
+        )
     else:
         st.success(f'✅ FinMind Token 已設定（{_fm_tok_now[:12]}...）', icon='🔑')
 
