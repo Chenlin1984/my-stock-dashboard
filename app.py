@@ -323,8 +323,11 @@ def fetch_financials(sid, industry: str = ""):
                         params=_params, headers=_hdrs, timeout=20)
         _j = _r.json()
         _rows = _j.get("data", [])
-        print(f"[FM-BS] {sid} HTTP {_r.status_code} status={_j.get('status')} rows={len(_rows)}")
-        if _j.get("status") == 200 and _rows:
+        _fm_status = _j.get("status"); _fm_msg = _j.get("msg","")
+        print(f"[FM-BS] {sid} HTTP {_r.status_code} status={_fm_status} rows={len(_rows)}")
+        if _fm_status != 200:
+            fetch_errors.append(f"FinMind-BS:HTTP{_r.status_code}:{_fm_msg or _fm_status}")
+        if _fm_status == 200 and _rows:
             # 取最新一季
             _dates = sorted(set(r.get("date","") for r in _rows), reverse=True)
             _latest_dt = _dates[0] if _dates else None
@@ -378,8 +381,11 @@ def fetch_financials(sid, industry: str = ""):
                          params=_params2, headers=_hdrs2, timeout=20)
         _j2 = _r2.json()
         _rows2 = _j2.get("data",[])
-        print(f"[FM-CF] {sid} HTTP {_r2.status_code} status={_j2.get('status')} rows={len(_rows2)}")
-        if _j2.get("status") == 200 and _rows2:
+        _fm2_status = _j2.get("status"); _fm2_msg = _j2.get("msg","")
+        print(f"[FM-CF] {sid} HTTP {_r2.status_code} status={_fm2_status} rows={len(_rows2)}")
+        if _fm2_status != 200:
+            fetch_errors.append(f"FinMind-CF:HTTP{_r2.status_code}:{_fm2_msg or _fm2_status}")
+        if _fm2_status == 200 and _rows2:
             _dates2 = sorted(set(r.get("date","") for r in _rows2), reverse=True)
             _latest2 = [r for r in _rows2 if r.get("date") == (_dates2[0] if _dates2 else None)]
             _CX_TYPES = ["PropertyAndPlantAndEquipment","AcquisitionOfPropertyPlantAndEquipment"]
