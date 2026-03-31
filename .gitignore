@@ -18,6 +18,11 @@ temp/
 *.csv
 *.xlsx
 
+# Test coverage
+.coverage
+htmlcov/
+coverage.xml
+
 # OS
 .DS_Store
 Thumbs.db
