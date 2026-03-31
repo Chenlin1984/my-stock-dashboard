@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-03-30（Bug 修復批次完成）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-03-31（測試覆蓋率補強完成）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -29,7 +29,15 @@
 ## 目前開發進度
 
 ### 已完成（本輪）
-- **164 個單元測試**：`tests/test_risk_control.py` (57) + `tests/test_scoring_engine.py` (107)，全數通過
+- **184 個單元測試**：`tests/test_risk_control.py` (59) + `tests/test_scoring_engine.py` (125)，全數通過
+- **覆蓋率提升**：`scoring_engine.py` 81% → 93%，`risk_control.py` 94% → 95%
+- **新增測試類別**：
+  - `TestRsSlope`：rs_slope 函式（先跌後彈、too-short、bool 型別）
+  - `TestCheckRelativeStrength`：有/無大盤基準強弱判斷（6 cases）
+  - `TestCalcRsScore` 擴充：含大盤基準的 RS 計算（2 cases）
+  - `TestCheckStopLossCompat`：check_stop_loss 舊版相容包裝（2 cases）
+  - `TestAdditionalCoverage`：ATR fallback、中波動率 elif、量增價漲路徑、grade 欄位、position_size 極端案例
+- **`.gitignore` 補強**：新增 `.coverage` / `htmlcov/` / `coverage.xml`
 - **CLAUDE.md**：建立含 §1~§6 六大治理協議
 - **STATE.md**：本檔案，追蹤開發狀態
 - **Bug 修復批次（已 push）**：

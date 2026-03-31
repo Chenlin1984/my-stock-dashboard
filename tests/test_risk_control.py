@@ -417,3 +417,25 @@ class TestConvenienceFunctions:
     def test_calc_stop_loss_custom_pct(self):
         # 100 × (1 - 0.10) = 90.0
         assert calc_stop_loss(100, stop_pct=0.10) == pytest.approx(90.0)
+
+
+# ══════════════════════════════════════════════════════════════
+# Additional: RiskController.check_stop_loss (backward-compat)
+# ══════════════════════════════════════════════════════════════
+
+class TestCheckStopLossCompat:
+    """check_stop_loss 是 check_exit 的舊版相容包裝"""
+
+    def setup_method(self):
+        from risk_control import RiskController
+        self.rc = RiskController()
+
+    def test_check_stop_loss_no_exit(self):
+        """持倉未觸停損 → exit_type 'hold'"""
+        r = self.rc.check_stop_loss(100, 105)
+        assert r['exit_type'] == 'hold'
+
+    def test_check_stop_loss_triggers(self):
+        """跌破停損 → exit_type 不為 'hold'"""
+        r = self.rc.check_stop_loss(100, 91.0)
+        assert r['exit_type'] != 'hold'
