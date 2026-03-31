@@ -38,6 +38,9 @@
   - `app.py` Tab1 §4：`df_li_show` 數值欄 `ffill()` 補齊 NaN
   - `leading_indicators.py`：正值→藍色(#58a6ff)，負值→紅色(#f85149)
   - `app.py` Tab2 §D：rev/qtr fallback 到 `_last_rev_{sid}`/`_last_qtr_{sid}` session_state 快取
+  - `app.py` Tab2 §C：`fetch_financials()` non-200 HTTP 狀態記錄至 `fetch_errors`，修正無 Token 時誤顯「金融/保險不適用」的 false positive
+  - `app.py`：FINMIND_TOKEN 未設定時顯示紅色 error 含 Streamlit Cloud Secrets 設定步驟
+  - `data_loader.py`：Goodinfo 月營收新增第二備援 URL + 放寬欄位過濾
 
 ---
 

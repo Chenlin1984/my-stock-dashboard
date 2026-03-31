@@ -984,15 +984,26 @@ def render_leading_table(df):
         if col == "韭菜指數": return f"{float(v):+.1f}%"
         return str(v)
     def sty(v, col):
-        if v is None or (isinstance(v, float) and pd.isna(v)): return ""
+        """回傳 CSS color 字串，給 <span style="..."> 使用"""
+        if v is None: return ""
+        try:
+            if pd.isna(v): return ""
+        except (TypeError, ValueError):
+            pass
         try: n = float(v)
         except: return ""
-        if col in BRACKET and n > 0: return "color:#58a6ff;font-weight:bold;"
-        if col in BRACKET and n < 0: return "color:#f85149;font-weight:bold;"
-        if col in SPOT and n > 0: return "color:#58a6ff;"
-        if col in SPOT and n < 0: return "color:#f85149;"
-        if col == "韭菜指數" and n > 10: return "color:#f85149;font-weight:bold;"   # 散戶大幅看多→警戒（紅色）
-        if col == "韭菜指數" and n < -10: return "color:#58a6ff;font-weight:bold;"  # 散戶大幅看空→機會（藍色）
+        if col in BRACKET:
+            if n > 0: return "color:#58a6ff;font-weight:bold;"
+            if n < 0: return "color:#f85149;font-weight:bold;"
+        if col in SPOT:
+            if n > 0: return "color:#58a6ff;"
+            if n < 0: return "color:#f85149;"
+        if col == "選PCR":
+            if n < 0.8: return "color:#58a6ff;"   # 偏多（Call 多）→ 藍
+            if n > 1.2: return "color:#f85149;"   # 偏空（Put 多）→ 紅
+        if col == "韭菜指數":
+            if n > 10:  return "color:#f85149;font-weight:bold;"   # 散戶大幅看多→警戒
+            if n < -10: return "color:#58a6ff;font-weight:bold;"   # 散戶大幅看空→機會
         return ""
     h = (
         "<style>\n"
@@ -1028,10 +1039,12 @@ def render_leading_table(df):
     )
     for _, row in df.iterrows():
         h += "<tr>"
-        h += f'<td class="li-dl">{row.get("日期","-")}</td><td style="color:#9CDCFE;">{row.get("成交量","-")}</td>'
+        h += f'<td class="li-dl">{row.get("日期","-")}</td><td><span style="color:#9CDCFE;">{row.get("成交量","-")}</span></td>'
         for col in COLS:
             v = row.get(col)
-            h += f'<td style="{sty(v,col)}">{fmt(v,col)}</td>'
+            _s = sty(v, col)
+            _f = fmt(v, col)
+            h += f'<td><span style="{_s}">{_f}</span></td>' if _s else f'<td>{_f}</td>'
         h += "</tr>\n"
     return h + "</tbody></table>"
 

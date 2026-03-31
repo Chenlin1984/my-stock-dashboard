@@ -520,17 +520,27 @@ class StockDataLoader:
         # ── 方案C: Goodinfo.tw（最後備援）──────────────────────
         if df_revenue is None:
             try:
-                _gi_hdr = {'User-Agent':'Mozilla/5.0',
-                           'Referer':'https://goodinfo.tw/tw/index.asp'}
-                _gi_url = f'https://goodinfo.tw/tw/StockBzPerformance.asp?STOCK_ID={stock_id}'
-                _rgi = _rq_rv.get(_gi_url, headers=_gi_hdr, timeout=20)
-                _rgi.encoding = 'utf-8'
-                if _rgi.status_code == 200 and len(_rgi.text) > 1000:
+                _gi_hdr = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                           'Referer':'https://goodinfo.tw/tw/index.asp',
+                           'Accept-Language':'zh-TW,zh;q=0.9'}
+                # 嘗試兩個月營收頁面
+                for _gi_url in [
+                    f'https://goodinfo.tw/tw/StockBzPerformance.asp?STOCK_ID={stock_id}',
+                    f'https://goodinfo.tw/tw/StockMonthlyBizStatus.asp?STOCK_ID={stock_id}',
+                ]:
+                  try:
+                    _rgi = _rq_rv.get(_gi_url, headers=_gi_hdr, timeout=20)
+                    _rgi.encoding = 'utf-8'
+                    if _rgi.status_code != 200 or len(_rgi.text) < 1000: continue
                     _gi_tables = _pd_rv.read_html(_rgi.text, encoding='utf-8')
                     _rows_gi = []
                     for _gt in _gi_tables:
                         _col_strs = [str(c) for c in _gt.columns]
-                        if any(any(k in str(c) for k in ['月','YoY','營收']) for c in _col_strs):
+                        # 放寬條件：含「月/YoY/營收/Revenue」或欄位多為數字（1~12月資料）
+                        _has_rev_kw = any(any(k in str(c) for k in ['月','YoY','營收','Revenue','revenue']) for c in _col_strs)
+                        _has_num_cols = sum(1 for c in _col_strs if str(c).isdigit()) >= 6
+                        if not (_has_rev_kw or _has_num_cols): continue
+                        if any(any(k in str(c) for k in ['月','YoY','營收','Revenue','revenue']) for c in _col_strs):
                             for _, _row_gi in _gt.iterrows():
                                 _yc = str(_row_gi.iloc[0]).split('/')[0].split('(')[0].strip()
                                 try:
@@ -551,7 +561,10 @@ class StockDataLoader:
                         df_revenue = _pd_rv.DataFrame(_rows_gi)
                         df_revenue['date'] = _pd_rv.to_datetime(df_revenue['date'])
                         df_revenue = df_revenue.sort_values('date')
-                        print(f'[Goodinfo-Rev] {stock_id}: ✅ {len(df_revenue)} 筆')
+                        print(f'[Goodinfo-Rev] {stock_id} ({_gi_url.split("?")[0].split("/")[-1]}): ✅ {len(df_revenue)} 筆')
+                        break  # 成功就跳出 URL 迴圈
+                  except Exception as _eGi:
+                    print(f'[Goodinfo-Rev] {_gi_url}: {_eGi}')
             except Exception as _eG:
                 print(f'[Goodinfo-Rev] {stock_id}: {_eG}')
 
