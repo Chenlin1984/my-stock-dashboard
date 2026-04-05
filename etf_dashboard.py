@@ -940,3 +940,380 @@ def render_etf_ai(gemini_fn=None):
                 st.markdown(answer)
             else:
                 st.warning(answer or 'AI 回傳為空')
+
+
+# ═══════════════════════════════════════════════════════════════
+# Tab ⑩：資料健診儀表板
+# ═══════════════════════════════════════════════════════════════
+
+# 系統內所有需要檢測的資料源定義
+_HEALTH_CHECKS = {
+    'session_state': [
+        ('mkt_info',        '① 市場評估',      lambda v: bool(v and v.get('regime'))),
+        ('li_latest',       '① 先行指標',      lambda v: v is not None and not v.empty),
+        ('etf_single_data', '⑥ ETF診斷結果',   lambda v: bool(v and v.get('ticker'))),
+        ('etf_portfolio_data', '⑦ 組合配置結果', lambda v: bool(v and v.get('rows'))),
+        ('etf_backtest_data',  '⑧ 回測結果',    lambda v: bool(v and v.get('cagr') is not None)),
+        ('warroom_summary', '④ 戰情摘要',      lambda v: bool(v)),
+    ]
+}
+
+# 美股指標 ETF（健診用）
+_HEALTH_ETF_US = ['SPY', 'QQQ', 'BND', 'GLD', 'TLT']
+# 台股指標 ETF
+_HEALTH_ETF_TW = ['0050.TW', '00878.TW', '00713.TW', '0056.TW', '00929.TW']
+
+
+def _check_icon(ok: bool, warn: bool = False) -> str:
+    if ok:    return '✅'
+    if warn:  return '⚠️'
+    return '❌'
+
+
+def _check_etf_health(ticker: str) -> dict:
+    """對單一 ETF 執行資料抓取健診"""
+    result = {
+        'ticker': ticker,
+        'price_ok': False, 'price_rows': 0, 'price_last': None,
+        'div_ok': False,   'div_count': 0,
+        'info_ok': False,  'info_fields': 0,
+        'error': None,
+    }
+    try:
+        df = fetch_etf_price(ticker, period='1y')
+        if not df.empty:
+            result['price_ok']   = True
+            result['price_rows']  = len(df)
+            result['price_last']  = str(df.index[-1].date())
+    except Exception as e:
+        result['error'] = str(e)[:80]
+    try:
+        divs = fetch_etf_dividends(ticker)
+        result['div_ok']    = not divs.empty
+        result['div_count'] = len(divs)
+    except Exception:
+        pass
+    try:
+        info = fetch_etf_info(ticker)
+        filled = sum(1 for v in info.values() if v is not None and v != '')
+        result['info_ok']     = filled > 5
+        result['info_fields'] = filled
+    except Exception:
+        pass
+    return result
+
+
+def render_data_health():
+    st.markdown('### 🔎 資料健診儀表板')
+    st.caption('掃描全系統資料源狀態，確認每個資料均有真實抓取，避免沙盒/空值假象。')
+
+    # ── ① Session State 資料檢查 ──────────────────────────────
+    st.markdown('#### 🧠 系統快取資料（session_state）')
+    ss_rows = []
+    for key, label, checker in _HEALTH_CHECKS['session_state']:
+        val  = st.session_state.get(key)
+        ok   = False
+        note = '尚未載入'
+        try:
+            ok = checker(val)
+            if ok:
+                if key == 'mkt_info':
+                    note = f'regime={val.get("regime")} score={val.get("score")}' 
+                elif key == 'li_latest':
+                    note = f'{len(val)} 筆指標，最新={str(val.index[-1].date()) if hasattr(val.index[-1], "date") else val.index[-1]}' if not val.empty else '空表'
+                elif key == 'etf_single_data':
+                    note = f'{val.get("ticker")} | 殖利率={val.get("cur_yield"):.1f}%'
+                elif key == 'etf_portfolio_data':
+                    note = f'{len(val.get("rows",[]))} 檔ETF | 總資產={val.get("total_value",0):,.0f}元'
+                elif key == 'etf_backtest_data':
+                    note = f'CAGR={val.get("cagr"):.1f}% | MDD={val.get("mdd"):.1f}%'
+                else:
+                    note = '有資料'
+            else:
+                note = '空值或格式異常'
+        except Exception as e:
+            note = f'檢查失敗：{e}'
+        ss_rows.append({'狀態': '✅ 正常' if ok else '❌ 未載入',
+                         '模組': label, 'Key': key, '說明': note})
+    ss_df = pd.DataFrame(ss_rows)
+    st.dataframe(ss_df, use_container_width=True, hide_index=True)
+
+    ok_count = sum(1 for r in ss_rows if '✅' in r['狀態'])
+    total    = len(ss_rows)
+    bar_color = 'green' if ok_count == total else ('yellow' if ok_count > total // 2 else 'red')
+    _colored_box(
+        f'系統快取健康度：<b>{ok_count}/{total}</b> 項正常'
+        + (' — 全部就緒 🎉' if ok_count == total else ' — 請先到對應 Tab 執行分析'),
+        bar_color)
+
+    # ── ② ETF 資料源即時健診 ─────────────────────────────────
+    st.markdown('---')
+    st.markdown('#### 📡 ETF 資料源即時健診（yfinance）')
+
+    col_tw, col_us = st.columns(2)
+    custom_input   = st.text_input(
+        '➕ 額外檢測代號（用逗號分隔，如 00919.TW,NVDA）',
+        value='', key='health_custom')
+    custom_tickers = [t.strip().upper() for t in custom_input.split(',') if t.strip()]
+
+    # 讀取已在其他 Tab 使用的 tickers
+    used_tickers = set()
+    if st.session_state.get('etf_portfolio_data'):
+        for r in st.session_state['etf_portfolio_data'].get('rows', []):
+            used_tickers.add(r['ticker'])
+    if st.session_state.get('etf_backtest_data'):
+        used_tickers.update(st.session_state['etf_backtest_data'].get('weights', {}).keys())
+    if st.session_state.get('etf_single_data'):
+        used_tickers.add(st.session_state['etf_single_data']['ticker'])
+
+    scan_tickers = list(set(_HEALTH_ETF_TW + _HEALTH_ETF_US)
+                        | used_tickers | set(custom_tickers))
+
+    if not st.button('🔬 開始全面掃描', key='health_scan_btn', use_container_width=True):
+        st.info(f'將掃描 {len(scan_tickers)} 個 ETF，點擊「開始全面掃描」執行')
+        st.caption('掃描列表：' + ' / '.join(scan_tickers))
+        return
+
+    results = []
+    progress = st.progress(0, text='掃描中...')
+    for i, ticker in enumerate(scan_tickers):
+        progress.progress((i + 1) / len(scan_tickers), text=f'掃描 {ticker}...')
+        r = _check_etf_health(ticker)
+        results.append(r)
+    progress.empty()
+
+    # 顯示結果表
+    display_rows = []
+    for r in results:
+        p_icon = _check_icon(r['price_ok'])
+        d_icon = _check_icon(r['div_ok'], warn=True)   # 無配息是正常的（成長型ETF）
+        i_icon = _check_icon(r['info_ok'])
+        overall = '✅' if (r['price_ok'] and r['info_ok']) else ('⚠️' if r['price_ok'] else '❌')
+        display_rows.append({
+            '整體': overall,
+            'ETF': r['ticker'],
+            '價格資料': f"{p_icon} {r['price_rows']}筆 ({r['price_last'] or '-'})",
+            '配息紀錄': f"{d_icon} {r['div_count']}筆",
+            'Info欄位': f"{i_icon} {r['info_fields']}項",
+            '異常': r['error'] or '-',
+        })
+
+    result_df = pd.DataFrame(display_rows)
+    st.dataframe(result_df, use_container_width=True, hide_index=True)
+
+    ok_etf  = sum(1 for r in results if r['price_ok'] and r['info_ok'])
+    warn_etf= sum(1 for r in results if r['price_ok'] and not r['info_ok'])
+    fail_etf= sum(1 for r in results if not r['price_ok'])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric('✅ 完全正常',  ok_etf)
+    c2.metric('⚠️ 部分缺失', warn_etf)
+    c3.metric('❌ 資料抓取失敗', fail_etf)
+
+    if fail_etf > 0:
+        failed = [r['ticker'] for r in results if not r['price_ok']]
+        _colored_box(
+            f'⚠️ 以下代號無法抓取，請確認代號正確或網路連線：<b>{", ".join(failed)}</b>',
+            'red')
+
+    # ── ③ 快取清除工具 ───────────────────────────────────────
+    st.markdown('---')
+    st.markdown('#### 🧹 快取管理')
+    col_clr1, col_clr2 = st.columns(2)
+    if col_clr1.button('🔄 清除 yfinance 快取（強制重新抓取）',
+                        key='health_clear_cache', use_container_width=True):
+        fetch_etf_price.clear()
+        fetch_etf_dividends.clear()
+        fetch_etf_info.clear()
+        st.success('✅ yfinance 快取已清除，下次操作將重新從 API 抓取')
+    if col_clr2.button('🗑️ 清除 ETF 分析 session（⑥⑦⑧⑨）',
+                        key='health_clear_session', use_container_width=True):
+        for k in ['etf_single_data', 'etf_portfolio_data',
+                  'etf_backtest_data', 'etf_ai_comp_result']:
+            st.session_state.pop(k, None)
+        st.success('✅ ETF 分析結果已清除')
+        st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Tab ⑪：產業熱力圖
+# ═══════════════════════════════════════════════════════════════
+
+# ── 美股 11 大 GICS 類股 ETF ─────────────────────────────────
+_US_SECTORS = {
+    'XLK':  {'name': '科技',        'sub': ['AAPL','MSFT','NVDA','AVGO','AMD']},
+    'XLF':  {'name': '金融',        'sub': ['JPM','BAC','WFC','GS','MS']},
+    'XLE':  {'name': '能源',        'sub': ['XOM','CVX','COP','SLB','MPC']},
+    'XLV':  {'name': '醫療',        'sub': ['LLY','UNH','JNJ','ABBV','MRK']},
+    'XLI':  {'name': '工業',        'sub': ['GE','CAT','HON','UPS','BA']},
+    'XLP':  {'name': '必需消費',    'sub': ['PG','KO','PEP','COST','WMT']},
+    'XLU':  {'name': '公用事業',    'sub': ['NEE','SO','DUK','AEP','D']},
+    'XLB':  {'name': '原物料',      'sub': ['LIN','APD','ECL','NEM','FCX']},
+    'XLRE': {'name': '房地產',      'sub': ['PLD','AMT','EQIX','CCI','SPG']},
+    'XLY':  {'name': '非必需消費',  'sub': ['AMZN','TSLA','HD','MCD','NKE']},
+    'XLC':  {'name': '通訊服務',    'sub': ['META','GOOGL','NFLX','DIS','T']},
+}
+
+# ── 台股類股代表 ETF/指數成分 ────────────────────────────────
+_TW_SECTORS = {
+    '2330.TW': {'name': '半導體',    'sub': ['2303.TW','2308.TW','2454.TW','3711.TW','2379.TW']},
+    '2317.TW': {'name': '電子製造',  'sub': ['2354.TW','2356.TW','3008.TW','2382.TW','3034.TW']},
+    '2412.TW': {'name': '電信',      'sub': ['3045.TW','4904.TW','2409.TW']},
+    '2882.TW': {'name': '金融',      'sub': ['2881.TW','2883.TW','2884.TW','2886.TW','2891.TW']},
+    '1301.TW': {'name': '塑化',      'sub': ['1303.TW','1326.TW','1402.TW']},
+    '2002.TW': {'name': '鋼鐵',      'sub': ['2006.TW','2007.TW','2010.TW']},
+    '1216.TW': {'name': '食品',      'sub': ['1201.TW','1210.TW','1225.TW']},
+    '2603.TW': {'name': '航運',      'sub': ['2609.TW','2615.TW','2617.TW']},
+    '9910.TW': {'name': '觀光',      'sub': ['2706.TW','2707.TW','2727.TW']},
+    '3008.TW': {'name': '光電',      'sub': ['2409.TW','3481.TW','2475.TW']},
+}
+
+_PERIOD_MAP = {'1日': '5d', '5日': '1mo', '1月': '3mo', '3月': '6mo'}
+
+
+@st.cache_data(ttl=1800)
+def _fetch_sector_returns(tickers: tuple, period: str) -> dict:
+    """批次抓取類股漲跌幅，回傳 {ticker: pct_change}"""
+    result = {}
+    try:
+        raw = yf.download(list(tickers), period=period,
+                          auto_adjust=True, progress=False, threads=True)
+        if raw.empty:
+            return result
+        # yf.download 多 ticker 時 Close 為 MultiIndex
+        if isinstance(raw.columns, pd.MultiIndex):
+            close = raw['Close'] if 'Close' in raw.columns.get_level_values(0) else raw.xs('Close', axis=1, level=0)
+        else:
+            close = raw[['Close']] if 'Close' in raw.columns else raw
+        close = close.ffill().dropna(how='all')
+        for t in tickers:
+            if t in close.columns:
+                series = close[t].dropna()
+                if len(series) >= 2:
+                    pct = round((float(series.iloc[-1]) / float(series.iloc[0]) - 1) * 100, 2)
+                    result[t] = pct
+    except Exception as e:
+        st.warning(f'類股資料抓取部分失敗：{e}')
+    return result
+
+
+def _build_treemap_data(sectors: dict, returns: dict, market: str) -> go.Figure:
+    """建立 Plotly Treemap 熱力圖"""
+    ids, labels, parents, values, texts, colors = [], [], [], [], [], []
+
+    # root
+    ids.append(market)
+    labels.append(market)
+    parents.append('')
+    values.append(0)
+    texts.append('')
+    colors.append(0)
+
+    for ticker, meta in sectors.items():
+        sec_ret = returns.get(ticker)
+        sec_label = f"{meta['name']}<br>{sec_ret:+.1f}%" if sec_ret is not None else meta['name']
+        ids.append(ticker)
+        labels.append(sec_label)
+        parents.append(market)
+        values.append(max(abs(sec_ret) if sec_ret is not None else 1, 0.5))
+        texts.append(ticker)
+        colors.append(sec_ret if sec_ret is not None else 0)
+
+        # sub-items
+        for sub in meta.get('sub', []):
+            sub_ret = returns.get(sub)
+            sub_label = f"{sub.replace('.TW','')}<br>{sub_ret:+.1f}%" if sub_ret is not None else sub
+            ids.append(f'{ticker}/{sub}')
+            labels.append(sub_label)
+            parents.append(ticker)
+            values.append(max(abs(sub_ret) if sub_ret is not None else 0.5, 0.3))
+            texts.append(sub)
+            colors.append(sub_ret if sub_ret is not None else 0)
+
+    # 顏色：最大值對稱
+    max_abs = max(abs(c) for c in colors if c != 0) or 5
+    fig = go.Figure(go.Treemap(
+        ids=ids, labels=labels, parents=parents,
+        values=values, text=texts,
+        textinfo='label',
+        marker=dict(
+            colors=colors,
+            colorscale=[[0, '#7b1212'], [0.35, '#c0392b'], [0.5, '#1e2530'],
+                        [0.65, '#1a6e36'], [1, '#0f5132']],
+            cmid=0, cmin=-max_abs, cmax=max_abs,
+            colorbar=dict(title='漲跌%', thickness=12),
+            line=dict(width=1, color='#0d1117'),
+        ),
+        hovertemplate='<b>%{text}</b><br>漲跌：%{marker.color:+.2f}%<extra></extra>',
+    ))
+    fig.update_layout(
+        template='plotly_dark',
+        height=600,
+        margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor='#0d1117',
+    )
+    return fig
+
+
+def render_sector_heatmap():
+    st.markdown('### 🗺️ 產業熱力圖')
+    st.caption('即時抓取各類股漲跌幅，紅=跌 / 綠=漲。點選區塊可展開子類股。')
+
+    col_m, col_p, col_r = st.columns([2, 2, 1])
+    market = col_m.selectbox('市場', ['🇺🇸 美股（GICS 11大類）', '🇹🇼 台股（主要類股）'],
+                              key='heatmap_market')
+    period_label = col_p.selectbox('計算區間', list(_PERIOD_MAP.keys()),
+                                    index=0, key='heatmap_period')
+    col_r.markdown('<br>', unsafe_allow_html=True)
+    refresh = col_r.button('🔄 刷新', key='heatmap_refresh', use_container_width=True)
+
+    is_us = '美股' in market
+    sectors = _US_SECTORS if is_us else _TW_SECTORS
+    period  = _PERIOD_MAP[period_label]
+
+    # 收集所有需抓取的 ticker（類股代表 + 子成分）
+    all_tickers = list(sectors.keys())
+    for meta in sectors.values():
+        all_tickers.extend(meta.get('sub', []))
+    all_tickers = tuple(set(all_tickers))
+
+    if refresh:
+        _fetch_sector_returns.clear()
+
+    with st.spinner(f'抓取 {len(all_tickers)} 個標的資料（{period_label}）...'):
+        returns = _fetch_sector_returns(all_tickers, period)
+
+    if not returns:
+        st.error('❌ 無法取得任何類股資料，請確認網路連線')
+        return
+
+    # ── Treemap 主圖 ──────────────────────────────────────────
+    market_label = '美股 GICS' if is_us else '台股類股'
+    fig = _build_treemap_data(sectors, returns, market_label)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── 數值排行表（補充用）──────────────────────────────────
+    st.markdown(f'#### 📊 {market_label} 類股漲跌排行（{period_label}）')
+    rank_rows = []
+    for ticker, meta in sectors.items():
+        ret = returns.get(ticker)
+        rank_rows.append({
+            '類股': meta['name'],
+            '代號': ticker,
+            f'{period_label}漲跌%': ret if ret is not None else 'N/A',
+            '方向': ('📈 上漲' if ret and ret > 0 else ('📉 下跌' if ret and ret < 0 else '➡️ 持平')),
+        })
+    rank_rows.sort(key=lambda x: x[f'{period_label}漲跌%']
+                   if isinstance(x[f'{period_label}漲跌%'], float) else 0, reverse=True)
+    rank_df = pd.DataFrame(rank_rows)
+    st.dataframe(rank_df, use_container_width=True, hide_index=True)
+
+    # 覆蓋率說明
+    fetched = sum(1 for t in sectors if returns.get(t) is not None)
+    total_s = len(sectors)
+    if fetched < total_s:
+        _colored_box(
+            f'⚠️ 僅取得 {fetched}/{total_s} 個類股資料，部分可能因 yfinance 限速或市場休市而缺失',
+            'yellow')
+    else:
+        _colored_box(f'✅ 全部 {total_s} 個類股資料取得完整', 'green')

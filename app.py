@@ -39,6 +39,7 @@ from scoring_engine import score_single_stock, rank_stocks, momentum_signal, cal
 from etf_dashboard import (
     render_etf_single, render_etf_portfolio,
     render_etf_backtest, render_etf_ai,
+    render_data_health, render_sector_heatmap,
 )
 from ai_engine import generate_daily_report
 from financial_debug_helper import (
@@ -1206,7 +1207,7 @@ st.markdown(
     unsafe_allow_html=True)
 
 tab1_macro, tab2_stock, tab3_compare, tab4_masters, tab6_journal, \
-tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
+tab_etf1, tab_etf2, tab_etf3, tab_etf4, tab_health, tab_heatmap = st.tabs([
     '🌍 ① 今日市場總覽',
     '🔬 ② 個股深度分析',
     '🏆 ③ 比較 × 排行',
@@ -1216,6 +1217,8 @@ tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
     '⚖️ ⑦ ETF 組合',
     '📈 ⑧ ETF 回測',
     '🤖 ⑨ ETF AI',
+    '🔎 ⑩ 資料健診',
+    '🗺️ ⑪ 產業熱力圖',
 ])
 
 # ══════════════════════════════════════════════════════════════
@@ -5608,5 +5611,17 @@ with tab_etf3:
 # ══════════════════════════════════════════════════════════════
 with tab_etf4:
     render_etf_ai(gemini_fn=gemini_call)
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑩: 資料健診儀表板
+# ══════════════════════════════════════════════════════════════
+with tab_health:
+    render_data_health()
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑪: 產業熱力圖
+# ══════════════════════════════════════════════════════════════
+with tab_heatmap:
+    render_sector_heatmap()
 
 st.markdown('<div style="text-align:center;font-size:10px;color:#484f58;padding:8px 0;">⚠️ 台股AI戰情室 v3.0 · 僅供學術研究，非投資建議，盈虧自負</div>', unsafe_allow_html=True)

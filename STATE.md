@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-05（ETF Dashboard ⑥⑦⑧⑨ 完成並 Push）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-05（資料健診⑩ + 產業熱力圖⑪ 完成，共 11 個 Tab）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -8,8 +8,8 @@
 
 | 檔案 | 一句話簡介 |
 |---|---|
-| `app.py` | 主 Streamlit UI，9 個 Tab（①總覽②個股③排行④策略⑤日記⑥~⑨ETF），共 5612 行 |
-| `etf_dashboard.py` | ETF AI 儀表板：Tab⑥診斷/Tab⑦組合/Tab⑧回測/Tab⑨AI，總經連動配置建議 |
+| `app.py` | 主 Streamlit UI，11 個 Tab（①~⑤股票 + ⑥~⑨ETF + ⑩資料健診 + ⑪熱力圖），共 5627 行 |
+| `etf_dashboard.py` | ETF AI 儀表板（1319行）：Tab⑥~⑨ ETF分析 + Tab⑩資料健診 + Tab⑪產業熱力圖 |
 | `data_loader.py` | 從 yfinance / FinMind 抓取股價、財報、月營收等原始資料 |
 | `scoring_engine.py` | 多因子評分引擎：趨勢/動能/籌碼/量價/風險/基本面加權計算 |
 | `risk_control.py` | 單股停損停利 + 部位計算 + 組合風控（RiskController 類別） |
@@ -30,6 +30,9 @@
 ## 目前開發進度
 
 ### 已完成（本輪）
+- **資料健診 + 產業熱力圖（2026-04-05）**：
+  - Tab ⑩ 資料健診：掃描 session_state 快取（6項）+ yfinance ETF 抓取狀態（價格/配息/info）+ 快取清除工具
+  - Tab ⑪ 產業熱力圖：美股 GICS 11大類（XLK/XLF...）+ 台股主要類股，Plotly Treemap 紅跌綠漲，支援1日/5日/1月切換
 - **ETF Dashboard 新增（2026-04-05）**：
   - `etf_dashboard.py`（942行）：4 個 render 函式 + 全部計算/快取層
   - Tab ⑥ ETF 單支診斷：郭俊宏/孫慶龍/春哥三大策略 + 折溢價 + 追蹤誤差
