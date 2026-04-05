@@ -36,6 +36,11 @@ from v5_modules import (                           # v5.0 大師滿配
 )
 # from backtest_engine import run_backtest, stock_selector  # 保留備用
 from scoring_engine import score_single_stock, rank_stocks, momentum_signal, calc_rs_score, rs_slope
+from etf_dashboard import (
+    render_etf_single, render_etf_portfolio,
+    render_etf_backtest, render_etf_ai,
+    render_data_health, render_sector_heatmap,
+)
 from ai_engine import generate_daily_report
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
@@ -1201,12 +1206,19 @@ st.markdown(
     '<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;">'    '<span style="font-size:22px;font-weight:900;color:#e6edf3;">&#128202; 台股 AI 戰情室</span>'    '<span style="font-size:10px;color:#484f58;background:#161b22;border-radius:10px;padding:2px 8px;">v4.0 Pro</span>'    '</div>',
     unsafe_allow_html=True)
 
-tab1_macro, tab2_stock, tab3_compare, tab4_masters, tab6_journal = st.tabs([
+tab1_macro, tab2_stock, tab3_compare, tab4_masters, tab6_journal, \
+tab_etf1, tab_etf2, tab_etf3, tab_etf4, tab_health, tab_heatmap = st.tabs([
     '🌍 ① 今日市場總覽',
     '🔬 ② 個股深度分析',
     '🏆 ③ 比較 × 排行',
     '📚 ④ 策略手冊',
     '📓 ⑤ 交易日記',
+    '🏦 ⑥ ETF 診斷',
+    '⚖️ ⑦ ETF 組合',
+    '📈 ⑧ ETF 回測',
+    '🤖 ⑨ ETF AI',
+    '🔎 ⑩ 資料健診',
+    '🗺️ ⑪ 產業熱力圖',
 ])
 
 # ══════════════════════════════════════════════════════════════
@@ -2659,7 +2671,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'<div style="font-size:11px;color:#8b949e;margin-bottom:4px;">🎯 {_date} 籌碼綜合判斷</div>'
             f'<div style="font-size:24px;font-weight:900;color:{_vc};">{_vd}</div>'
             f'<div style="font-size:13px;color:#c9d1d9;margin:6px 0 10px 0;">{_va}</div>'
-            f'<div style="font-size:12px;color:#484f58;">{'；'.join(_sigs)}</div>'
+            f'<div style="font-size:12px;color:#484f58;">{" ； ".join(_sigs)}</div>'
             f'</div>',
             unsafe_allow_html=True
         )
@@ -5575,5 +5587,41 @@ with _ai_main_cols[1]:
     if st.button('🔄 清除報告', key='ai_main_clear', use_container_width=True):
         st.session_state.pop('shared_ai_result', None)
         st.rerun()
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑥: ETF 單一深度診斷
+# ══════════════════════════════════════════════════════════════
+with tab_etf1:
+    render_etf_single(gemini_fn=gemini_call)
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑦: ETF 組合配置與再平衡
+# ══════════════════════════════════════════════════════════════
+with tab_etf2:
+    render_etf_portfolio(gemini_fn=gemini_call)
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑧: ETF 歷史回測
+# ══════════════════════════════════════════════════════════════
+with tab_etf3:
+    render_etf_backtest(gemini_fn=gemini_call)
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑨: ETF AI 綜合評斷（總經連動）
+# ══════════════════════════════════════════════════════════════
+with tab_etf4:
+    render_etf_ai(gemini_fn=gemini_call)
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑩: 資料健診儀表板
+# ══════════════════════════════════════════════════════════════
+with tab_health:
+    render_data_health()
+
+# ══════════════════════════════════════════════════════════════
+# TAB ⑪: 產業熱力圖
+# ══════════════════════════════════════════════════════════════
+with tab_heatmap:
+    render_sector_heatmap()
 
 st.markdown('<div style="text-align:center;font-size:10px;color:#484f58;padding:8px 0;">⚠️ 台股AI戰情室 v3.0 · 僅供學術研究，非投資建議，盈虧自負</div>', unsafe_allow_html=True)
