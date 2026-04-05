@@ -318,6 +318,54 @@ def _plot_correlation(corr: pd.DataFrame) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_bias(df: pd.DataFrame, ticker: str) -> None:
+    """BIAS 乖離率：(Close - MAn) / MAn × 100%，顯示 MA20/MA60/MA120"""
+    if df is None or len(df) < 20:
+        st.info('資料不足，無法計算 BIAS')
+        return
+    close = df['Close'] if 'Close' in df.columns else df['close']
+    bias_rows = []
+    for n, label in [(20, 'MA20'), (60, 'MA60'), (120, 'MA120')]:
+        if len(close) >= n:
+            ma  = float(close.rolling(n).mean().iloc[-1])
+            cur = float(close.iloc[-1])
+            bias = (cur - ma) / ma * 100
+            if bias > 10:
+                hint = '🔴 嚴重高估，注意拉回'
+            elif bias > 5:
+                hint = '🟡 偏高，謹慎追高'
+            elif bias < -10:
+                hint = '🟢 嚴重低估，逢低佈局機會'
+            elif bias < -5:
+                hint = '🟡 偏低，可分批承接'
+            else:
+                hint = '⚪ 中性偏離，正常波動'
+            bias_rows.append({'均線': label, 'MA值': f'{ma:.2f}',
+                               'BIAS(%)': f'{bias:+.2f}%', '訊號': hint})
+    if bias_rows:
+        st.dataframe(pd.DataFrame(bias_rows), use_container_width=True, hide_index=True)
+        # 視覺化近60日 BIAS(MA20)
+        if len(close) >= 60:
+            ma20 = close.rolling(20).mean()
+            b20  = (close - ma20) / ma20 * 100
+            b20  = b20.dropna().tail(60)
+            fig  = go.Figure(go.Bar(
+                x=b20.index, y=b20.values,
+                marker_color=['#f85149' if v > 0 else '#3fb950' for v in b20.values],
+                name='BIAS(MA20)',
+            ))
+            fig.add_hline(y=10,  line_dash='dot', line_color='#f85149',
+                          annotation_text='+10%')
+            fig.add_hline(y=-10, line_dash='dot', line_color='#3fb950',
+                          annotation_text='-10%')
+            fig.update_layout(
+                template='plotly_dark', height=220,
+                yaxis_title='BIAS %', margin=dict(l=0, r=0, t=20, b=0),
+                paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑥：單一 ETF 深度診斷
 # ═══════════════════════════════════════════════════════════════
@@ -435,6 +483,10 @@ def render_etf_single(gemini_fn=None):
     else:
         ci.metric('追蹤誤差', 'N/A')
 
+    # ── BIAS 乖離率 ───────────────────────────────────────────
+    st.markdown('#### 📐 BIAS 乖離率（均線偏離程度）')
+    _render_bias(df, ticker)
+
     # ── 走勢圖 ────────────────────────────────────────────────
     st.markdown(f'#### 📈 {ticker} 近5年走勢')
     _plot_etf_chart(df, ticker, benchmark, bench_df)
@@ -482,6 +534,54 @@ def _etf_ai_single(gemini_fn, ticker, name, cur_yield, avg_yield,
                 st.markdown(result)
             else:
                 st.warning(result or 'AI 回傳為空，請確認 API Key')
+
+
+# ETF → GICS 類股對照（僅涵蓋常見 ETF，未知 ETF 歸入「其他」）
+_ETF_SECTOR_MAP = {
+    'XLK': '資訊科技', 'QQQ': '資訊科技', '00631L.TW': '資訊科技',
+    'XLF': '金融', 'KBE': '金融',
+    'XLE': '能源',
+    'XLV': '醫療保健',
+    'XLI': '工業',
+    'XLP': '必需消費', 'XLY': '非必需消費',
+    'XLU': '公用事業',
+    'XLB': '原材料',
+    'XLRE': '房地產', '00712.TW': '房地產',
+    'XLC': '通訊服務',
+    'SPY': '廣泛市場', 'IVV': '廣泛市場', 'VOO': '廣泛市場',
+    '0050.TW': '廣泛市場', '00646.TW': '廣泛市場',
+    'BND': '債券', 'AGG': '債券', 'TLT': '債券',
+    '00678.TW': '債券', '00720B.TW': '債券',
+    '00878.TW': '高股息', '00713.TW': '高股息', '0056.TW': '高股息',
+    'GLD': '黃金/原物料', 'IAU': '黃金/原物料',
+}
+
+
+def _check_sector_exposure(rows: list, total_value: float) -> None:
+    """計算各 GICS 類股曝險，標記超過 30% 的集中風險"""
+    sector_vals: dict = {}
+    for r in rows:
+        sector = _ETF_SECTOR_MAP.get(r['ticker'], '其他')
+        sector_vals[sector] = sector_vals.get(sector, 0) + r['current_value']
+
+    sector_rows = []
+    warnings = []
+    for sec, val in sorted(sector_vals.items(), key=lambda x: -x[1]):
+        pct = val / total_value * 100
+        flag = '⚠️ 超限' if pct > 30 else '✅'
+        sector_rows.append({'類股': sec, '合計現值(元)': f'{val:,.0f}',
+                             '佔比': f'{pct:.1f}%', '狀態': flag})
+        if pct > 30:
+            warnings.append((sec, pct))
+
+    st.dataframe(pd.DataFrame(sector_rows), use_container_width=True, hide_index=True)
+    if warnings:
+        for sec, pct in warnings:
+            _colored_box(
+                f'⚠️ <b>{sec}</b> 類股佔比 <b>{pct:.1f}%</b> 超過 30% 上限，'
+                f'建議分散至其他類股或降低持倉', 'red')
+    else:
+        _colored_box('✅ 所有類股曝險均在 30% 以內，產業分散度良好', 'green')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -557,6 +657,10 @@ def render_etf_portfolio(gemini_fn=None):
                 color)
     else:
         _colored_box(f'✅ 所有標的偏離度均在 ±{tolerance}% 內，無需再平衡', 'green')
+
+    # ── 產業曝險上限檢查（單一類股 ≤ 30%）─────────────────────
+    st.markdown('#### 🏗️ 產業曝險上限檢查（單一 GICS 類股 ≤ 30%）')
+    _check_sector_exposure(rows, total_value)
 
     # ── 相關係數矩陣 ──────────────────────────────────────────
     st.markdown('#### 🔗 相關係數矩陣（近1年）')
@@ -648,6 +752,73 @@ def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
                 st.warning(result or 'AI 回傳為空')
 
 
+def _render_monte_carlo(port_val: pd.Series, initial: float, ann_vol: float,
+                        n_paths: int = 10_000, n_days: int = 252) -> None:
+    """
+    蒙地卡羅模擬 10,000 路徑，1 年期
+    使用歷史年化波動率計算日報酬標準差，幾何布朗運動隨機遊走
+    顯示 10th/50th/90th percentile 區間與最終分布直方圖
+    """
+    try:
+        daily_ret  = port_val.pct_change().dropna()
+        mu_daily   = float(daily_ret.mean())
+        sig_daily  = float(daily_ret.std())
+        if sig_daily == 0:
+            st.info('波動率為 0，無法執行蒙地卡羅模擬')
+            return
+
+        rng      = np.random.default_rng(42)
+        # shape: (n_paths, n_days)
+        shocks   = rng.normal(mu_daily, sig_daily, size=(n_paths, n_days))
+        paths    = np.cumprod(1 + shocks, axis=1) * float(port_val.iloc[-1])
+
+        p10  = np.percentile(paths[:, -1], 10)
+        p50  = np.percentile(paths[:, -1], 50)
+        p90  = np.percentile(paths[:, -1], 90)
+        prob_profit = float((paths[:, -1] > float(port_val.iloc[-1])).mean() * 100)
+
+        ca, cb, cc, cd = st.columns(4)
+        ca.metric('P10（悲觀）',  f'{(p10/float(port_val.iloc[-1])-1)*100:+.1f}%')
+        cb.metric('P50（中位）',  f'{(p50/float(port_val.iloc[-1])-1)*100:+.1f}%')
+        cc.metric('P90（樂觀）',  f'{(p90/float(port_val.iloc[-1])-1)*100:+.1f}%')
+        cd.metric('獲利機率',     f'{prob_profit:.1f}%')
+
+        # 繪製路徑分布（取前100條 + 百分位帶）
+        days_axis = list(range(n_days))
+        sample_paths = paths[:100]
+        fig = go.Figure()
+        for i, sp in enumerate(sample_paths):
+            fig.add_trace(go.Scatter(
+                x=days_axis, y=sp.tolist(),
+                mode='lines',
+                line=dict(color='rgba(88,166,255,0.05)', width=1),
+                showlegend=False,
+            ))
+        for label, pct, color in [
+            ('P10', 10, '#f85149'), ('P50', 50, '#e3b341'), ('P90', 90, '#3fb950'),
+        ]:
+            band = np.percentile(paths, pct, axis=0)
+            fig.add_trace(go.Scatter(
+                x=days_axis, y=band.tolist(),
+                mode='lines', name=label,
+                line=dict(color=color, width=2),
+            ))
+        fig.add_hline(y=float(port_val.iloc[-1]),
+                      line_dash='dot', line_color='#ffffff',
+                      annotation_text='目前淨值')
+        fig.update_layout(
+            template='plotly_dark', height=320,
+            xaxis_title='交易日', yaxis_title='資產價值（元）',
+            margin=dict(l=0, r=0, t=20, b=0),
+            paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+            legend=dict(orientation='h', yanchor='bottom', y=1.01),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f'模擬條件：{n_paths:,} 路徑，日均報酬 μ={mu_daily*100:.4f}%，σ={sig_daily*100:.3f}%（基於歷史資料）⚠️ 僅供參考')
+    except Exception as e:
+        st.warning(f'蒙地卡羅模擬失敗：{e}')
+
+
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑧：ETF 歷史回測與績效視覺化
 # ═══════════════════════════════════════════════════════════════
@@ -706,10 +877,47 @@ def render_etf_backtest(gemini_fn=None):
     if len(prices) < 20:
         st.error('❌ 有效資料不足，請確認代號或縮短回測期間'); return
 
-    # 加權組合資產價值
+    # ── 配息稅費磨損（台灣二代健保 × 0.95）─────────────────────
+    # 所有含「.TW」的 ETF 配息乘以 0.95 扣除二代健保補充費
+    apply_tax = any(t.endswith('.TW') for t in [r['ticker'] for r in rows])
+    TAX_FACTOR = 0.95  # 二代健保補充費磨損（約 2.11%，取保守 5%）
+
+    # 加權組合資產價值（含稅費磨損）
     norm     = prices / prices.iloc[0]
     weights  = {r['ticker']: r['weight'] for r in rows if r['ticker'] in norm.columns}
+
+    # 計算各ETF配息貢獻並套用稅費磨損
+    div_adjustment = {}
+    for r in rows:
+        t = r['ticker']
+        if t not in norm.columns:
+            continue
+        if apply_tax and t.endswith('.TW'):
+            try:
+                divs_t = fetch_etf_dividends(t)
+                if not divs_t.empty:
+                    annual_div = float(divs_t.resample('Y').sum().mean())
+                    avg_price  = float(prices[t].mean())
+                    div_yield  = annual_div / avg_price if avg_price > 0 else 0
+                    # 稅後磨損 = 配息 × (1 - TAX_FACTOR) 每年從報酬扣除
+                    div_adjustment[t] = div_yield * (1 - TAX_FACTOR)
+                else:
+                    div_adjustment[t] = 0.0
+            except Exception:
+                div_adjustment[t] = 0.0
+        else:
+            div_adjustment[t] = 0.0
+
     port_val = sum(norm[t] * w for t, w in weights.items()) * initial
+
+    # 套用稅費磨損（每日複利扣除）
+    if apply_tax:
+        n_years = len(prices) / 252
+        for t, w in weights.items():
+            loss_factor = (1 - div_adjustment.get(t, 0)) ** n_years
+            port_val = port_val - (norm[t] * w * initial * (1 - loss_factor))
+
+    total_tax_drag = sum(div_adjustment.get(t, 0) * w for t, w in weights.items()) * 100
 
     # 基準
     bench_ticker = '0050.TW' if any(t.endswith('.TW') for t in weights) else '^GSPC'
@@ -771,6 +979,17 @@ def render_etf_backtest(gemini_fn=None):
                 '夏普值': f'{calc_sharpe(df_i):.2f}',
             })
     st.dataframe(pd.DataFrame(indiv), use_container_width=True, hide_index=True)
+
+    # ── 稅費磨損提示 ──────────────────────────────────────────
+    if apply_tax and total_tax_drag > 0:
+        _colored_box(
+            f'💸 配息稅費磨損（台灣二代健保 ×0.95）：'
+            f'加權年均磨損約 <b>{total_tax_drag:.3f}%</b>，'
+            f'長期持有需列入報酬估算', 'yellow')
+
+    # ── 蒙地卡羅模擬（10,000 路徑）──────────────────────────
+    st.markdown('#### 🎲 蒙地卡羅模擬（10,000 路徑，1 年）')
+    _render_monte_carlo(port_val, initial, vol)
 
     # 存入 session_state
     st.session_state['etf_backtest_data'] = {

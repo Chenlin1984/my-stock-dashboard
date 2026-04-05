@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-05（資料健診⑩ + 產業熱力圖⑪ 完成，共 11 個 Tab）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-05（7 項策略升級全數完成）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -62,6 +62,18 @@
   - `data_loader.py`：Goodinfo 月營收新增第二備援 URL + 放寬欄位過濾
 
 ---
+
+## 策略升級（7 項，2026-04-05 完成）
+
+| # | 位置 | 項目 | 狀態 |
+|---|---|---|---|
+| ① | `etf_dashboard.py` `_render_bias()` | BIAS 乖離率 MA20/60/120 + 60日Bar圖 | ✅ 完成 |
+| ② | `config.py` `WEIGHT_TABLES` + `scoring_engine.py` `stock_score()` | 動態因子權重（bull進攻/bear防禦） | ✅ 完成 |
+| ③ | `scoring_engine.py` `check_vcp_atr_filter()` | VCP ATR5 < ATR20×0.8 收縮確認 | ✅ 完成 |
+| ④ | `etf_dashboard.py` Tab⑧ `TAX_FACTOR=0.95` | 配息稅費磨損（二代健保 ×0.95） | ✅ 完成 |
+| ⑤ | `etf_dashboard.py` `_check_sector_exposure()` | GICS 產業曝險上限 ≤30% | ✅ 完成 |
+| ⑥ | `scoring_engine.py` `calc_short_squeeze_bonus()` | 券資比>30%+法人連買≥3天 → +5分 | ✅ 完成 |
+| ⑦ | `etf_dashboard.py` `_render_monte_carlo()` | 蒙地卡羅 10,000 路徑，P10/50/90 | ✅ 完成 |
 
 ## 待修復 Bug 清單
 

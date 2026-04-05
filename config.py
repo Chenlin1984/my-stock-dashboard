@@ -39,6 +39,23 @@ WEIGHT_VOLUME     = 0.15   # 量價面
 WEIGHT_RISK       = 0.10   # 風險面
 WEIGHT_FUNDAMENTAL= 0.10   # 基本面（月營收YoY + 毛利率）新增
 
+# ── 動態因子權重表（依市場狀態自動切換）────────────────────
+# bull：趨勢/動能加重，進攻型；bear：風險/基本面加重，防禦型
+WEIGHT_TABLES = {
+    'bull': {
+        'trend': 0.30, 'momentum': 0.25, 'chip': 0.20,
+        'volume': 0.15, 'risk': 0.05, 'fundamental': 0.05,
+    },
+    'neutral': {
+        'trend': 0.25, 'momentum': 0.20, 'chip': 0.20,
+        'volume': 0.15, 'risk': 0.10, 'fundamental': 0.10,
+    },
+    'bear': {
+        'trend': 0.15, 'momentum': 0.10, 'chip': 0.15,
+        'volume': 0.15, 'risk': 0.25, 'fundamental': 0.20,
+    },
+}
+
 # ── 選股篩選條件 ──────────────────────────────────────────────
 TOP_N_STOCKS    = 10
 RSI_OVERBOUGHT  = 70
