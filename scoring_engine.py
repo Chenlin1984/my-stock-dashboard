@@ -7,11 +7,16 @@
 try:
     from config import (WEIGHT_TREND, WEIGHT_MOMENTUM, WEIGHT_CHIP,
                         WEIGHT_VOLUME, WEIGHT_RISK,
-                        RSI_OVERBOUGHT, RSI_OVERSOLD)
+                        RSI_OVERBOUGHT, RSI_OVERSOLD, WEIGHT_TABLES)
 except ImportError:
     WEIGHT_TREND=0.30; WEIGHT_MOMENTUM=0.25; WEIGHT_CHIP=0.20
     WEIGHT_VOLUME=0.15; WEIGHT_RISK=0.10
     RSI_OVERBOUGHT=70; RSI_OVERSOLD=30
+    WEIGHT_TABLES = {
+        'bull':    {'trend':0.30,'momentum':0.25,'chip':0.20,'volume':0.15,'risk':0.05,'fundamental':0.05},
+        'neutral': {'trend':0.25,'momentum':0.20,'chip':0.20,'volume':0.15,'risk':0.10,'fundamental':0.10},
+        'bear':    {'trend':0.15,'momentum':0.10,'chip':0.15,'volume':0.15,'risk':0.25,'fundamental':0.20},
+    }
 
 
 # ── 1. 趨勢分數 ───────────────────────────────────────────────
@@ -224,26 +229,28 @@ def calc_risk_score(df) -> float:
 
 # ── 核心：多因子加權評分 (§5.2) ───────────────────────────────
 def stock_score(trend, momentum, chip, volume_score, risk_score,
-               fundamental_score=50.0) -> float:
+               fundamental_score=50.0, regime: str = 'neutral') -> float:
     """
-    多因子加權總分（v3.1 升級版）
-    原: 趨勢30 / 動能25 / 籌碼20 / 量價15 / 風險10
-    新: 趨勢25 / 動能20 / 籌碼20 / 量價15 / 風險10 / 基本面10
-    fundamental_score 預設 50（無資料時中性）
+    多因子加權總分（v3.2 動態權重版）
+    regime='bull'|'neutral'|'bear' 自動切換因子權重表
     """
     try:
-        from config import (WEIGHT_TREND, WEIGHT_MOMENTUM, WEIGHT_CHIP,
-                            WEIGHT_VOLUME, WEIGHT_RISK, WEIGHT_FUNDAMENTAL)
+        from config import WEIGHT_TABLES, WEIGHT_FUNDAMENTAL
     except ImportError:
-        WEIGHT_TREND=0.25; WEIGHT_MOMENTUM=0.20; WEIGHT_CHIP=0.20
-        WEIGHT_VOLUME=0.15; WEIGHT_RISK=0.10; WEIGHT_FUNDAMENTAL=0.10
+        WEIGHT_TABLES = {
+            'bull':    {'trend':0.30,'momentum':0.25,'chip':0.20,'volume':0.15,'risk':0.05,'fundamental':0.05},
+            'neutral': {'trend':0.25,'momentum':0.20,'chip':0.20,'volume':0.15,'risk':0.10,'fundamental':0.10},
+            'bear':    {'trend':0.15,'momentum':0.10,'chip':0.15,'volume':0.15,'risk':0.25,'fundamental':0.20},
+        }
+        WEIGHT_FUNDAMENTAL = 0.10
+    w = WEIGHT_TABLES.get(regime, WEIGHT_TABLES['neutral'])
     return round(
-        trend             * WEIGHT_TREND        +
-        momentum          * WEIGHT_MOMENTUM     +
-        chip              * WEIGHT_CHIP         +
-        volume_score      * WEIGHT_VOLUME       +
-        risk_score        * WEIGHT_RISK         +
-        fundamental_score * WEIGHT_FUNDAMENTAL,
+        trend             * w['trend']       +
+        momentum          * w['momentum']    +
+        chip              * w['chip']        +
+        volume_score      * w['volume']      +
+        risk_score        * w['risk']        +
+        fundamental_score * w['fundamental'],
         1)
 
 
@@ -316,6 +323,10 @@ def score_single_stock(df, stock_id='', stock_name='', **kwargs) -> dict:
 
     Args:
         df: StockDataLoader 提供的 OHLCV DataFrame
+        kwargs: foreign_buy, trust_buy, dealer_buy, revenue_df,
+                regime ('bull'|'neutral'|'bear'),
+                short_ratio (float, 券資比 0~1),
+                inst_consec_buy (int, 法人連買天數)
     Returns:
         dict: 各維度分數 + 總分 + 動能訊號 + 評級
     """
@@ -334,15 +345,16 @@ def score_single_stock(df, stock_id='', stock_name='', **kwargs) -> dict:
     # 基本面分數（月營收YoY動能）
     f_score = calc_fundamental_score(kwargs.get('revenue_df'))
 
-    # 加權總分（含基本面10%，趨勢/動能各降5%）
-    try:
-        from config import (WEIGHT_TREND, WEIGHT_MOMENTUM, WEIGHT_CHIP,
-                            WEIGHT_VOLUME, WEIGHT_RISK, WEIGHT_FUNDAMENTAL)
-    except ImportError:
-        WEIGHT_TREND=0.25; WEIGHT_MOMENTUM=0.20; WEIGHT_CHIP=0.20
-        WEIGHT_VOLUME=0.15; WEIGHT_RISK=0.10; WEIGHT_FUNDAMENTAL=0.10
+    regime = kwargs.get('regime', 'neutral')
+    total = stock_score(t_score, m_score, c_score, v_score, r_score, f_score, regime=regime)
 
-    total = stock_score(t_score, m_score, c_score, v_score, r_score, f_score)  # P10: 統一呼叫stock_score
+    # 軋空加分：券資比 > 30% 且 法人連買 ≥ 3 天 → +5 分
+    squeeze_bonus = calc_short_squeeze_bonus(
+        short_ratio=kwargs.get('short_ratio', 0.0),
+        inst_consecutive_buy=kwargs.get('inst_consec_buy', 0),
+    )
+    total = round(min(100.0, total + squeeze_bonus['bonus']), 1)
+
     mom_sig = momentum_signal(df)
 
     if total >= 75:
@@ -351,6 +363,8 @@ def score_single_stock(df, stock_id='', stock_name='', **kwargs) -> dict:
         grade = 'B'
     else:
         grade = 'C'
+
+    vcp_atr = check_vcp_atr_filter(df)
 
     return {
         'stock_id':    stock_id,
@@ -363,6 +377,11 @@ def score_single_stock(df, stock_id='', stock_name='', **kwargs) -> dict:
         'total':       total,
         'grade':       grade,
         'momentum_signal': mom_sig,
+        'regime':      regime,
+        'squeeze_bonus': squeeze_bonus['bonus'],
+        'squeeze_label': squeeze_bonus['label'],
+        'vcp_atr_pass':  vcp_atr['pass'],
+        'vcp_atr_label': vcp_atr['label'],
     }
 
 
@@ -460,6 +479,56 @@ def check_time_stop(entry_price: float, current_price: float,
                     if triggered else
                     f'持倉 {hold_days} 天，報酬 {gain*100:.1f}%，繼續持有'),
     }
+
+# ── VCP 個股 ATR 濾網 ──────────────────────────────────────
+def check_vcp_atr_filter(df) -> dict:
+    """
+    VCP 波動率收縮確認：ATR5 < ATR20 × 0.8
+    短期波動低於中期波動 80% → 收縮確認，VCP 品質良好
+    """
+    result = {'pass': False, 'atr5': None, 'atr20': None, 'label': ''}
+    if df is None or len(df) < 25:
+        result['label'] = '資料不足'
+        return result
+    try:
+        hi = df['high'] if 'high' in df.columns else df['close']
+        lo = df['low']  if 'low'  in df.columns else df['close']
+        tr = (hi - lo)
+        atr5  = float(tr.rolling(5).mean().iloc[-1])
+        atr20 = float(tr.rolling(20).mean().iloc[-1])
+        result['atr5']  = round(atr5, 2)
+        result['atr20'] = round(atr20, 2)
+        if atr20 > 0 and atr5 < atr20 * 0.8:
+            result['pass']  = True
+            result['label'] = f'✅ VCP收縮確認（ATR5={atr5:.2f} < ATR20×0.8={atr20*0.8:.2f}）'
+        else:
+            result['label'] = f'⏳ 波動未收縮（ATR5={atr5:.2f}，ATR20×0.8={atr20*0.8:.2f}）'
+    except Exception:
+        result['label'] = '計算失敗'
+    return result
+
+
+# ── 券資比軋空加分 ─────────────────────────────────────────
+def calc_short_squeeze_bonus(short_ratio: float = 0.0,
+                              inst_consecutive_buy: int = 0) -> dict:
+    """
+    軋空行情加分：
+    條件：券資比 > 30%（short_ratio > 0.3）且 法人連買 ≥ 3 天
+    → 總分 +5 分（上限 100）
+    short_ratio: 券資比（0~1，如 0.35 代表 35%）
+    inst_consecutive_buy: 法人連續買超天數（整數）
+    """
+    bonus = 0
+    label = ''
+    if short_ratio > 0.3 and inst_consecutive_buy >= 3:
+        bonus = 5
+        label = (f'🔥 軋空加分 +5（券資比{short_ratio*100:.0f}%'
+                 f' + 法人連買{inst_consecutive_buy}天）')
+    elif short_ratio > 0.3:
+        label = f'⚠️ 高券資比{short_ratio*100:.0f}%，法人連買天數不足'
+    return {'bonus': bonus, 'label': label, 'short_ratio': short_ratio,
+            'inst_consecutive_buy': inst_consecutive_buy}
+
 
 # ════════════════════════════════════════════════════════════
 # 模組二：大師級量化選股因子（v3.2 新增）
