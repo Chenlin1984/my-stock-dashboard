@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-03-31（ETF Dashboard 開發中）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-05（ETF Dashboard ⑥⑦⑧⑨ 完成並 Push）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -8,7 +8,8 @@
 
 | 檔案 | 一句話簡介 |
 |---|---|
-| `app.py` | 主 Streamlit UI，含所有 Tab 頁面與使用者互動邏輯（5531 行） |
+| `app.py` | 主 Streamlit UI，9 個 Tab（①總覽②個股③排行④策略⑤日記⑥~⑨ETF），共 5612 行 |
+| `etf_dashboard.py` | ETF AI 儀表板：Tab⑥診斷/Tab⑦組合/Tab⑧回測/Tab⑨AI，總經連動配置建議 |
 | `data_loader.py` | 從 yfinance / FinMind 抓取股價、財報、月營收等原始資料 |
 | `scoring_engine.py` | 多因子評分引擎：趨勢/動能/籌碼/量價/風險/基本面加權計算 |
 | `risk_control.py` | 單股停損停利 + 部位計算 + 組合風控（RiskController 類別） |
