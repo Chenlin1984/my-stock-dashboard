@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-03-31（測試覆蓋率補強完成）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-03-31（ETF Dashboard 開發中）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -29,6 +29,13 @@
 ## 目前開發進度
 
 ### 已完成（本輪）
+- **ETF Dashboard 新增（2026-04-05）**：
+  - `etf_dashboard.py`（942行）：4 個 render 函式 + 全部計算/快取層
+  - Tab ⑥ ETF 單支診斷：郭俊宏/孫慶龍/春哥三大策略 + 折溢價 + 追蹤誤差
+  - Tab ⑦ ETF 組合配置：再平衡引擎 + 相關係數矩陣 + 壓力測試 + 總經連動
+  - Tab ⑧ ETF 回測：資金成長曲線 + CAGR/Sharpe/MDD + 個別績效
+  - Tab ⑨ ETF AI 綜合：跨 Tab 彙整 + 自由提問區 + 總經配置建議連動
+  - `app.py`：修正全形分號語法錯誤 + 加入 4 個新 ETF Tab
 - **184 個單元測試**：`tests/test_risk_control.py` (59) + `tests/test_scoring_engine.py` (125)，全數通過
 - **覆蓋率提升**：`scoring_engine.py` 81% → 93%，`risk_control.py` 94% → 95%
 - **新增測試類別**：
