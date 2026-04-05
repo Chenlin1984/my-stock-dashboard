@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-05（7 項策略升級全數完成）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-05（7 項策略升級完成，184 tests pass，覆蓋率 91%）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -74,6 +74,22 @@
 | ⑤ | `etf_dashboard.py` `_check_sector_exposure()` | GICS 產業曝險上限 ≤30% | ✅ 完成 |
 | ⑥ | `scoring_engine.py` `calc_short_squeeze_bonus()` | 券資比>30%+法人連買≥3天 → +5分 | ✅ 完成 |
 | ⑦ | `etf_dashboard.py` `_render_monte_carlo()` | 蒙地卡羅 10,000 路徑，P10/50/90 | ✅ 完成 |
+
+## 測試狀態（2026-04-05）
+
+| 項目 | 結果 |
+|---|---|
+| `tests/test_scoring_engine.py` | ✅ 123 passed |
+| `tests/test_risk_control.py` | ✅ 61 passed |
+| 全部測試 | ✅ 184 passed，0 failed |
+| `scoring_engine.py` 覆蓋率 | 91%（未覆蓋行：11-15, 98, 180, 204, 239-245, 298-299, 318, 361, 418, 432-433…） |
+
+## 待辦事項
+
+| 優先 | 項目 |
+|---|---|
+| 低 | 補充 `check_vcp_atr_filter` / `calc_short_squeeze_bonus` 單元測試，覆蓋率可升至 93%+ |
+| 低 | 建立 PR（如需要請告知） |
 
 ## 待修復 Bug 清單
 
