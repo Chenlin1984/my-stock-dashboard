@@ -1206,20 +1206,21 @@ st.markdown(
     '<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;">'    '<span style="font-size:22px;font-weight:900;color:#e6edf3;">&#128202; 台股 AI 戰情室</span>'    '<span style="font-size:10px;color:#484f58;background:#161b22;border-radius:10px;padding:2px 8px;">v4.0 Pro</span>'    '</div>',
     unsafe_allow_html=True)
 
-tab1_macro, tab2_stock, tab3_compare, tab4_masters, tab6_journal, \
-tab_etf1, tab_etf2, tab_etf3, tab_etf4, tab_health, tab_heatmap = st.tabs([
-    '🌍 ① 今日市場總覽',
-    '🔬 ② 個股深度分析',
-    '🏆 ③ 比較 × 排行',
-    '📚 ④ 策略手冊',
-    '📓 ⑤ 交易日記',
-    '🏦 ⑥ ETF 診斷',
-    '⚖️ ⑦ ETF 組合',
-    '📈 ⑧ ETF 回測',
-    '🤖 ⑨ ETF AI',
-    '🔎 ⑩ 資料健診',
-    '🗺️ ⑪ 產業熱力圖',
+tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health = st.tabs([
+    '🌍 總經',
+    '🗺️ 熱力板塊',
+    '🔬 台股',
+    '🏦 ETF',
+    '🔎 資料診斷',
 ])
+with tab_stock_grp:
+    tab2_stock, tab3_compare, tab4_masters = st.tabs([
+        '🔬 個股分析', '🏆 比較 × 排行', '📚 策略手冊',
+    ])
+with tab_etf_grp:
+    tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
+        '🏦 ETF 診斷', '⚖️ ETF 組合', '📈 ETF 回測', '🤖 ETF AI',
+    ])
 
 # ══════════════════════════════════════════════════════════════
 # TAB 1: 總體經濟
@@ -3098,69 +3099,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             else:
                 st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
 
-    st.markdown('<hr style="border-color:#21262d;margin:14px 0;">', unsafe_allow_html=True)
-    st.markdown(section_header('八','🚩 持股建議比例（我應該買幾成？）','🚩'), unsafe_allow_html=True)
-
-    _jq = st.session_state.get('jingqi_info')
-    if _jq:
-        _jq_cols = st.columns(5)
-        for _ci2, (_lbl2, _val2) in enumerate(zip(
-            ['站上MA20','站上MA60','站上MA120','站上MA240','平均旌旗'],
-            [_jq['pct20'],_jq['pct60'],_jq['pct120'],_jq['pct240'],_jq['avg']]
-        )):
-            with _jq_cols[_ci2]:
-                _jc2 = '#3fb950' if _val2>=60 else ('#d29922' if _val2>=30 else '#f85149')
-                st.markdown(kpi(_lbl2, f'{_val2:.1f}%', '', _jc2, '#0d1117'), unsafe_allow_html=True)
-
-        # 倉位建議
-        st.markdown(
-            f'<div style="background:#0d1117;border:2px solid {_jq["color"]};border-radius:10px;'
-            f'padding:12px 16px;margin-top:10px;">'
-            f'<span style="font-size:16px;font-weight:900;color:{_jq["color"]};">'
-            f'{_jq["label"]}　旌旗均值 {_jq["avg"]}%</span><br>'
-            f'<span style="font-size:13px;color:#c9d1d9;">建議持股比例：<b>{_jq["pos"]}</b>　'
-            f'掃描樣本：{_jq["total"]}檔</span></div>',
-            unsafe_allow_html=True)
-
-        with st.expander('📖 弘爺 結論', expanded=True):
-            _jq_concl = []
-            if _jq['avg'] >= 60:
-                _jq_concl.append(f'✅ 旌旗均值{_jq["avg"]:.1f}% 高於60% → 弘爺：全面多頭，積極持股80~100%')
-            elif _jq['avg'] >= 40:
-                _jq_concl.append(f'⚪ 旌旗均值{_jq["avg"]:.1f}% 中性區 → 弘爺：選股操作，持股50~70%')
-            elif _jq['avg'] >= 20:
-                _jq_concl.append(f'⚠️ 旌旗均值{_jq["avg"]:.1f}% 偏低 → 弘爺：防禦為主，持股20~40%')
-            else:
-                _jq_concl.append(f'🔴 旌旗均值{_jq["avg"]:.1f}%<20% → 弘爺：極度保守，空手觀望！')
-            if _jq['pct20'] > _jq['pct240'] * 1.5:
-                _jq_concl.append('✅ MA20家數遠高於MA240家數 → 廣泛多頭剛起步，健康訊號')
-            elif _jq['pct20'] < _jq['pct240']:
-                _jq_concl.append('⚠️ MA20家數低於MA240家數 → 背離警告！短線轉弱，大崩盤前兆')
-            for _jc in _jq_concl:
-                _jc2 = _jc.replace('✅','').replace('⚠️','').replace('🔴','').replace('⚪','').strip()
-                if '→' in _jc2:
-                    _ind6, _res6 = _jc2.split('→', 1)
-                    _col6 = '#f85149' if any(k in _jc for k in ['🔴','⚠️']) else ('#3fb950' if '✅' in _jc else '#d29922')
-                    st.markdown(teacher_conclusion('弘爺', _ind6.strip(), _res6.strip(), color=_col6), unsafe_allow_html=True)
-                else:
-                    st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_jc}</div>', unsafe_allow_html=True)
-    else:
-        # 旌旗指數備援：用 ADL 的上漲佔比估算
-        _df_adl_jq = st.session_state.get('cl_data', {}).get('adl')
-        if _df_adl_jq is not None and not _df_adl_jq.empty and 'ad_ratio' in _df_adl_jq.columns:
-            _ratio_avg = float(_df_adl_jq['ad_ratio'].tail(5).mean())
-            _pos_est = '80~100%' if _ratio_avg>=60 else ('50~70%' if _ratio_avg>=40 else ('20~40%' if _ratio_avg>=20 else '0~20%'))
-            _reg_est = 'bull' if _ratio_avg>=60 else ('neutral' if _ratio_avg>=40 else 'bear')
-            _col_est = '#3fb950' if _ratio_avg>=60 else ('#d29922' if _ratio_avg>=40 else '#f85149')
-            _lbl_est = '🟢 多頭積極' if _ratio_avg>=60 else ('🟡 中性均衡' if _ratio_avg>=40 else '🔴 保守防禦')
-            _jq_est = {'avg':_ratio_avg,'pos':_pos_est,'regime':_reg_est,
-                       'color':_col_est,'label':_lbl_est,'total':0,
-                       'pct20':_ratio_avg,'pct60':_ratio_avg*0.9,'pct120':_ratio_avg*0.8,'pct240':_ratio_avg*0.7}
-            st.session_state['jingqi_info'] = _jq_est
-            # 不 rerun，讓 Streamlit 自然顯示新值
-        else:
-            st.info('📡 請點擊「🔄 更新全部總經數據」，旌旗指數自動計算')
-
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════
 # TAB 2: 個股深度分析 + 健康度評分
@@ -3268,6 +3206,42 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
             rev2 = st.session_state[f'_last_rev_{sid2}']; _rev2_cached = True
         if (qtr2 is None or qtr2.empty) and st.session_state.get(f'_last_qtr_{sid2}') is not None:
             qtr2 = st.session_state[f'_last_qtr_{sid2}']; _qtr2_cached = True
+
+        # ══ 即時價格 + 趨勢儀表板 ════════════════════════════════
+        if df2 is not None and not df2.empty and len(df2) >= 20:
+            _p_now   = float(df2['close'].iloc[-1])
+            _p_prev  = float(df2['close'].iloc[-2]) if len(df2) >= 2 else _p_now
+            _p_chg   = round((_p_now - _p_prev) / _p_prev * 100, 2) if _p_prev else 0
+            _ma20_v  = float(df2['close'].rolling(20).mean().iloc[-1])
+            _ma60_v  = float(df2['close'].rolling(60).mean().iloc[-1]) if len(df2) >= 60 else None
+            _ma120_v = float(df2['close'].rolling(120).mean().iloc[-1]) if len(df2) >= 120 else None
+            # 趨勢燈號
+            _above_ma20  = _p_now > _ma20_v
+            _above_ma60  = (_p_now > _ma60_v) if _ma60_v else None
+            _above_ma120 = (_p_now > _ma120_v) if _ma120_v else None
+            _trend_score = sum([_above_ma20,
+                                _above_ma60  if _above_ma60  is not None else False,
+                                _above_ma120 if _above_ma120 is not None else False])
+            _trend_label = {3: '🟢 強勢多頭', 2: '🟡 中性偏多', 1: '🟡 弱勢', 0: '🔴 空頭區間'}[_trend_score]
+            _chg_color   = '#3fb950' if _p_chg >= 0 else '#f85149'
+            _chg_arrow   = '▲' if _p_chg >= 0 else '▼'
+            st.markdown(f'''<div style="background:#0d1117;border:2px solid #21262d;border-radius:12px;
+padding:14px 18px;margin-bottom:12px;">
+<div style="font-size:22px;font-weight:900;color:#e6edf3;margin-bottom:8px;">
+  📌 {name2}（{sid2}）
+  <span style="font-size:14px;color:#8b949e;margin-left:8px;">即時趨勢總覽</span>
+</div>
+<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
+  <div><span style="font-size:28px;font-weight:900;color:#e6edf3;">{_p_now:.2f}</span>
+       <span style="font-size:16px;color:{_chg_color};margin-left:6px;">{_chg_arrow} {abs(_p_chg):.2f}%</span></div>
+  <div style="font-size:13px;color:#8b949e;line-height:2;">
+    MA20：<b style="color:{'#3fb950' if _above_ma20 else '#f85149'}">{_ma20_v:.2f}</b>
+    {'✅' if _above_ma20 else '❌'}&nbsp;&nbsp;
+    {'MA60：<b style="color:' + ("#3fb950" if _above_ma60 else "#f85149") + '">' + f'{_ma60_v:.2f}</b> ' + ("✅" if _above_ma60 else "❌") + "&nbsp;&nbsp;" if _ma60_v else ""}
+    {'MA120：<b style="color:' + ("#3fb950" if _above_ma120 else "#f85149") + '">' + f'{_ma120_v:.2f}</b> ' + ("✅" if _above_ma120 else "❌") if _ma120_v else ""}
+  </div>
+  <div style="font-size:18px;font-weight:700;">{_trend_label}</div>
+</div></div>''', unsafe_allow_html=True)
 
         # ══ 0. 停利停損 + 支撐壓力 ═══════════════════════════════
         st.markdown('---')
@@ -5154,439 +5128,6 @@ padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
 ⚠️ 本手冊整理自各大師公開課程內容，僅供學術研究與教育用途。
 投資涉及風險，任何操作均應自行判斷，盈虧自負。本系統非投資顧問，不構成買賣建議。
 </div>""", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════
-
-# ══════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════
-
-
-with tab6_journal:
-    st.markdown('''<div style="background:#0a1628;border:1px solid #1f6feb;border-radius:12px;padding:16px;margin-bottom:12px;">
-<div style="font-size:18px;font-weight:900;color:#58a6ff;margin-bottom:6px;">📓 交易日記 + 績效追蹤</div>
-<div style="font-size:13px;color:#c9d1d9;line-height:1.8;">
-記錄每筆操作，讓數據告訴你哪裡需要改進。<br>
-<b>高手 vs 初學者的最大差距：高手知道自己的勝率，初學者不知道。</b>
-</div></div>''', unsafe_allow_html=True)
-
-    # 初始化日記 storage
-    if 'trade_journal' not in st.session_state:
-        st.session_state['trade_journal'] = []
-    if 'monthly_loss_pct' not in st.session_state:
-        st.session_state['monthly_loss_pct'] = 0.0
-
-    _jn_tabs = st.tabs(['📝 新增紀錄', '📊 績效統計', '📋 歷史紀錄', '⚙️ 月虧損設定'])
-
-    # ── 新增交易紀錄 ──────────────────────────────────────────
-    with _jn_tabs[0]:
-        st.markdown('#### 📝 記錄這筆操作')
-        _jn_c1, _jn_c2 = st.columns(2)
-        with _jn_c1:
-            _jn_type   = st.selectbox('操作類型', ['買進', '賣出（停利）', '賣出（停損）', '賣出（其他）'], key='jn_type')
-            _jn_sid    = st.text_input('股票代碼', placeholder='如 2330', key='jn_sid')
-            _jn_name   = st.text_input('股票名稱', placeholder='如 台積電', key='jn_name')
-            _jn_price  = st.number_input('操作價格', min_value=0.0, value=0.0, step=0.1, key='jn_price')
-            _jn_shares = st.number_input('股數（張）', min_value=0.0, value=1.0, step=0.5, key='jn_shares')
-        with _jn_c2:
-            _jn_signal = st.multiselect('進場訊號（可複選）',
-                ['多頭排列', 'VCP突破', '回測20MA不破', 'RSI超賣反彈', '健康度≥80',
-                 '外資連買', '357便宜價', '月營收加速', '其他'],
-                key='jn_signal')
-            _jn_sl     = st.number_input('設定停損價', min_value=0.0, value=0.0, step=0.1, key='jn_sl')
-            _jn_tp     = st.number_input('設定目標價', min_value=0.0, value=0.0, step=0.1, key='jn_tp')
-            _jn_note   = st.text_area('操作理由（為什麼買/賣？）', height=80, key='jn_note')
-            _jn_emotion= st.select_slider('操作時的心理狀態',
-                ['非常冷靜', '冷靜', '一般', '有點衝動', '非常衝動'], value='冷靜', key='jn_emotion')
-
-        if st.button('💾 儲存這筆紀錄', type='primary', key='jn_save', use_container_width=True):
-            if _jn_sid and _jn_price > 0:
-                _jn_entry = {
-                    'date':    _tw_now_str(),
-                    'type':    _jn_type,
-                    'sid':     _jn_sid.strip(),
-                    'name':    _jn_name or _jn_sid,
-                    'price':   _jn_price,
-                    'shares':  _jn_shares,
-                    'amount':  round(_jn_price * _jn_shares * 1000, 0),
-                    'signal':  ', '.join(_jn_signal),
-                    'sl':      _jn_sl,
-                    'tp':      _jn_tp,
-                    'note':    _jn_note,
-                    'emotion': _jn_emotion,
-                    'pnl_pct': None,  # 賣出時才填
-                }
-                # 如果是賣出，計算損益
-                if '賣出' in _jn_type:
-                    _matched = [r for r in st.session_state['trade_journal']
-                               if r['sid'] == _jn_sid and '買進' in r['type'] and r.get('pnl_pct') is None]
-                    if _matched:
-                        _buy_price = _matched[-1]['price']
-                        _pnl = round((_jn_price - _buy_price) / _buy_price * 100, 2)
-                        _jn_entry['pnl_pct'] = _pnl
-                        _jn_entry['buy_ref']  = _buy_price
-                        # 更新月虧損統計
-                        if _pnl < 0:
-                            st.session_state['monthly_loss_pct'] = round(
-                                st.session_state.get('monthly_loss_pct',0) + _pnl * 0.2, 2)  # 假設每筆佔總資金20%
-                st.session_state['trade_journal'].insert(0, _jn_entry)
-                st.success(f'✅ 已儲存：{_jn_type} {_jn_sid} @ {_jn_price}')
-                st.rerun()
-            else:
-                st.error('請填入股票代碼和價格')
-
-    # ── 績效統計 ─────────────────────────────────────────────
-    with _jn_tabs[1]:
-        st.markdown('#### 📊 我的投資成績單')
-        _jn_all = st.session_state.get('trade_journal', [])
-        _closed = [r for r in _jn_all if r.get('pnl_pct') is not None]
-
-        if _closed:
-            _wins  = [r['pnl_pct'] for r in _closed if r['pnl_pct'] > 0]
-            _losses= [r['pnl_pct'] for r in _closed if r['pnl_pct'] <= 0]
-            _win_rate = len(_wins)/len(_closed)*100 if _closed else 0
-            _avg_win  = sum(_wins)/len(_wins) if _wins else 0
-            _avg_loss = sum(_losses)/len(_losses) if _losses else 0
-            _expectancy = (_win_rate/100 * _avg_win) + ((1-_win_rate/100) * _avg_loss)
-
-            _stat_cols = st.columns(4)
-            _stats = [
-                ('勝率', f'{_win_rate:.1f}%', '#3fb950' if _win_rate>=50 else '#f85149', f'{len(_wins)}勝/{len(_losses)}敗'),
-                ('平均獲利', f'{_avg_win:+.1f}%', '#3fb950', f'{len(_wins)}次獲利'),
-                ('平均虧損', f'{_avg_loss:+.1f}%', '#f85149', f'{len(_losses)}次虧損'),
-                ('期望值', f'{_expectancy:+.2f}%', '#da3633' if _expectancy>0 else '#2ea043', '正數=長期有利'),
-            ]
-            for col, (title, val, color, sub) in zip(_stat_cols, _stats):
-                with col:
-                    st.markdown(kpi(title, val, sub, color, '#0d1117'), unsafe_allow_html=True)
-
-            # 期望值說明
-            _ev_color = '#da3633' if _expectancy > 0 else '#2ea043'
-            st.markdown(
-                f'<div style="background:#0a1628;border-left:4px solid {_ev_color};'
-                f'padding:10px 14px;border-radius:0 8px 8px 0;margin:10px 0;">'
-                f'<b style="color:{_ev_color};">期望值 {_expectancy:+.2f}%</b>'
-                f'<span style="color:#c9d1d9;font-size:12px;"> — '
-                + ('這套策略長期有利，繼續執行！' if _expectancy > 0 else '策略需要改進，檢查選股邏輯或停損執行') +
-                f'</span><br>'
-                f'<span style="font-size:11px;color:#484f58;">'
-                f'公式：勝率×平均獲利 + 敗率×平均虧損 = {_expectancy:+.2f}%</span></div>',
-                unsafe_allow_html=True)
-
-            # 情緒分析
-            _emotion_pnl = {}
-            for r in _closed:
-                _em = r.get('emotion','一般')
-                if _em not in _emotion_pnl: _emotion_pnl[_em] = []
-                _emotion_pnl[_em].append(r['pnl_pct'])
-            if _emotion_pnl:
-                st.markdown('##### 🧠 情緒狀態 vs 操作結果')
-                _em_rows = []
-                for _em, _pnls in _emotion_pnl.items():
-                    _em_avg = sum(_pnls)/len(_pnls)
-                    _em_rows.append({'情緒': _em, '操作次數': len(_pnls), '平均損益': f'{_em_avg:+.1f}%',
-                                     '建議': '這個狀態適合操作' if _em_avg > 0 else '這個狀態建議暫停'})
-                st.dataframe(pd.DataFrame(_em_rows), use_container_width=True, hide_index=True)
-
-            # 訊號效果分析
-            _signal_pnl = {}
-            for r in _closed:
-                for _sg in str(r.get('signal','')).split(', '):
-                    if _sg:
-                        if _sg not in _signal_pnl: _signal_pnl[_sg] = []
-                        _signal_pnl[_sg].append(r['pnl_pct'])
-            if len(_signal_pnl) > 1:
-                st.markdown('##### 📡 哪個訊號最有效？')
-                _sg_rows = sorted([
-                    {'訊號': k, '次數': len(v), '勝率': f'{sum(1 for x in v if x>0)/len(v)*100:.0f}%',
-                     '平均損益': f'{sum(v)/len(v):+.1f}%'}
-                    for k,v in _signal_pnl.items()], key=lambda x: float(x['平均損益'].replace('+','').replace('%','')), reverse=True)
-                st.dataframe(pd.DataFrame(_sg_rows), use_container_width=True, hide_index=True)
-
-            # 損益圖表
-            if len(_closed) >= 3:
-                st.markdown('##### 📈 累積損益走勢')
-                _cumulative = []
-                _cum = 0
-                for r in reversed(_closed):
-                    _cum += r['pnl_pct']
-                    _cumulative.append({'累積損益%': round(_cum, 2)})
-                _cum_df = pd.DataFrame(_cumulative)
-                st.line_chart(_cum_df, height=200, use_container_width=True)
-        else:
-            st.info('📝 尚無已結清的交易紀錄。買進後再記錄賣出，就能看到績效統計。')
-            st.markdown('''<div style="background:#0a1628;border-radius:10px;padding:14px;font-size:13px;color:#c9d1d9;">
-💡 <b>為什麼要記錄？</b><br>
-• 3個月後回看，你會發現虧錢往往不是系統不好，而是沒按計畫執行<br>
-• 情緒分析告訴你「什麼狀態下不該操作」<br>
-• 訊號分析告訴你「哪個指標對你最有效」
-</div>''', unsafe_allow_html=True)
-
-    # ── 歷史紀錄 ─────────────────────────────────────────────
-    with _jn_tabs[2]:
-        st.markdown('#### 📋 歷史操作紀錄')
-        _jn_hist = st.session_state.get('trade_journal', [])
-        if _jn_hist:
-            _hist_df = pd.DataFrame(_jn_hist)[
-                ['date','type','sid','name','price','shares','pnl_pct','emotion','signal']
-            ].rename(columns={
-                'date':'時間','type':'操作','sid':'代碼','name':'名稱',
-                'price':'價格','shares':'張數','pnl_pct':'損益%','emotion':'心態','signal':'訊號'
-            })
-            st.dataframe(_hist_df, use_container_width=True, hide_index=True,
-                column_config={
-                    '損益%': st.column_config.NumberColumn('損益%', format='%+.2f%%'),
-                    '價格':  st.column_config.NumberColumn('價格', format='%.2f'),
-                })
-            if st.button('🗑️ 清除所有紀錄', key='jn_clear'):
-                st.session_state['trade_journal'] = []
-                st.rerun()
-        else:
-            st.info('尚無交易紀錄')
-
-    # ── 月虧損設定 ───────────────────────────────────────────
-    with _jn_tabs[3]:
-        st.markdown('#### ⚙️ 風險控制設定')
-        _ml_current = st.session_state.get('monthly_loss_pct', 0)
-        st.metric('本月累積損益', f'{_ml_current:+.1f}%',
-                  delta='高危！建議暫停' if _ml_current < -10 else ('注意風險' if _ml_current < -5 else '正常'))
-        _ml_new = st.number_input('手動設定本月損益%（可為負數）', value=float(_ml_current),
-                                   step=0.5, key='jn_ml_input')
-        if st.button('更新月損益', key='jn_ml_save'):
-            st.session_state['monthly_loss_pct'] = _ml_new
-            st.success(f'已更新：本月損益 {_ml_new:+.1f}%')
-        st.markdown('''<div style="background:#0a1628;border-radius:10px;padding:14px;font-size:13px;color:#c9d1d9;margin-top:10px;">
-⚠️ <b>風險控制原則</b><br>
-• 本月虧損 >5%：降低操作頻率，提高選股標準<br>
-• 本月虧損 >10%：強制暫停操作 7 天，重新檢視選股邏輯<br>
-• 本月虧損 >15%：停止所有操作，等待下個月重新開始
-</div>''', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════
-# 共用 AI 結論面板（所有 Tab 下方固定顯示）
-# 由宏觀到個股：大盤 → 籌碼 → 先行指標 → 個股 → 操作建議
-# ══════════════════════════════════════════════════════════════
-st.markdown('<hr style="border-color:#30363d;margin:20px 0 10px;">', unsafe_allow_html=True)
-st.markdown("""<div style="background:#0a1628;border:2px solid #58a6ff;border-radius:12px;padding:14px 16px;margin-bottom:10px;">
-<div style="font-size:20px;font-weight:900;color:#58a6ff;">🤖 AI 綜合投資決策助理 — 整合買賣建議</div>
-<div style="font-size:12px;color:#8b949e;margin-top:4px;">整合：大盤環境 + 資金 + 籌碼 + ADL + 個股評分 + 合約負債/資本支出 → 給出明確買賣建議</div>
-</div>""", unsafe_allow_html=True)
-
-_ai_main_cols = st.columns([3, 1])
-with _ai_main_cols[0]:
-    _shared_ai = st.session_state.get('shared_ai_result')
-    if _shared_ai:
-        st.markdown(_shared_ai)
-    else:
-        # 顯示已有數據的摘要等待 AI
-        _mkt_s = st.session_state.get('mkt_info', {})
-        _bias_s = st.session_state.get('bias_info', {})
-        _m1b_s  = st.session_state.get('m1b_m2_info', {})
-        _li_s   = st.session_state.get('li_latest')
-        _t3s    = st.session_state.get('t3_data', {})
-        _have_data = bool(_mkt_s or _bias_s or _m1b_s)
-        if _have_data:
-            # Auto-summary while waiting for AI
-            _auto_lines = []
-            if _mkt_s:
-                _auto_lines.append(f"**大盤**：{_mkt_s.get('label','--')} | 建議持股 {_mkt_s.get('exposure_pct','--')} | 評分 {_mkt_s.get('score',0)}/{_mkt_s.get('max_score',5)}")
-            if _m1b_s and not _m1b_s.get('is_proxy'):
-                _diff_s = _m1b_s.get('m1b_yoy',0) - _m1b_s.get('m2_yoy',0)
-                _auto_lines.append(f"**M1B-M2**：{_diff_s:+.2f}% → {'✅ 資金流入股市' if _diff_s>0 else '🔴 資金撤離'}")
-            if _bias_s:
-                _auto_lines.append(f"**年線乖離**：{_bias_s.get('bias_240',0):+.1f}% | 月線乖離：{_bias_s.get('bias_20',0):+.1f}%")
-            _sc5 = _t3s.get('score_t3', [])
-            if _sc5:
-                _top3 = sorted(_sc5, key=lambda x:x.get('total',0), reverse=True)[:3]
-                _auto_lines.append(f"**個股Top3**：" + " / ".join(f"{r['stock_id']}({r['total']:.0f}分)" for r in _top3))
-            for _al in _auto_lines:
-                st.markdown(_al)
-            st.info('👆 點擊右側「🧠 執行AI分析」取得完整投資決策報告')
-        else:
-            st.info('📡 請先到「① 市場總覽」點擊「🔄 更新全部總經數據」載入大盤數據，再執行 AI 分析')
-
-with _ai_main_cols[1]:
-    _key_ai_main = os.environ.get('GEMINI_API_KEY', '') or api_key
-    if st.button('🧠 執行AI分析', key='ai_main_run', type='primary', use_container_width=True):
-        if not _key_ai_main:
-            st.error('❌ 請設定 GEMINI_API_KEY')
-        else:
-            _cd_ai  = st.session_state.get('cl_data', {})
-            _mkt_ai = st.session_state.get('mkt_info', {})
-            _bias_ai = st.session_state.get('bias_info', {})
-            _m1b_ai  = st.session_state.get('m1b_m2_info', {})
-            _li_ai   = st.session_state.get('li_latest')
-            _adl_ai  = _cd_ai.get('adl')
-            _inst_ai = _cd_ai.get('inst', {})
-            _margin_ai = _cd_ai.get('margin')
-            _intl_ai = {n:s for n,s in _cd_ai.get('intl',{}).items() if s is not None and not s.empty}
-            _tw_ai   = {n:s for n,s in _cd_ai.get('tw',{}).items() if s is not None and not s.empty}
-            _intl_st = {n: calc_stats(s) for n,s in _intl_ai.items()}
-            _tw_st   = {n: calc_stats(s) for n,s in _tw_ai.items()}
-            _t3_ai   = st.session_state.get('t3_data', {})
-            _sc_ai   = _t3_ai.get('score_t3', [])
-            _res_ai  = _t3_ai.get('results', [])
-
-            # 讀取全域 warroom_summary（模組四）
-            _ws = st.session_state.get('warroom_summary', {})
-            _pl = [
-                '【角色】你是台股 AI 總教練（嚴格版），具備技術分析、基本面、籌碼面整合能力。',
-                '【核心使命】第一句話必須給出明確的行動指示：積極做多 / 防守觀望 / 清倉保命。',
-                '【禁用詞語】禁止使用「可能、或許、建議觀察、值得關注」等模稜兩可的詞彙。',
-                '【矛盾處理】若技術面與籌碼面背離，必須點出矛盾，並偏向防守給出建議。',
-                '【盈虧比要求】所有推薦標的盈虧比必須 ≥ 2:1，否則直接剔除。',
-                '',
-                f'═══ 📊 系統綜合評分 ═══',
-                f'紅綠燈狀態: {_ws.get("traffic_light", "未知")}',
-                f'綜合健康度: {_ws.get("health_score", "--")}/100',
-                f'Defense Mode: {"⚠️ 已啟動" if _ws.get("defense_mode") else "正常"}',
-                f'數據信心指數: {_ws.get("confidence_pct", 100)}%',
-                '',
-                '═══ 📊 當前市場數據 ═══',
-            ]
-            # 大盤
-            if _mkt_ai:
-                _pl.append(f'大盤狀態：{_mkt_ai.get("label","--")} 評分{_mkt_ai.get("score",0)}/{_mkt_ai.get("max_score",5)} | 指數{_mkt_ai.get("index_price",0):,.0f} | 建議持股{_mkt_ai.get("exposure_pct","--")}')
-                _sigs = _mkt_ai.get('signals', [])
-                if _sigs: _pl.append('大盤訊號：' + ' | '.join(_sigs[:4]))
-            # M1B-M2
-            if _m1b_ai:
-                _diff_ai = _m1b_ai.get('m1b_yoy',0) - _m1b_ai.get('m2_yoy',0)
-                _proxy_note = '(估算)' if _m1b_ai.get('is_proxy') else ''
-                _pl.append(f'M1B-M2{_proxy_note}：{_diff_ai:+.2f}% （M1B={_m1b_ai.get("m1b_yoy",0):.1f}% M2={_m1b_ai.get("m2_yoy",0):.1f}%）')
-            # 乖離率
-            if _bias_ai:
-                _pl.append(f'年線乖離({_bias_ai.get("bias_240",0):+.1f}%) | 月線乖離({_bias_ai.get("bias_20",0):+.1f}%) | 大盤{_bias_ai.get("price",0):,.0f} MA20={_bias_ai.get("ma20",0):,.0f} MA240={_bias_ai.get("ma240",0):,.0f}')
-            # 國際
-            for n,st_v in list(_intl_st.items())[:4]:
-                if st_v: _pl.append(f'  {n}: {st_v.get("last","N/A")} ({st_v.get("pct",0):+.1f}%) {st_v.get("status","")}')
-            # 台股大盤
-            for n,st_v in _tw_st.items():
-                if st_v: _pl.append(f'  {n}: {st_v.get("last","N/A")} ({st_v.get("pct",0):+.1f}%)')
-            _pl.append('')
-            _pl.append('═══ 層② 籌碼與資金流向 ═══')
-            # 三大法人
-            if _inst_ai:
-                _pl.append('三大法人：')
-                for n,v in list(_inst_ai.items())[:4]:
-                    if '合計' not in n: _pl.append(f'  {n}: {v.get("net",0):+.1f}億')
-            if _margin_ai: _pl.append(f'融資餘額：{_margin_ai:.0f}億（>3400億極度危險）')
-            # ADL 廣度
-            if _adl_ai is not None and not _adl_ai.empty and 'ad_ratio' in _adl_ai.columns:
-                _adl_r = float(_adl_ai['ad_ratio'].iloc[-1])
-                _adl_ad = int(_adl_ai['ad'].iloc[-1]) if 'ad' in _adl_ai.columns else 0
-                _pl.append(f'市場廣度ADL：上漲佔比{_adl_r:.1f}%，AD值{_adl_ad:+,}（>60%廣度健康，<40%廣度萎縮）')
-            # 個股財報（合約負債/資本支出）
-            if _sc_ai:
-                _top_stocks = sorted(_sc_ai, key=lambda x:x.get('total',0), reverse=True)[:5]
-                for _rs in _top_stocks:
-                    _sid_a = _rs.get('stock_id','')
-                    _cl_a  = _rs.get('contract_liabilities')
-                    _cx_a  = _rs.get('capex')
-                    if _cl_a or _cx_a:
-                        _fin_str = f'  → 合約負債:{_cl_a:.1f}億' if _cl_a else ''
-                        _fin_str += f' 資本支出:{_cx_a:.1f}億' if _cx_a else ''
-                        _pl.append(f'  {_sid_a} 財報:{_fin_str}')
-            # 騰落
-            if _adl_ai is not None and not _adl_ai.empty:
-                _ar = _adl_ai.iloc[-1]
-                _pl.append(f'騰落指標：漲{_ar.get("up",0):.0f}/跌{_ar.get("down",0):.0f} AD={_ar.get("ad",0):+.0f} 上漲佔比{_ar.get("ad_ratio",50):.1f}%')
-            # 先行指標
-            if _li_ai is not None and not _li_ai.empty:
-                _pl.append('先行指標（最新）：')
-                _pl.append(_li_ai.tail(1).to_string(index=False))
-            _pl.append('')
-            _pl.append('═══ 層③ 個股分析 ═══')
-            if _sc_ai:
-                _top5_ai = sorted(_sc_ai, key=lambda x:x.get('total',0), reverse=True)[:5]
-                for _r in _top5_ai:
-                    _rr = next((r for r in _res_ai if r.get('代碼')==_r['stock_id']), {})
-                    _pl.append(f'  {_r["stock_id"]} {_r.get("stock_name","")} - 多因子{_r["total"]:.0f}分({_r["grade"]}) 健康度{_rr.get("健康度",0):.0f} 357:{_rr.get("357評價","--")}')
-            else:
-                _pl.append('  （請先到④比較排行榜執行批次分析）')
-            _pl += [
-                '',
-                '═══ 請按以下格式輸出（各節用 --- 分隔，使用 Markdown 格式）═══',
-                '',
-                '## 🌐 一、宏觀環境判讀',
-                '（M1B-M2動向、大盤位階、外資動向、乖離率是否過熱，3-4句，給出明確多/空/觀望判斷）',
-                '',
-                '## 🧮 二、籌碼與資金流向',
-                '（三大法人、融資、騰落廣度、先行指標，2-3句，說明主力方向）',
-                '',
-                '## 📈 三、個股分析與投資組合',
-                '（針對上方個股逐一點評：哪些積極、哪些觀察、哪些等待，3-5句）',
-                '',
-                '## 🎯 三、明確買賣建議（最重要！）',
-                '',
-                '**現在該怎麼做？** 請給出下列其中一個決定：',
-                '- 🟢 【積極買進】：理由 + 目標標的 + 進場價位',
-                '- 🟡 【觀望等待】：等什麼訊號？什麼條件出現才進場？',
-                '- 🔴 【暫緩/減倉】：風險在哪？建議持股比例降到多少？',
-                '',
-                '## 📈 四、重點標的分析',
-                '（針對評分最高的2-3支個股：為何值得關注？現在買的理由？停損點？目標價？）',
-                '',
-                '## ⚡ 五、本週操作計畫',
-                '- 建議持股比例：XX%',
-                '- 優先觀察標的：（代碼+名稱+進場條件）',
-                '- 停損設定：（具體價位或%-7%）',
-                '- 最大風險點：（一句話說明）',
-                '',
-                '',
-                '═══ 📋 輸出格式要求 ═══',
-                '第一行：【行動指示】積極做多 / 防守觀望 / 清倉保命（只能三選一）',
-                '第二段：【理由】不超過100字，必須含具體數字',
-                '第三段：【推薦標的】（僅在積極做多時）格式：代碼+名稱+進場價+停損+目標+盈虧比',
-                '第四段：【風險提示】最大風險點一句話',
-                '禁止廢話、禁止「可能」「或許」等模糊詞、每句必含數字或具體判斷',
-                '⚠️ 僅供學術研究與教育用途，非投資建議，盈虧自負。'
-            ]
-            with st.status('🧠 AI分析中（整合宏觀到個股）...', expanded=True) as _ai_st:
-                _prompt_str = '\n'.join(_pl)
-                # 限制 prompt 長度（超過 6000字元自動截斷）
-                if len(_prompt_str) > 6000:
-                    _prompt_str = _prompt_str[:6000] + '\n...（資料已截斷，請基於以上分析作答）'
-                _ai_result = gemini_call(_prompt_str, max_tokens=2500)
-                if _ai_result and not _ai_result.startswith('⚠️'):
-                    st.session_state['shared_ai_result'] = _ai_result
-                    _ai_st.update(label='✅ AI分析完成', state='complete')
-                    st.rerun()
-                else:
-                    _err_msg = _ai_result or 'AI回傳為空'
-                    st.error(f'❌ AI失敗原因：{_err_msg}')
-                    if '403' in _err_msg or '無效' in _err_msg or 'Invalid' in _err_msg.lower():
-                        st.warning('🔑 API Key 無效，請重新確認 Cell 1 的 GEMINI_API_KEY')
-                    elif '429' in _err_msg or 'quota' in _err_msg.lower():
-                        st.warning('⏳ Gemini 配額用完，請稍後再試')
-                    elif '404' in _err_msg:
-                        st.warning('🤖 所有 Gemini 模型都不可用，請確認網路連線')
-                    else:
-                        st.info('💡 請執行「診斷 Cell」的【8】Gemini API 測試查看詳細錯誤')
-                    _ai_st.update(label='❌ AI失敗（詳見上方說明）', state='error')
-
-    # ── 模組五：AI 推理透明化（CoT 日誌）──────────────────────
-    with st.expander('🔍 檢視系統原始數據與 AI 思考路徑（供老手查證）'):
-        _ws_disp = st.session_state.get('warroom_summary', {})
-        if _ws_disp:
-            st.markdown('**📊 系統決策依據 JSON**')
-            import json as _json_disp
-            st.code(_json_disp.dumps(_ws_disp, ensure_ascii=False, indent=2), language='json')
-        _mkt_disp = st.session_state.get('mkt_info', {})
-        if _mkt_disp:
-            st.markdown('**📈 大盤評分細節**')
-            _sigs = _mkt_disp.get('signals', [])
-            for _sg in _sigs:
-                _sc = '🟢' if '✅' in _sg else ('🔴' if '❌' in _sg else '🟡')
-                st.markdown(f'{_sc} {_sg}')
-        _li_disp = st.session_state.get('li_latest')
-        if _li_disp is not None and not _li_disp.empty:
-            st.markdown('**📡 先行指標（最新一筆）**')
-            st.dataframe(_li_disp.tail(1), use_container_width=True, height=60)
-        st.caption('📌 以上為系統計算的原始數據，供專業投資人交叉驗證')
-
-    if st.button('🔄 清除報告', key='ai_main_clear', use_container_width=True):
-        st.session_state.pop('shared_ai_result', None)
-        st.rerun()
 
 # ══════════════════════════════════════════════════════════════
 # TAB ⑥: ETF 單一深度診斷
