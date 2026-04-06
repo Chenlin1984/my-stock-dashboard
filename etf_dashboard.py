@@ -463,18 +463,51 @@ def render_etf_single(gemini_fn=None):
         if len(df) < 210:         missing.append('資料不足210天')
         st.info('⏳ VCP 條件未滿足：' + (' | '.join(missing) if missing else '波幅尚未收縮'))
 
-    # ── ETF 防呆：折溢價 + 追蹤誤差 ─────────────────────────
-    st.markdown('#### 🛡️ ETF 專屬防呆機制')
+    # ── ETF 防呆：折溢價 + 追蹤誤差 + 建議買賣時機 ──────────
+    st.markdown('#### 🛡️ ETF 折溢價 — 建議買賣時機')
     prem = calc_premium_discount(info, df)
     te   = calc_tracking_error(df, bench_df)
-    ch, ci = st.columns(2)
-    if prem['premium_pct'] is not None:
-        ch.metric('折溢價率', f'{prem["premium_pct"]:+.2f}%')
-        if prem['warning']:
-            ch.markdown('<small style="color:#f85149;">⚠️ 溢價 >1%，拒絕追高</small>',
-                        unsafe_allow_html=True)
+
+    # 折溢價建議邏輯
+    _pct = prem['premium_pct']
+    if _pct is not None:
+        if _pct <= -2:
+            _prem_color  = '#3fb950'
+            _prem_action = '🟢 強烈買進時機'
+            _prem_reason = f'折價 {abs(_pct):.2f}%，低於 NAV 買入，立即為你創造安全邊際'
+        elif _pct <= -0.5:
+            _prem_color  = '#58a6ff'
+            _prem_action = '🔵 合理買進'
+            _prem_reason = f'折價 {abs(_pct):.2f}%，略低於 NAV，可正常分批買入'
+        elif _pct <= 1.0:
+            _prem_color  = '#d29922'
+            _prem_action = '🟡 中性觀望'
+            _prem_reason = f'溢價 {_pct:.2f}%（±1% 正常範圍），無需急追'
+        elif _pct <= 3.0:
+            _prem_color  = '#f85149'
+            _prem_action = '🔴 暫緩買進'
+            _prem_reason = f'溢價 {_pct:.2f}%，高於 NAV，追高風險較大，等待回落'
+        else:
+            _prem_color  = '#f85149'
+            _prem_action = '🔴 嚴禁追高'
+            _prem_reason = f'溢價 {_pct:.2f}%，嚴重高溢價，等待折價或換標的'
     else:
-        ch.metric('折溢價率', 'N/A（yfinance 未提供 NAV）')
+        _prem_color  = '#8b949e'
+        _prem_action = 'ℹ️ 無 NAV 資料'
+        _prem_reason = 'yfinance 未提供 NAV，建議至官網確認折溢價'
+
+    st.markdown(
+        f'<div style="background:#0d1117;border:2px solid {_prem_color};border-radius:10px;'
+        f'padding:14px 18px;margin-bottom:10px;">'
+        f'<div style="font-size:20px;font-weight:900;color:{_prem_color};">{_prem_action}</div>'
+        f'<div style="font-size:13px;color:#c9d1d9;margin-top:4px;">{_prem_reason}</div>'
+        + (f'<div style="font-size:12px;color:#8b949e;margin-top:6px;">折溢價率：'
+           f'<b style="color:{_prem_color};">{_pct:+.2f}%</b></div>' if _pct is not None else '')
+        + '</div>',
+        unsafe_allow_html=True)
+
+    ch, ci = st.columns(2)
+    ch.metric('折溢價率', f'{_pct:+.2f}%' if _pct is not None else 'N/A')
     if te is not None:
         ci.metric(f'追蹤誤差 vs {benchmark}', f'{te:.2f}%')
         if te > 1.5:
