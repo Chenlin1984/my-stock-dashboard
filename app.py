@@ -1449,7 +1449,7 @@ border-radius:12px;padding:14px;text-align:center;">
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">🌍 ① 今日市場總覽</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">🌍 今日市場總覽</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">決定：現在能買嗎？大盤水位？</span>
 </div>""", unsafe_allow_html=True)
     st.markdown(
@@ -2212,7 +2212,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.info('尚無足夠資料計算拐點，請點擊「更新全部總經數據」')
 
             # 拐點參考表 → 已移至 Tab5 策略手冊
-            st.caption('📖 拐點判斷參考表 → 詳見 ⑤ 策略手冊')
+            st.caption('📖 拐點判斷參考表 → 詳見「策略手冊」Tab')
 
     elif not cd:
         with _mkt_placeholder.container():
@@ -2934,7 +2934,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     f'<div style="border-left:5px solid {_ac_c};background:#0d1117;'
                     f'padding:9px 14px;border-radius:0 8px 8px 0;margin:5px 0;">'
                     f'<span style="font-size:14px;font-weight:900;color:{_ac_c};">{_ac_dot} {_ac_clean}</span><br>'
-                    f'<span style="font-size:10px;color:#484f58;">詳細判讀 → ④ 策略手冊</span>'
+                    f'<span style="font-size:10px;color:#484f58;">詳細判讀 → 「策略手冊」Tab</span>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -3116,7 +3116,7 @@ with tab2_stock:
 💡 <b>建議：</b>先到「比較 × 排行」掃描找到候選股，再來這裡做最後確認。
 </div></div>''', unsafe_allow_html=True)
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">🔬 ② 個股深度分析</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">🔬 個股深度分析</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">健康評分 · 357評價 · 領先指標 · VCP · 布林 · K線 · AI五維</span>
 </div>""", unsafe_allow_html=True)
 
@@ -4251,7 +4251,7 @@ padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
 # ══════════════════════════════════════════════════════════════
 with tab3_compare:
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">📊 ③ 比較 × 排行</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">📊 比較 × 排行</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">市場狀態 · 多股比較 · 多因子排行 · 汰弱留強 · 最終建議</span>
 </div>""", unsafe_allow_html=True)
 
@@ -4720,7 +4720,7 @@ with tab4_masters:
 <div style="background:#0a2818;border:1px solid #3fb950;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:12px;color:#c9d1d9;">
 💡 <b>搭配使用建議：</b>
 合約負債↑ + 資本支出↑ = 「今年訂單爆滿 + 老闆拚命擴廠」→ 這是最強的雙重買入訊號<br>
-在系統③個股分析 → 財報 C節 可看到這兩項數據
+在系統「🔬 個股分析」Tab → 財報 C節 可看到這兩項數據
 </div>
     ''', unsafe_allow_html=True)
     st.markdown('---')
@@ -4757,7 +4757,7 @@ with tab4_masters:
     st.markdown('---')
 
     st.markdown("""<div style="padding:6px 0 8px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">📚 ⑤ 策略手冊</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">📚 策略手冊</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">五大門派完整操作條件 — 層2/3 判斷結論的理論依據</span>
 </div>""", unsafe_allow_html=True)
 
