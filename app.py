@@ -1206,16 +1206,17 @@ st.markdown(
     '<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;">'    '<span style="font-size:22px;font-weight:900;color:#e6edf3;">&#128202; 台股 AI 戰情室</span>'    '<span style="font-size:10px;color:#484f58;background:#161b22;border-radius:10px;padding:2px 8px;">v4.0 Pro</span>'    '</div>',
     unsafe_allow_html=True)
 
-tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health = st.tabs([
+tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health, tab4_masters = st.tabs([
     '🌍 總經',
     '🗺️ 熱力板塊',
     '🔬 台股',
     '🏦 ETF',
     '🔎 資料診斷',
+    '📚 策略手冊',
 ])
 with tab_stock_grp:
-    tab2_stock, tab3_compare, tab4_masters = st.tabs([
-        '🔬 個股分析', '🏆 比較 × 排行', '📚 策略手冊',
+    tab2_stock, tab3_compare = st.tabs([
+        '🔬 個股分析', '🏆 比較 × 排行',
     ])
 with tab_etf_grp:
     tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
@@ -2937,7 +2938,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     f'</div>',
                     unsafe_allow_html=True
                 )
-        st.caption('📖 ADL判讀方法 → 詳見 ④ 策略手冊')
+        st.caption('📖 ADL判讀方法 → 詳見「策略手冊」Tab')
 
     else:
         _adl_debug = st.session_state.get('adl_debug_msg', '')
@@ -3112,7 +3113,7 @@ with tab2_stock:
 • <b>趨勢向上還是向下？</b>（健康度評分）<br>
 • <b>大股東在買還是賣？</b>（法人籌碼）<br>
 • <b>什麼時候該進場、出場？</b>（進出場訊號）<br>
-💡 <b>建議：</b>先到②掃描找到候選股，再來這裡做最後確認。
+💡 <b>建議：</b>先到「比較 × 排行」掃描找到候選股，再來這裡做最後確認。
 </div></div>''', unsafe_allow_html=True)
     st.markdown("""<div style="padding:6px 0 4px;">
 <span style="font-size:20px;font-weight:900;color:#e6edf3;">🔬 ② 個股深度分析</span>
@@ -3692,7 +3693,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
 <div style="font-size:11px;color:#8b949e;margin-top:4px;">技術位置：{_price_pos} | RSI={rsi2} | 量比={vr2} | KD=K{k2}/D{d2}</div>
 </div>""", unsafe_allow_html=True)
 
-        st.caption('📖 評分標準與指標說明 → 詳見 ④ 策略手冊')
+        st.caption('📖 評分標準與指標說明 → 詳見「策略手冊」Tab')
 
 
         # ── v4.0 防守線 + 籌碼 + 套牢賣壓 ─────────────────────────────
@@ -3969,7 +3970,7 @@ padding:12px 16px;margin:8px 0;">
             f'padding:10px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
             f'<span style="font-size:12px;color:#8b949e;">🎓 孫慶龍 · 財報領先指標</span><br>'
             f'<span style="font-size:14px;font-weight:800;color:{_fin_color};">{_fin_label}</span><br>'
-            f'<span style="font-size:11px;color:#8b949e;">兩指標均高 = 龍多股首選；詳細門檻見 ④ 策略手冊</span>'
+            f'<span style="font-size:11px;color:#8b949e;">兩指標均高 = 龍多股首選；詳細門檻見「策略手冊」Tab</span>'
             f'</div>',
             unsafe_allow_html=True
         )
@@ -4291,7 +4292,7 @@ with tab3_compare:
                 f'</div>', unsafe_allow_html=True)
         st.markdown('')
     else:
-        st.info('⏳ 請先到 ① 今日市場總覽 點擊「🔄 更新全部總經數據」取得最新大盤狀態')
+        st.info('⏳ 請先到「🌍 總經」Tab 點擊「🔄 更新全部總經數據」取得最新大盤狀態')
 
     # ══ ② 輸入多檔代碼 ══════════════════════════════════════════
     with st.container(border=True):
