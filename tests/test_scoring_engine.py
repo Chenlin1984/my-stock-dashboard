@@ -866,3 +866,101 @@ class TestAdditionalCoverage:
         r = calculate_position_size(1_000_000, 100, 100.0)
         assert 'stop_loss' in r
         assert r['stop_loss'] == pytest.approx(85.0)
+
+
+# ── VCP ATR 濾網 ──────────────────────────────────────────────
+class TestCheckVcpAtrFilter:
+    def test_none_df_returns_not_pass(self):
+        from scoring_engine import check_vcp_atr_filter
+        r = check_vcp_atr_filter(None)
+        assert r['pass'] is False
+        assert r['label'] == '資料不足'
+
+    def test_short_df_returns_not_pass(self):
+        from scoring_engine import check_vcp_atr_filter
+        r = check_vcp_atr_filter(make_ohlcv(rising(10)))
+        assert r['pass'] is False
+
+    def test_contraction_passes(self):
+        """ATR5 < ATR20×0.8：先大波動後小波動 → pass=True"""
+        from scoring_engine import check_vcp_atr_filter
+        # 前25天大波動（atr_pct=0.05），最後5天小波動（close-only）
+        import pandas as pd, numpy as np
+        prices = [100 + i for i in range(30)]
+        hi = [p * 1.05 for p in prices[:25]] + [p * 1.001 for p in prices[25:]]
+        lo = [p * 0.95 for p in prices[:25]] + [p * 0.999 for p in prices[25:]]
+        df = pd.DataFrame({'close': prices, 'high': hi, 'low': lo,
+                           'volume': [1e6] * 30})
+        r = check_vcp_atr_filter(df)
+        assert r['pass'] is True
+        assert r['atr5'] is not None
+        assert r['atr20'] is not None
+
+    def test_no_contraction_fails(self):
+        """持續大波動 → ATR5 ≈ ATR20 → pass=False"""
+        from scoring_engine import check_vcp_atr_filter
+        r = check_vcp_atr_filter(make_ohlcv(rising(30), atr_pct=0.05))
+        assert r['pass'] is False
+
+
+# ── 券資比軋空加分 ────────────────────────────────────────────
+class TestCalcShortSqueezeBonus:
+    def test_full_condition_gives_bonus(self):
+        from scoring_engine import calc_short_squeeze_bonus
+        r = calc_short_squeeze_bonus(short_ratio=0.35, inst_consecutive_buy=5)
+        assert r['bonus'] == 5
+        assert '軋空加分' in r['label']
+
+    def test_high_ratio_no_consec_buy_no_bonus(self):
+        from scoring_engine import calc_short_squeeze_bonus
+        r = calc_short_squeeze_bonus(short_ratio=0.35, inst_consecutive_buy=2)
+        assert r['bonus'] == 0
+        assert '法人連買天數不足' in r['label']
+
+    def test_low_ratio_no_bonus(self):
+        from scoring_engine import calc_short_squeeze_bonus
+        r = calc_short_squeeze_bonus(short_ratio=0.10, inst_consecutive_buy=10)
+        assert r['bonus'] == 0
+        assert r['label'] == ''
+
+    def test_defaults_no_bonus(self):
+        from scoring_engine import calc_short_squeeze_bonus
+        r = calc_short_squeeze_bonus()
+        assert r['bonus'] == 0
+
+
+# ── 動態權重 stock_score ──────────────────────────────────────
+class TestDynamicWeightStockScore:
+    def test_bull_regime_higher_trend_weight(self):
+        from scoring_engine import stock_score
+        # bull 趨勢權重(0.30) > neutral(0.25)，高趨勢分數下 bull 應得分較高
+        bull_score    = stock_score(100, 50, 50, 50, 50, 50, regime='bull')
+        neutral_score = stock_score(100, 50, 50, 50, 50, 50, regime='neutral')
+        assert bull_score > neutral_score
+
+    def test_bear_regime_higher_risk_weight(self):
+        from scoring_engine import stock_score
+        # bear 風險權重(0.25) > neutral(0.10)，高風險分數下 bear 應得分較高
+        bear_score    = stock_score(50, 50, 50, 50, 100, 50, regime='bear')
+        neutral_score = stock_score(50, 50, 50, 50, 100, 50, regime='neutral')
+        assert bear_score > neutral_score
+
+    def test_unknown_regime_falls_back_to_neutral(self):
+        from scoring_engine import stock_score
+        s1 = stock_score(60, 60, 60, 60, 60, 60, regime='unknown')
+        s2 = stock_score(60, 60, 60, 60, 60, 60, regime='neutral')
+        assert s1 == s2
+
+    def test_score_within_range(self):
+        from scoring_engine import stock_score
+        for regime in ('bull', 'neutral', 'bear'):
+            s = stock_score(80, 70, 60, 50, 40, 30, regime=regime)
+            assert 0 <= s <= 100
+
+    def test_squeeze_bonus_applied_in_score_single(self):
+        from scoring_engine import score_single_stock
+        df = make_ohlcv(rising(60))
+        r_no_squeeze = score_single_stock(df, short_ratio=0.0, inst_consec_buy=0)
+        r_squeeze    = score_single_stock(df, short_ratio=0.4, inst_consec_buy=5)
+        assert r_squeeze['total'] >= r_no_squeeze['total']
+        assert r_squeeze['squeeze_bonus'] == 5
