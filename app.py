@@ -4529,28 +4529,31 @@ with tab3_compare:
         prog_t3 = st.progress(0, text='批次分析中...')
         from scoring_engine import score_single_stock as _sss
         from stock_names    import get_stock_name as _gsn
+        import threading as _threading
+        _t3_loader_lock = _threading.Lock()  # FinMind dl 非線程安全，需串行保護
 
-        # ── 並發抓取（ThreadPoolExecutor，最多5個同時）────────
+        # ── 並發抓取（ThreadPoolExecutor，最多3個同時）────────
         def _fetch_single_t3(sid4):
-            # 先檢查本地緩存
-            _cached = _load_cache('t3', sid4, ttl_hours=4)
+            # 先檢查本地緩存（v2 prefix 強制清除舊錯誤 cache）
+            _cached = _load_cache('t3v2', sid4, ttl_hours=4)
             if _cached: return _cached
             try:
-                # ⚠️ 直接呼叫 loader，繞過 @st.cache_data（ThreadPoolExecutor 下 cache 不安全）
-                _df4_raw, _err4, _name4 = loader_t3.get_combined_data(sid4, 360, True)
+                # get_combined_data 共享 FinMind dl 實例，需加鎖確保線程安全
+                with _t3_loader_lock:
+                    _df4_raw, _err4, _name4 = loader_t3.get_combined_data(sid4, 360, True)
                 df4   = _df4_raw.tail(300).reset_index(drop=True) if _df4_raw is not None and not _df4_raw.empty else None
                 name4 = _name4 or sid4
                 avg_div4, _, _ = fetch_dividend_data(sid4)
                 cl4, cx4, _capex4, _cl_src4, _cx_src4, _, _fin_errs4 = fetch_financials(sid4, industry='')
                 result4 = {'sid': sid4, 'df': df4, 'name': name4,
                            'avg_div': avg_div4, 'cl': cl4, 'cx': cx4}
-                _save_cache('t3', sid4, result4)
+                _save_cache('t3v2', sid4, result4)
                 return result4
             except Exception as _e4:
                 return {'sid': sid4, 'error': str(_e4)}
 
         _t3_futures = {}
-        with ThreadPoolExecutor(max_workers=5) as _t3_exec:
+        with ThreadPoolExecutor(max_workers=3) as _t3_exec:
             for sid4 in stock_list_t3:
                 _t3_futures[_t3_exec.submit(_fetch_single_t3, sid4)] = sid4
         _t3_fetched = {}
@@ -4564,7 +4567,10 @@ with tab3_compare:
             try:
                 _d4     = _t3_fetched.get(sid4, {})
                 df4     = _d4.get('df')
-                name4   = _d4.get('name', sid4)
+                # 名稱優先: loader返回值 > stock_names靜態字典 > 代碼本身
+                _raw_name4 = _d4.get('name', '')
+                name4   = (_raw_name4 if _raw_name4 and _raw_name4 != sid4
+                           else _gsn(sid4))
                 avg_div4= _d4.get('avg_div', 0)
                 cl4     = _d4.get('cl')
                 cx4     = _d4.get('cx')
