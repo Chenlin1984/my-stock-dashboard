@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-07（比較×排行 完整升級）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-07（SESSION 2 結束；ETF teacher_conclusion 待補）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -8,7 +8,7 @@
 
 | 檔案 | 一句話簡介 |
 |---|---|
-| `app.py` | 主 Streamlit UI，11 個 Tab（①~⑤股票 + ⑥~⑨ETF + ⑩資料健診 + ⑪熱力圖），共 5627 行 |
+| `app.py` | 主 Streamlit UI，6 主 Tab（總經/熱力板塊/台股/ETF/資料診斷/策略手冊），共 5394 行 |
 | `etf_dashboard.py` | ETF AI 儀表板：Tab⑥~⑨ ETF分析 + Tab⑩資料健診 + Tab⑪產業熱力圖 |
 | `scoring_engine.py` | 多因子評分引擎（動態權重/VCP ATR/軋空加分），覆蓋率 91% |
 | `risk_control.py` | 單股停損停利 + 部位計算 + 組合風控（RiskController 類別） |
@@ -45,7 +45,7 @@
 | ⑦ | `etf_dashboard.py` `_render_monte_carlo()` | 蒙地卡羅 10,000 路徑，P10/50/90 |
 
 **測試狀態**
-- 全部測試：✅ 184 passed，0 failed
+- 全部測試：✅ 197 passed，0 failed
 - `scoring_engine.py` 覆蓋率：91%
 
 ---
@@ -91,6 +91,7 @@ ETF子Tab：ETF診斷 | ETF組合 | ETF回測 | ETF AI
 
 | 優先 | 項目 |
 |---|---|
+| 中 | `etf_dashboard.py` ETF診斷/組合/回測 各節補充 teacher_conclusion 動態卡片 |
 | 低 | PR #6 合併至 main（已建立，待 merge） |
 
 ---
