@@ -75,8 +75,10 @@ def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
     else:
         signals.append('❌ 跌破MA120')
 
-    # ③ 外資方向
-    if foreign_buy > 0:
+    # ③ 外資方向（foreign_buy == 0 且未傳入真實數據時視為「尚無資料」，不扣分）
+    if foreign_buy is None or foreign_buy == 0:
+        signals.append('⏰ 外資數據待更新（收盤後15:30可用）')
+    elif foreign_buy > 0:
         score += 1
         signals.append(f'✅ 外資買超 {foreign_buy/1e8:.1f}億')
     else:
