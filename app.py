@@ -2004,10 +2004,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
             # ── 計算市場狀態（用已載入資料，不另外發請求）
             try:
-                _foreign_net_loaded = 0.0
+                _foreign_net_loaded = 0  # 0 = 尚無資料（market_regime 會顯示「待更新」）
                 for _k, _v in inst.items():
                     if '外資' in _k:
-                        _foreign_net_loaded = float(_v.get('net', 0)) * 1e8
+                        _net_v = _v.get('net')
+                        if _net_v is not None:
+                            _foreign_net_loaded = float(_net_v) * 1e8
                         break
                 _twii_df_loaded = tw_raw.get('台股加權指數')
                 print(f'[市場評估] 大盤DF shape={getattr(_twii_df_loaded,"shape",None)}, '
@@ -2313,6 +2315,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     else:
         _t2c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t2a = ''; _t2_ind = '台股加權 + 台幣'
     st.markdown(teacher_conclusion('宏爺', _t2_ind, _t2c, _t2a), unsafe_allow_html=True)
+    tc = st.columns(len(TW_UNIT))
     for col,(name,unit) in zip(tc,TW_UNIT.items()):
         with col: st.markdown(stat_card(name,tw_s.get(name),unit,name in tw_s),unsafe_allow_html=True)
     tw1,tw2 = st.columns(2)
