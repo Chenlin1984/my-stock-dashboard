@@ -36,9 +36,11 @@ def _get_t86_day(ds: str) -> dict:
             return {}
         fields = [str(f) for f in j.get('fields', [])]
         fi = {n: i for i, n in enumerate(fields)}
-        f_idx = next((v for k, v in fi.items() if '外資' in k and '淨' in k and '自營' not in k), None)
-        t_idx = next((v for k, v in fi.items() if '投信' in k and '淨' in k), None)
-        d_idx = next((v for k, v in fi.items() if '自營' in k and '淨' in k), None)
+        # T86 欄位名稱用「買賣超」而非「淨」，例如「外陸資買賣超股數」「投信買賣超股數」
+        f_idx = next((v for k, v in fi.items() if '外' in k and '買賣超' in k and '自營' not in k), None)
+        t_idx = next((v for k, v in fi.items() if '投信' in k and '買賣超' in k), None)
+        d_idx = next((v for k, v in fi.items() if '自營' in k and '買賣超' in k and '自行' in k), None)
+        print(f'[T86] {ds} fields={fields[:5]} f_idx={f_idx} t_idx={t_idx} d_idx={d_idx}')
 
         def _pn(row, idx):
             if idx is None or idx >= len(row): return 0.0
