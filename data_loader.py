@@ -17,52 +17,69 @@ import requests as _req_dl
 from stock_names import get_stock_name
 
 
-def _fetch_twse_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
-    """TWSE T86 免費 API：抓取最近 10 個交易日的個股三大法人買賣超，合併進 df。
-    僅在 FinMind 無法取得資料時呼叫。結果以張為單位。"""
+_T86_DAY_CACHE: dict = {}  # {日期字串: {股票代碼: {外資,投信,自營商}}} 進程級快取，多股共用
+
+
+def _get_t86_day(ds: str) -> dict:
+    """抓取 T86 特定日期的全市場法人資料，進程內快取避免重複請求。
+    回傳 {股票代碼: {'外資':float, '投信':float, '自營商':float}}，單位：張"""
+    if ds in _T86_DAY_CACHE:
+        return _T86_DAY_CACHE[ds]
+    HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        _HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-        _rows = []
-        _base = datetime.date.today()
-        _checked = 0
-        for _delta in range(20):           # 最多往回找20天
-            if _checked >= 10: break
-            _d = _base - datetime.timedelta(days=_delta)
-            if _d.weekday() >= 5: continue  # 跳週末
-            _ds = _d.strftime('%Y%m%d')
-            try:
-                _r = _req_dl.get(
-                    'https://www.twse.com.tw/fund/T86',
-                    params={'response': 'json', 'date': _ds, 'selectType': 'ALL'},
-                    headers=_HDR, timeout=8)
-                _j = _r.json()
-                if _j.get('stat') != 'OK' or not _j.get('data'):
-                    _checked += 1; continue
-                _fields = [str(f) for f in _j.get('fields', [])]
-                # T86 欄位: 證券代號/名稱/外資買/外資賣/外資淨/投信買/投信賣/投信淨/自營商買/自營商賣/自營商淨...
-                _fi = {n: i for i, n in enumerate(_fields)}
-                for _row in _j['data']:
-                    if str(_row[0]).strip() != stock_id: continue
-                    def _n(idx): return int(str(_row[idx]).replace(',','').replace('+','').replace('-0','0') or 0) if idx < len(_row) else 0
-                    _f_idx = next((v for k,v in _fi.items() if '外資' in k and '淨' in k and '自營' not in k), None)
-                    _t_idx = next((v for k,v in _fi.items() if '投信' in k and '淨' in k), None)
-                    _d_idx = next((v for k,v in _fi.items() if '自營' in k and '淨' in k), None)
-                    _rows.append({
-                        'date': _d,
-                        '外資':  round(_n(_f_idx) / 1000, 1) if _f_idx else 0,
-                        '投信':  round(_n(_t_idx) / 1000, 1) if _t_idx else 0,
-                        '自營商': round(_n(_d_idx) / 1000, 1) if _d_idx else 0,
-                    })
-                    break
-                _checked += 1
-            except Exception: _checked += 1; continue
-        if _rows:
-            _df_tw = pd.DataFrame(_rows)
+        r = _req_dl.get('https://www.twse.com.tw/fund/T86',
+                        params={'response': 'json', 'date': ds, 'selectType': 'ALL'},
+                        headers=HDR, timeout=10)
+        j = r.json()
+        if j.get('stat') != 'OK' or not j.get('data'):
+            _T86_DAY_CACHE[ds] = {}
+            return {}
+        fields = [str(f) for f in j.get('fields', [])]
+        fi = {n: i for i, n in enumerate(fields)}
+        f_idx = next((v for k, v in fi.items() if '外資' in k and '淨' in k and '自營' not in k), None)
+        t_idx = next((v for k, v in fi.items() if '投信' in k and '淨' in k), None)
+        d_idx = next((v for k, v in fi.items() if '自營' in k and '淨' in k), None)
+
+        def _pn(row, idx):
+            if idx is None or idx >= len(row): return 0.0
+            try: return round(int(str(row[idx]).replace(',', '').replace('+', '') or 0) / 1000, 1)
+            except: return 0.0
+
+        day_data = {}
+        for row in j['data']:
+            code = str(row[0]).strip()
+            if code:
+                day_data[code] = {'外資': _pn(row, f_idx), '投信': _pn(row, t_idx), '自營商': _pn(row, d_idx)}
+        _T86_DAY_CACHE[ds] = day_data
+        print(f'[TWSE T86] {ds}: {len(day_data)} 支')
+        return day_data
+    except Exception as e:
+        print(f'[TWSE T86] {ds} 失敗: {e}')
+        _T86_DAY_CACHE[ds] = {}
+        return {}
+
+
+def _fetch_twse_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
+    """TWSE T86 備援：T86 一次抓全市場，多股共用同一份進程快取，不重複發請求。"""
+    try:
+        rows = []
+        base = datetime.date.today()
+        checked = 0
+        for delta in range(20):
+            if checked >= 10: break
+            d = base - datetime.timedelta(days=delta)
+            if d.weekday() >= 5: continue
+            day = _get_t86_day(d.strftime('%Y%m%d'))
+            checked += 1
+            if stock_id in day:
+                rows.append({'date': d, **day[stock_id]})
+        if rows:
+            _df_tw = pd.DataFrame(rows)
             _df_tw['主力合計'] = _df_tw['外資'] + _df_tw['投信'] + _df_tw['自營商']
             df = pd.merge(df, _df_tw, on='date', how='left')
-            print(f'[TWSE T86] {stock_id} 補充 {len(_rows)} 日法人資料')
-    except Exception as _e:
-        print(f'[TWSE T86] {stock_id} fallback 失敗: {_e}')
+            print(f'[TWSE T86] {stock_id} 補充 {len(rows)} 日')
+    except Exception as e:
+        print(f'[TWSE T86] {stock_id} 失敗: {e}')
     return df
 
 

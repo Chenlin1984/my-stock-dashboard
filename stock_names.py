@@ -1,186 +1,166 @@
 """
-台股常用股票代碼與中文名稱對照表
-當 FinMind API 無法取得名稱時使用此對照表
-更新日期：2026/04
+台股股票名稱查詢模組
+優先級：動態快取（TWSE/TPEx OpenAPI）> 靜態字典 > yfinance > 回傳代碼
 """
 
-TAIWAN_STOCK_NAMES = {
-    # 台積電家族與半導體龍頭
-    '2330': '台積電',
-    '3711': '日月光投控',
-    '2303': '聯電',
-    '2449': '京元電子',
+import os
+import pickle
+import hashlib
+import datetime
+import requests
 
-    # 鴻海集團
-    '2317': '鴻海',
-    '2354': '鴻準',
+_CACHE_DIR = '/tmp/st_cache'
+os.makedirs(_CACHE_DIR, exist_ok=True)
 
-    # 聯發科家族與高價 IC 設計/IP
-    '2454': '聯發科',
-    '3034': '聯詠',
-    '5274': '信驊',
-    '3661': '世芯-KY',
-    '3443': '創意',
-    '3035': '智原',
+_DYNAMIC_CACHE_PATH = os.path.join(_CACHE_DIR, 'tw_stock_names_v1.pkl')
+_DYNAMIC_CACHE_TTL  = 24  # 小時
 
-    # 面板雙雄
-    '2409': '友達',
-    '3481': '群創',
-
-    # 電子五哥與 AI 供應鏈
-    '2382': '廣達',
-    '2357': '華碩',
-    '2356': '英業達',
-    '3231': '緯創',
-    '2324': '仁寶',
-    '2376': '技嘉',
-    '6669': '緯穎',
-    '2368': '金像電',
-    '3665': '貿聯-KY',
-
-    # 散熱與設備
-    '3017': '奇鋐',
-    '3324': '雙鴻',
-    '2360': '致茂',
-
-    # 金融股
-    '2881': '富邦金',
-    '2882': '國泰金',
-    '2886': '兆豐金',
-    '2887': '台新新光金',
-    '2891': '中信金',
-    '2892': '第一金',
-    '2884': '玉山金',
-    '2885': '元大金',
-    '2883': '凱基金',
-    '2890': '永豐金',
-    '5880': '合庫金',
-    '6005': '群益證',
-
-    # 傳產與重電綠能
-    '1301': '台塑',
-    '1303': '南亞',
-    '1326': '台化',
-    '2002': '中鋼',
-    '1513': '中興電',
-    '1519': '華城',
-    '1503': '士電',
-    '1504': '東元',
-
-    # 生技醫療
-    '4142': '國光生',
-    '6547': '高端疫苗',
-
-    # 航運三雄
-    '2603': '長榮',
-    '2609': '陽明',
-    '2615': '萬海',
-
-    # 電子零組件與光學
-    '2308': '台達電',
-    '2327': '國巨',
-    '2301': '光寶科',
-    '2383': '台光電',
-    '3533': '嘉澤',
-    '3008': '大立光',
-
-    # 工業電腦
-    '3416': '融程電',
-    '6414': '樺漢',
-    '3706': '神達',
-    '2471': '資通',
-
-    # 記憶體/儲存
-    '2408': '南亞科',
-    '3260': '威剛',
-    '5347': '世界',
-
-    # 半導體製造/封測
-    '6770': '力積電',
-    '6239': '力成',
-    '2344': '華邦電',
-    '2337': '旺宏',
-    '6146': '耕興',
-    '2351': '順德',
-    '3037': '欣興',
-    '2367': '燿華',
-    '6533': '晶心科',
-
-    # AI/伺服器/雲端
-    '6488': '環球晶',
-    '6269': '台郡',
-    '4966': '譜瑞-KY',
-    '6515': '穎崴',
-    '6573': '虎門',
-
-    # 通訊/其他科技
-    '2412': '中華電',
-    '2377': '微星',
-    '2395': '研華',
-    '2379': '瑞昱',
-    '3045': '台灣大',
-    '4904': '遠傳',
-    '2912': '統一超',
-    '2207': '和泰車',
-    '2049': '上銀',
-    '1590': '亞德客-KY',
-    '2385': '群光',
-    '3044': '健鼎',
-    '1476': '儒鴻',
-    '1477': '聚陽',
-    '9910': '豐泰',
-    '2542': '興富發',
-    '3081': '聯亞',
-
-    # ── 股票型 ETF ──────────────────────────────
-    '0050':   '元大台灣50',
-    '0056':   '元大高股息',
-    '006208': '富邦台50',
-    '00878':  '國泰永續高股息',
-    '00919':  '群益台灣精選高息',
-    '00929':  '復華台灣科技優息',
-    '00940':  '元大台灣價值高息',
-    '00713':  '元大台灣高息低波',
-    '00881':  '國泰台灣5G+',
-    '00888':  '國泰台灣ESG永續',
-    '00733':  '富邦台灣中小',
-    '00757':  '統一FANG+',
-    '00830':  '國泰費城半導體',
-    '00851':  '台新臺灣智慧能源',
-    '00900':  '富邦特選高股息30',
-
-    # ── 債券/固定收益 ETF（含字母後綴）────────────
-    '00720B': '元大投資級公司債',
-    '00725B': '國泰投資級公司債',
-    '00726B': '元大10年IG銀行債',
-    '00751B': '元大美債20年',
-    '00779B': '凱基新興市場債',
-    '00780B': '富邦全球投等債',
-    '00782B': '中信高評級公司債',
-    '00883B': '國泰20年美債',
-    '00931B': '兆豐投資級公司債',
-    '00932B': '兆豐中信投資級公司債',
-    '00933B': '國泰10Y+金融債',
-    '00982A': '中信優先金融債',
-    '00933':  '國泰10Y+金融債',
-    '00965B': '復華美債20年',
+# ── 靜態備援字典（常用股，動態快取失敗時使用）────────────────
+_STATIC_NAMES = {
+    '2330': '台積電', '2454': '聯發科', '2317': '鴻海', '2382': '廣達',
+    '2308': '台達電', '2303': '聯電', '2882': '國泰金', '2881': '富邦金',
+    '2886': '兆豐金', '2891': '中信金', '2603': '長榮', '2609': '陽明',
+    '2615': '萬海', '3711': '日月光投控', '2357': '華碩', '2376': '技嘉',
+    '6669': '緯穎', '3017': '奇鋐', '6770': '力積電', '6239': '力成',
+    '2344': '華邦電', '2337': '旺宏', '3034': '聯詠', '5274': '信驊',
+    '3661': '世芯-KY', '2409': '友達', '3481': '群創', '2327': '國巨',
+    '2301': '光寶科', '3008': '大立光', '2412': '中華電', '2379': '瑞昱',
+    '1301': '台塑', '1303': '南亞', '2002': '中鋼', '1519': '華城',
+    '2884': '玉山金', '2885': '元大金', '2890': '永豐金', '5880': '合庫金',
+    '2383': '台光電', '3533': '嘉澤', '6488': '環球晶', '6269': '台郡',
+    '2049': '上銀', '1590': '亞德客-KY', '2207': '和泰車',
+    # ETF
+    '0050': '元大台灣50', '0056': '元大高股息', '006208': '富邦台50',
+    '00878': '國泰永續高股息', '00919': '群益台灣精選高息',
+    '00929': '復華台灣科技優息', '00940': '元大台灣價值高息',
+    '00713': '元大台灣高息低波', '00982A': '中信優先金融債',
+    '00720B': '元大投資級公司債', '00751B': '元大美債20年',
 }
 
 
+# ── 動態快取：TWSE + TPEx OpenAPI ───────────────────────────
+def _load_dynamic_cache() -> dict:
+    """從磁碟讀取動態名稱快取（未過期才用）"""
+    if os.path.exists(_DYNAMIC_CACHE_PATH):
+        age_h = (datetime.datetime.now().timestamp()
+                 - os.path.getmtime(_DYNAMIC_CACHE_PATH)) / 3600
+        if age_h < _DYNAMIC_CACHE_TTL:
+            try:
+                with open(_DYNAMIC_CACHE_PATH, 'rb') as f:
+                    return pickle.load(f)
+            except Exception:
+                pass
+    return {}
+
+
+def _save_dynamic_cache(name_dict: dict) -> None:
+    try:
+        with open(_DYNAMIC_CACHE_PATH, 'wb') as f:
+            pickle.dump(name_dict, f)
+    except Exception:
+        pass
+
+
+def _build_dynamic_name_cache() -> dict:
+    """從 TWSE + TPEx 免費 OpenAPI 抓取全市場股票名稱。
+    回傳 {股票代碼: 中文名稱} dict。"""
+    HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+    result = {}
+
+    # 1. TWSE 上市（含ETF）
+    _twse_urls = [
+        'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_AVG_ALL',
+        'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',
+    ]
+    for _url in _twse_urls:
+        try:
+            r = requests.get(_url, headers=HDR, timeout=12)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    for item in data:
+                        code = str(item.get('Code', item.get('公司代號', ''))).strip()
+                        name = str(item.get('Name', item.get('公司簡稱', ''))).strip()
+                        if code and name and code not in result:
+                            result[code] = name
+                    print(f'[股名快取] TWSE {_url.split("/")[-1]}: {len(result)} 筆')
+                    if len(result) > 100:
+                        break  # 第一個 URL 就夠就不再試
+        except Exception as e:
+            print(f'[股名快取] TWSE 抓取失敗: {e}')
+
+    # 2. TPEx 上櫃
+    try:
+        r2 = requests.get(
+            'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
+            headers=HDR, timeout=12)
+        if r2.status_code == 200:
+            data2 = r2.json()
+            if isinstance(data2, list):
+                before = len(result)
+                for item in data2:
+                    code = str(item.get('SecuritiesCompanyCode', '')).strip()
+                    name = str(item.get('CompanyName', '')).strip()
+                    if code and name and code not in result:
+                        result[code] = name
+                print(f'[股名快取] TPEx: +{len(result)-before} 筆')
+    except Exception as e:
+        print(f'[股名快取] TPEx 抓取失敗: {e}')
+
+    # 3. 合併靜態備援（不覆蓋動態結果）
+    for k, v in _STATIC_NAMES.items():
+        if k not in result:
+            result[k] = v
+
+    return result
+
+
+# 啟動時嘗試載入快取（不阻塞，快取失敗靜默）
+_dynamic_cache: dict = _load_dynamic_cache()
+
+
+def _ensure_cache() -> dict:
+    """確保動態快取存在；若空白或過期則重新抓取。"""
+    global _dynamic_cache
+    if not _dynamic_cache:
+        _dynamic_cache = _build_dynamic_name_cache()
+        if _dynamic_cache:
+            _save_dynamic_cache(_dynamic_cache)
+    return _dynamic_cache
+
+
 def get_stock_name(stock_id: str) -> str:
-    """根據股票代碼取得中文名稱，多層備援"""
-    name = TAIWAN_STOCK_NAMES.get(stock_id)
-    if name:
-        return name
-    # yfinance 動態備援（僅在靜態字典找不到時觸發，會快取結果）
+    """根據股票代碼取得中文名稱。
+    優先級：動態快取（TWSE/TPEx）> 靜態字典 > yfinance > 代碼本身
+    """
+    # 1. 動態快取
+    cache = _ensure_cache()
+    if stock_id in cache:
+        return cache[stock_id]
+
+    # 2. 靜態備援
+    if stock_id in _STATIC_NAMES:
+        return _STATIC_NAMES[stock_id]
+
+    # 3. yfinance 最終備援（慢，僅在前兩層都失敗時觸發）
     try:
         import yfinance as yf
         for suffix in ['.TW', '.TWO']:
-            _tk = yf.Ticker(f'{stock_id}{suffix}')
-            _info = _tk.fast_info
+            _info = yf.Ticker(f'{stock_id}{suffix}').fast_info
             _n = getattr(_info, 'company_name', None)
             if _n and _n not in (f'{stock_id}{suffix}', stock_id, ''):
+                # 存入動態快取供下次使用
+                _dynamic_cache[stock_id] = _n
                 return _n
     except Exception:
         pass
-    return stock_id  # 最終 fallback：回傳代碼本身
+
+    return stock_id  # 最終 fallback
+
+
+def refresh_name_cache() -> int:
+    """強制重新抓取並更新快取。回傳新快取大小。"""
+    global _dynamic_cache
+    _dynamic_cache = _build_dynamic_name_cache()
+    _save_dynamic_cache(_dynamic_cache)
+    return len(_dynamic_cache)
