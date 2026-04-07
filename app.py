@@ -3086,6 +3086,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     else:
         _t6c = '技術股數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t6a = ''; _t6_ind = '費半+美股科技'
     st.markdown(teacher_conclusion('蔡森', _t6_ind, _t6c, _t6a), unsafe_allow_html=True)
+    tc_list = list(TECH_MAP.keys())
     tr1=st.columns(4); tr2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
     for i,(col,name) in enumerate(zip(tr1,tc_list[:4])):
         with col: st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
