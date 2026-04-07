@@ -970,6 +970,20 @@ class StockDataLoader:
                     df_quarterly['毛利率'] = float('nan')
                     print("⚠️ 無法找到毛利/成本欄位，毛利率將顯示空值")
 
+            # ===== 5b) EPS：每股盈餘 =====
+            eps_col = None
+            for col in df_pivot.columns:
+                c = str(col)
+                if any(k in c for k in ['每股盈餘', '基本每股', 'EPS']) or re.search(r"basic\s*eps|earnings\s*per\s*share", c, re.I):
+                    eps_col = col
+                    break
+            if eps_col is not None:
+                print(f"✓ EPS 欄位: {eps_col}")
+                df_quarterly['EPS'] = pd.to_numeric(df_pivot[eps_col], errors='coerce')
+            else:
+                df_quarterly['EPS'] = float('nan')
+                print("⚠️ 無法找到 EPS 欄位")
+
             # ===== 6) 清洗與排序 =====
             df_quarterly = df_quarterly.dropna(subset=['營收']).copy()
             # ✅ 金融股：允許負數營收（投資損失等）；一般公司：過濾負數

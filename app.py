@@ -4711,7 +4711,7 @@ with tab3_compare:
             except Exception: pass
             _eps3 = _gp3 = None
             if _qtr3 is not None and not _qtr3.empty:
-                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
+                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper() or '每股盈餘' in str(c)), None)
                 _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
                 if _ec3:
                     _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
