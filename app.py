@@ -4698,7 +4698,18 @@ with tab3_compare:
                 else:          return '🔴 等待', '#f85149'
 
             st.markdown('#### ⑤ 最終綜合建議')
-            st.markdown(teacher_conclusion('宏爺', '健康+多因子+357三重確認', '三項皆過關才值得積極布局', '≥7分=積極，4-6=觀察，<4=等待'), unsafe_allow_html=True)
+            # 動態：計算積極/觀察/等待各有幾支
+            _rec_counts = {'積極': 0, '觀察': 0, '等待': 0}
+            for _rr in results_t3:
+                _rl, _ = _final_rec(_rr); _rec_counts[_rl.split()[-1]] = _rec_counts.get(_rl.split()[-1], 0) + 1
+            _active_n = _rec_counts.get('積極', 0); _wait_n = _rec_counts.get('等待', 0)
+            if _active_n >= 2:
+                _r5c = f'本批 {_active_n} 支達積極布局條件'; _r5a = '可同步建倉，停損設健康度跌破50'
+            elif _active_n == 1:
+                _r5c = f'僅 1 支達積極條件，其餘觀察或等待'; _r5a = '單一標的建倉，其餘等訊號確認'
+            else:
+                _r5c = f'本批無積極訊號（{_wait_n} 支等待），市場擇股難度高'; _r5a = '空手等待，勿強求進場'
+            st.markdown(teacher_conclusion('宏爺', f'健康+多因子+357三重確認，共 {len(results_t3)} 支', _r5c, _r5a), unsafe_allow_html=True)
             rec_cols = st.columns(min(len(results_t3), 5))
             for ci, row in enumerate(results_t3[:5]):
                 rec_label, rec_color = _final_rec(row)
@@ -4724,7 +4735,18 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                 'RS': r.get('rs_score',50),
             } for r in score_t3]).sort_values('總分', ascending=False)
             st.markdown('##### 📈 多因子維度對比')
-            st.markdown(teacher_conclusion('朱家泓', 'RS相對強度', 'RS向上=強勢股，優先選擇', '趨勢+動能>70分是主力鎖定訊號'), unsafe_allow_html=True)
+            # 動態：找出 RS 最高與 RS 向上的股票
+            _rs_top = _sdf.iloc[0] if not _sdf.empty else None
+            _rs_up_pre = [r['stock_id'] for r in score_t3 if r.get('rs_up')]
+            if _rs_top is not None and _rs_up_pre:
+                _rs27c = f'RS 最強 {_rs_top["代碼"]}（{_rs_top["RS"]:.0f}分），{len(_rs_up_pre)} 支 RS 向上'
+                _rs27a = '優先佈局 RS 向上標的，動能最強'
+            elif _rs_top is not None:
+                _rs27c = f'RS 最強 {_rs_top["代碼"]}（{_rs_top["RS"]:.0f}分），無 RS 向上訊號'
+                _rs27a = '等待突破，趨勢+動能>70再行動'
+            else:
+                _rs27c = 'RS 資料計算中'; _rs27a = '等待資料載入後判斷'
+            st.markdown(teacher_conclusion('朱家泓', 'RS相對強度對比', _rs27c, _rs27a), unsafe_allow_html=True)
             _score_pivot = _sdf.head(5).set_index('代碼')[['趨勢','動能','籌碼','量價','RS']]
             st.dataframe(_score_pivot, use_container_width=True,
                 column_config={c: st.column_config.ProgressColumn(c, min_value=0, max_value=100, format='%.0f')
@@ -4741,7 +4763,15 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         with col_left:
             st.markdown('##### ③ 多因子評分排行')
             st.caption('趨勢×0.30 + 動能×0.25 + 籌碼×0.20 + 量價×0.15 + 風險×0.10')
-            st.markdown(teacher_conclusion('孫慶龍', '多因子總分', '基本面+技術面同步確認', '總分≥70才列入候選'), unsafe_allow_html=True)
+            # 動態：找出最高分與門檻達標數
+            _top_score_r = max(score_t3, key=lambda r: r.get('total', 0)) if score_t3 else None
+            _pass70 = [r for r in score_t3 if r.get('total', 0) >= 70]
+            if _top_score_r:
+                _mf3c = f'最高分 {_top_score_r["stock_id"]} {_top_score_r.get("total",0):.0f}分，{len(_pass70)}/{len(score_t3)} 支≥70分'
+                _mf3a = '≥70分方可列入候選，其餘繼續觀察'
+            else:
+                _mf3c = '多因子資料計算中'; _mf3a = '等待評分載入'
+            st.markdown(teacher_conclusion('孫慶龍', '多因子總分排行', _mf3c, _mf3a), unsafe_allow_html=True)
             if score_t3:
                 from scoring_engine import rank_stocks as _rk3
                 _ranked3 = _rk3(score_t3)
@@ -4772,7 +4802,17 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         with col_right:
             st.markdown('##### ④ 汰弱留強明細')
             st.caption('健康度 · 357評價 · VCP · KD · RSI')
-            st.markdown(teacher_conclusion('弘爺', '汰弱留強', '同時滿足技術+基本面才留下', '健康度<50或357超貴→直接淘汰'), unsafe_allow_html=True)
+            # 動態：計算被淘汰（健康度<50 或 357超貴）的數量
+            _elim_n = sum(1 for r in results_t3
+                          if r.get('健康度', 100) < 50 or '超貴' in str(r.get('357評價', '')))
+            _keep_n = len(results_t3) - _elim_n
+            if _elim_n > 0:
+                _e4c = f'{_elim_n} 支被淘汰（健康<50 或 357超貴），剩 {_keep_n} 支候選'
+                _e4a = '只看留下的 {_keep_n} 支，被淘汰直接跳過'.format(_keep_n=_keep_n)
+            else:
+                _e4c = f'本批 {len(results_t3)} 支全數通過汰弱篩選'
+                _e4a = '品質整齊，可從多因子排行取前2~3支'
+            st.markdown(teacher_conclusion('弘爺', f'汰弱留強（共 {len(results_t3)} 支）', _e4c, _e4a), unsafe_allow_html=True)
             if results_t3:
                 _elim_rows = []
                 for _r3 in results_t3:
@@ -4801,7 +4841,8 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         # ── 完整AI綜合分析 ──────────────────────────────────────
         if score_t3 and results_t3:
             st.markdown('#### 🤖 完整AI投資決策分析')
-            st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', 'AI綜合三師判讀', '技術+籌碼+基本面三重過濾後的最終結論', ''), unsafe_allow_html=True)
+            _ai_top_ids = ', '.join(r.get('stock_id','') for r in sorted(score_t3, key=lambda x: x.get('total',0), reverse=True)[:3])
+            st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', f'AI綜合判讀（前3：{_ai_top_ids}）', '技術+籌碼+基本面三重過濾後的最終結論', '點擊下方按鈕生成'), unsafe_allow_html=True)
             _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id','') for r in results_t3[:5]))
             _ai_cached = st.session_state.get(_ai_cache_key, '')
             if _ai_cached:
