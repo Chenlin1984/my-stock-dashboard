@@ -4473,40 +4473,61 @@ with tab3_compare:
         results_t3  = t3_data['results']
         score_t3    = t3_data['score_t3']
         risk_alerts = t3_data.get('risk_alerts', [])
-        ai_txt      = ''  # AI summary moved to bottom unified panel
+
+        # ── 預先計算基本面（③④⑤ 共用）─────────────────────────
+        _fund_map = {}
+        for _r3 in results_t3:
+            _sid3 = _r3.get('stock_id', _r3.get('代碼',''))
+            _qtr3 = None
+            try: _qtr3, _ = fetch_quarterly(_sid3)
+            except Exception: pass
+            _avg3 = None
+            try: _avg3, _, _ = fetch_dividend_data(_sid3)
+            except Exception: pass
+            _eps3 = _gp3 = None
+            if _qtr3 is not None and not _qtr3.empty:
+                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
+                _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
+                if _ec3:
+                    _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
+                    if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
+                if _gc3:
+                    _gs3 = pd.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
+                    if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
+            _fund_map[_sid3] = {
+                '近4季EPS': f'{_eps3:.2f}' if _eps3 is not None else '-',
+                '毛利率%':  f'{_gp3:.1f}'  if _gp3  is not None else '-',
+                '殖利率%':  f'{_avg3:.1f}' if _avg3  is not None else '-',
+            }
 
         # ── ⑤ 最終綜合建議卡 ──────────────────────────────────
         if results_t3:
-            # 建立代碼 → 多因子分數對照表
             score_map = {s['stock_id']: s for s in score_t3}
 
             def _final_rec(row):
-                """合併健康度 + 多因子 + 357 → 最終建議"""
-                health  = row.get('_health', 0)
-                val     = row.get('_val', '')
-                trend   = row.get('_trend', '')
-                sf      = score_map.get(row['stock_id'], {})
-                mf_total = sf.get('total', 0)
-
+                health   = row.get('_health', 0)
+                val      = row.get('_val', '')
+                trend    = row.get('_trend', '')
+                mf_total = score_map.get(row['stock_id'], {}).get('total', 0)
                 pts = 0
-                if health >= 80:           pts += 3
-                elif health >= 50:         pts += 1
-                if mf_total >= 75:         pts += 3
-                elif mf_total >= 55:       pts += 1
-                if '便宜' in val:          pts += 2
-                elif '合理' in val:        pts += 1
-                if '多頭' in trend:        pts += 1
-
+                if health >= 80:     pts += 3
+                elif health >= 50:   pts += 1
+                if mf_total >= 75:   pts += 3
+                elif mf_total >= 55: pts += 1
+                if '便宜' in val:    pts += 2
+                elif '合理' in val:  pts += 1
+                if '多頭' in trend:  pts += 1
                 if pts >= 7:   return '🟢 積極', '#3fb950'
                 elif pts >= 4: return '🟡 觀察', '#d29922'
                 else:          return '🔴 等待', '#f85149'
 
             st.markdown('#### ⑤ 最終綜合建議')
+            st.markdown(teacher_conclusion('宏爺', '健康+多因子+357三重確認', '三項皆過關才值得積極布局', '≥7分=積極，4-6=觀察，<4=等待'), unsafe_allow_html=True)
             rec_cols = st.columns(min(len(results_t3), 5))
             for ci, row in enumerate(results_t3[:5]):
                 rec_label, rec_color = _final_rec(row)
-                sf2 = score_map.get(row['stock_id'], {})
-                mf2 = sf2.get('total', 0)
+                mf2 = score_map.get(row['stock_id'], {}).get('total', 0)
+                _fd2 = _fund_map.get(row['stock_id'], {})
                 with rec_cols[ci]:
                     st.markdown(f"""<div style="background:#0d1117;border:2px solid {rec_color};
 border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
@@ -4514,91 +4535,81 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
 <div style="font-size:11px;color:#8b949e;">{row['名稱']}</div>
 <div style="font-size:13px;font-weight:700;color:{rec_color};margin:6px 0;">{rec_label}</div>
 <div style="font-size:11px;color:#8b949e;">健康:{row.get('健康度',0):.0f} | 多因子:{mf2:.0f}</div>
-<div style="font-size:11px;color:#8b949e;">{row.get('357評價','-')} | {row.get('趨勢','-')}</div>
+<div style="font-size:11px;color:#8b949e;">EPS:{_fd2.get('近4季EPS','-')} | 毛利:{_fd2.get('毛利率%','-')}%</div>
 </div>""", unsafe_allow_html=True)
 
-        # ── 評分走勢圖（多因子評分趨勢）────────────────────────
+        # ── RS 走勢對比 ─────────────────────────────────────────
         if score_t3 and len(score_t3) >= 2:
             st.markdown('---')
-            st.markdown('##### 📈 評分趨勢對比（多因子各維度）')
             _sdf = pd.DataFrame([{
-                '代碼': r['stock_id'],
-                '名稱': r.get('stock_name','')[:4],
-                '總分': r.get('total',0),
-                '趨勢': r.get('trend',0),
-                '動能': r.get('momentum',0),
-                '籌碼': r.get('chip',0),
-                '量價': r.get('volume',0),
-                'RS':   r.get('rs_score',50),
+                '代碼': r['stock_id'], '總分': r.get('total',0),
+                '趨勢': r.get('trend',0), '動能': r.get('momentum',0),
+                '籌碼': r.get('chip',0), '量價': r.get('volume',0),
+                'RS': r.get('rs_score',50),
             } for r in score_t3]).sort_values('總分', ascending=False)
-
-            # 雷達/橫條圖
-            # 評分對比表（改用 dataframe，減少 JS chunk）
+            st.markdown('##### 📈 多因子維度對比')
+            st.markdown(teacher_conclusion('朱家泓', 'RS相對強度', 'RS向上=強勢股，優先選擇', '趨勢+動能>70分是主力鎖定訊號'), unsafe_allow_html=True)
             _score_pivot = _sdf.head(5).set_index('代碼')[['趨勢','動能','籌碼','量價','RS']]
             st.dataframe(_score_pivot, use_container_width=True,
                 column_config={c: st.column_config.ProgressColumn(c, min_value=0, max_value=100, format='%.0f')
                                for c in ['趨勢','動能','籌碼','量價','RS']})
-
-            # RS 向上標記
             _rs_up_list = [r['stock_id'] for r in score_t3 if r.get('rs_up')]
             if _rs_up_list:
                 st.success(f"📊 RS曲線向上（強勢動能）：{' / '.join(_rs_up_list)}")
 
         st.markdown('---')
 
-        # ── ③+④ 雙欄：多因子排行 vs 汰弱留強明細 ──────────────
+        # ── ③+④ 雙欄：多因子排行（含EPS/毛利率）vs 汰弱留強 ──
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
             st.markdown('##### ③ 多因子評分排行')
             st.caption('趨勢×0.30 + 動能×0.25 + 籌碼×0.20 + 量價×0.15 + 風險×0.10')
+            st.markdown(teacher_conclusion('孫慶龍', '多因子總分', '基本面+技術面同步確認', '總分≥70才列入候選'), unsafe_allow_html=True)
             if score_t3:
-                render_top_rankings(score_t3, top_n=len(score_t3))
+                from scoring_engine import rank_stocks as _rk3
+                _ranked3 = _rk3(score_t3)
+                _rank_rows = []
+                for _ri, _r in enumerate(_ranked3):
+                    _sid_r = _r.get('stock_id','')
+                    _fd = _fund_map.get(_sid_r, {})
+                    _rank_rows.append({
+                        '排名': _ri + 1, '代碼': _sid_r,
+                        '名稱': (_r.get('stock_name','') or '')[:6],
+                        '總分': _r.get('total', 0),
+                        '近4季EPS': _fd.get('近4季EPS', '-'),
+                        '毛利率%':  _fd.get('毛利率%',  '-'),
+                        '殖利率%':  _fd.get('殖利率%',  '-'),
+                        '評級': _r.get('grade', '-'),
+                    })
+                _rank_df = pd.DataFrame(_rank_rows)
+                st.dataframe(_rank_df, use_container_width=True, hide_index=True,
+                             column_config={
+                                 '總分':     st.column_config.ProgressColumn('總分', min_value=0, max_value=100, format='%.1f'),
+                                 '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
+                                 '毛利率%':  st.column_config.TextColumn('毛利率%'),
+                                 '殖利率%':  st.column_config.TextColumn('殖利率%'),
+                             })
             else:
                 st.info('多因子評分資料載入中')
 
         with col_right:
             st.markdown('##### ④ 汰弱留強明細')
             st.caption('健康度 · 357評價 · VCP · KD · RSI')
+            st.markdown(teacher_conclusion('弘爺', '汰弱留強', '同時滿足技術+基本面才留下', '健康度<50或357超貴→直接淘汰'), unsafe_allow_html=True)
             if results_t3:
-                df_cmp = (pd.DataFrame([{k: v for k, v in r.items()
-                                          if not k.startswith('_') and k != 'stock_id'}
-                                         for r in results_t3])
-                            .sort_values('舊評分', ascending=False))
-                # 基本面比較欄位（從 session 取 t3 快取補充）
-                _t3_fund_rows = []
+                _elim_rows = []
                 for _r3 in results_t3:
                     _sid3 = _r3.get('stock_id', _r3.get('代碼',''))
-                    _qtr3 = None
-                    try:
-                        _qtr3, _ = fetch_quarterly(_sid3)
-                    except Exception: pass
-                    _avg3, _, _ = fetch_dividend_data(_sid3) if _sid3 else (None, None, None)
-                    _eps3 = _gp3 = _div3 = None
-                    if _qtr3 is not None and not _qtr3.empty:
-                        _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
-                        _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
-                        import pandas as _pd3
-                        if _ec3:
-                            _es3 = _pd3.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
-                            if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
-                        if _gc3:
-                            _gs3 = _pd3.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
-                            if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
-                    _t3_fund_rows.append({**_r3,
-                        '近4季EPS': _eps3 if _eps3 else '-',
-                        '毛利率%': f'{_gp3:.1f}' if _gp3 else '-',
-                        '殖利率%': f'{_avg3:.1f}' if _avg3 else '-',
-                    })
-                df_cmp = (pd.DataFrame([{k: v for k, v in r.items()
-                                          if not k.startswith('_') and k != 'stock_id'}
-                                         for r in _t3_fund_rows])
-                            .sort_values('舊評分', ascending=False))
+                    _row = {k: v for k, v in _r3.items() if not k.startswith('_') and k != 'stock_id'}
+                    _row.update(_fund_map.get(_sid3, {}))
+                    _elim_rows.append(_row)
+                df_cmp = pd.DataFrame(_elim_rows).sort_values('舊評分', ascending=False)
                 st.dataframe(df_cmp, use_container_width=True,
                              column_config={
                                  '健康度':   st.column_config.NumberColumn('健康度',  format='%d 🏥'),
                                  '舊評分':   st.column_config.NumberColumn('評分',    format='%d ⭐'),
-                                 '近4季EPS': st.column_config.TextColumn('近4季EPS'),
+                                 '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
                                  '毛利率%':  st.column_config.TextColumn('毛利率%'),
                                  '殖利率%':  st.column_config.TextColumn('殖利率%'),
                              })
@@ -4611,9 +4622,49 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             for alert in risk_alerts:
                 st.warning(alert)
 
-        # ── 每日報表文字版 ──────────────────────────────────────
-        if score_t3:
-            ranked_t3 = rank_stocks(score_t3)
+        # ── 完整AI綜合分析 ──────────────────────────────────────
+        if score_t3 and results_t3:
+            st.markdown('#### 🤖 完整AI投資決策分析')
+            st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', 'AI綜合三師判讀', '技術+籌碼+基本面三重過濾後的最終結論', ''), unsafe_allow_html=True)
+            _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id','') for r in results_t3[:5]))
+            _ai_cached = st.session_state.get(_ai_cache_key, '')
+            if _ai_cached:
+                st.markdown(_ai_cached)
+                if st.button('🔄 重新生成AI分析', key='t3_ai_regen'):
+                    st.session_state.pop(_ai_cache_key, None)
+                    st.rerun()
+            else:
+                if st.button('🤖 生成完整AI分析', key='t3_ai_gen', type='primary'):
+                    from scoring_engine import rank_stocks as _rk3ai
+                    _top3 = _rk3ai(score_t3)[:3]
+                    _ai_lines = []
+                    for _r in _top3:
+                        _sid = _r.get('stock_id','')
+                        _fd  = _fund_map.get(_sid, {})
+                        _ht  = next((x.get('_health',0) for x in results_t3 if x.get('stock_id')==_sid), 0)
+                        _ai_lines.append(
+                            f"- {_sid}({_r.get('stock_name','')}) 總分{_r.get('total',0):.0f}分 "
+                            f"健康度{_ht:.0f} EPS={_fd.get('近4季EPS','-')} "
+                            f"毛利={_fd.get('毛利率%','-')}% 殖利率={_fd.get('殖利率%','-')}%"
+                        )
+                    _mkt_reg = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+                    _reg_txt = '多頭' if _mkt_reg == 'bull' else ('空頭' if _mkt_reg == 'bear' else '震盪')
+                    _ai_prompt = (
+                        f"你是宏爺、孫慶龍、朱家泓三位老師的AI助手，以台灣股市實戰語氣分析以下多因子前三名：\n"
+                        f"{chr(10).join(_ai_lines)}\n"
+                        f"大盤：{_reg_txt}格局\n\n"
+                        f"請依序回答（每段不超過60字，像老師WhatsApp群組的風格）：\n"
+                        f"① 最值得關注的一檔及原因\n"
+                        f"② 具體進場條件（技術面確認訊號）\n"
+                        f"③ 停損設定（一句話）\n"
+                        f"④ 風控提醒（一句話）"
+                    )
+                    with st.spinner('AI分析中...'):
+                        _ai_result = gemini_call(_ai_prompt, max_tokens=600)
+                    st.session_state[_ai_cache_key] = _ai_result
+                    st.markdown(_ai_result)
+                else:
+                    st.caption('點擊上方按鈕生成完整AI投資決策分析')
     
 # ══════════════════════════════════════════════════════════════
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
