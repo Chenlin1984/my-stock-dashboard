@@ -663,30 +663,50 @@ def render_etf_portfolio(gemini_fn=None):
     } for r in rows])
     st.dataframe(overview_df, use_container_width=True, hide_index=True)
 
-    # ── 再平衡交易指令 ────────────────────────────────────────
+    # ── 再平衡交易指令（含具體股數）────────────────────────────
     st.markdown('#### ⚖️ 再平衡交易指令')
+    # 抓取現價以計算股數
+    _cur_prices = {}
+    with st.spinner('取得現價...'):
+        for r in rows:
+            try:
+                _df_tmp = fetch_etf_price(r['ticker'], period='5d')
+                _cur_prices[r['ticker']] = float(_df_tmp['Close'].iloc[-1]) if not _df_tmp.empty else 0
+            except Exception:
+                _cur_prices[r['ticker']] = 0
+
     rebal_actions = []
     for r in rows:
         if abs(r['deviation']) > tolerance:
             target_val = total_value * r['target_pct'] / 100
             adj        = target_val - r['current_value']
             action     = '買進' if adj > 0 else '賣出'
+            cur_price  = _cur_prices.get(r['ticker'], 0)
+            shares     = int(abs(adj) / cur_price) if cur_price > 0 else 0
             rebal_actions.append({
                 'ETF': r['ticker'], '動作': action,
                 '金額(元)': abs(adj), '偏離度%': r['deviation'],
+                '現價': cur_price, '建議股數': shares,
             })
 
     if rebal_actions:
-        ra_df = pd.DataFrame([{'ETF': a['ETF'], '動作': a['動作'],
-                                '金額(元)': f'{a["金額(元)"]:,.0f}',
-                                '偏離度%': a['偏離度%']} for a in rebal_actions])
+        ra_df = pd.DataFrame([{
+            'ETF':    a['ETF'],
+            '動作':   a['動作'],
+            '現價':   f'{a["現價"]:.2f}' if a['現價'] > 0 else '-',
+            '建議股數': f'{a["建議股數"]:,}' if a['建議股數'] > 0 else '-',
+            '金額(元)': f'{a["金額(元)"]:,.0f}',
+            '偏離度%': a['偏離度%'],
+        } for a in rebal_actions])
         st.dataframe(ra_df, use_container_width=True, hide_index=True)
         for act in rebal_actions:
             color = 'green' if act['動作'] == '買進' else 'red'
             icon  = '📈' if act['動作'] == '買進' else '📉'
+            _share_txt = (f'約 <b>{act["建議股數"]:,} 股</b>（現價 {act["現價"]:.2f} 元）'
+                          if act['建議股數'] > 0 else '（無法取得現價）')
             _colored_box(
-                f'{icon} <b>{act["動作"]} {act["ETF"]}</b> 共 '
-                f'<b>{act["金額(元)"]:,.0f} 元</b>（偏離 {act["偏離度%"]:+.1f}%）',
+                f'{icon} <b>{act["動作"]} {act["ETF"]}</b> {_share_txt}，'
+                f'預估金額 <b>{act["金額(元)"]:,.0f} 元</b>（偏離 {act["偏離度%"]:+.1f}%）',
                 color)
     else:
         _colored_box(f'✅ 所有標的偏離度均在 ±{tolerance}% 內，無需再平衡', 'green')
@@ -743,6 +763,137 @@ def render_etf_portfolio(gemini_fn=None):
         f'組合預估總虧損：<b>{total_stress:,.0f} 元</b>（{loss_pct:.1f}%）'
         + ('&nbsp; ⚠️ 超過20%，建議增加避險部位' if loss_pct > 20 else '&nbsp; ✅ 風險可控'),
         color)
+
+    # ── VaR 風險值（歷史模擬法 + 參數法）────────────────────────
+    st.markdown('#### 📉 VaR 風險值（Value at Risk）')
+    st.caption('衡量正常市況下單日最大可能虧損：歷史模擬法取近1年最差分位數，參數法假設常態分布')
+    _var_rets = {}
+    with st.spinner('計算 VaR...'):
+        for r in rows:
+            _df_v = fetch_etf_price(r['ticker'], period='1y')
+            if not _df_v.empty:
+                _var_rets[r['ticker']] = _df_v['Close'].pct_change().dropna()
+    if len(_var_rets) >= 1:
+        # 組合日報酬（加權合并）
+        _all_idx = sorted(set().union(*[s.index for s in _var_rets.values()]))
+        _port_ret = pd.Series(0.0, index=_all_idx)
+        for r in rows:
+            if r['ticker'] in _var_rets:
+                _w = r['actual_pct'] / 100
+                _port_ret = _port_ret.add(
+                    _var_rets[r['ticker']].reindex(_all_idx).ffill().fillna(0) * _w)
+        _port_ret = _port_ret.dropna()
+        if len(_port_ret) >= 20:
+            # 歷史模擬法
+            _h95 = float(_port_ret.quantile(0.05)) * total_value
+            _h99 = float(_port_ret.quantile(0.01)) * total_value
+            # 參數法
+            _mu  = float(_port_ret.mean())
+            _sig = float(_port_ret.std())
+            _p95 = (_mu - 1.645 * _sig) * total_value
+            _p99 = (_mu - 2.326 * _sig) * total_value
+            # 月度 VaR（√21 近似）
+            _m99 = _h99 * (21 ** 0.5)
+
+            _vc1, _vc2 = st.columns(2)
+            with _vc1:
+                st.markdown('**📊 歷史模擬法**')
+                st.metric('95% 日 VaR', f'{abs(_h95):,.0f} 元',
+                          f'{abs(_h95)/total_value*100:.2f}% 組合市值')
+                st.metric('99% 日 VaR', f'{abs(_h99):,.0f} 元',
+                          f'{abs(_h99)/total_value*100:.2f}% 組合市值')
+                st.caption('95% VaR：正常市況下100天中，95天的虧損不超過此值')
+            with _vc2:
+                st.markdown('**📐 參數法（常態分布）**')
+                st.metric('95% 日 VaR', f'{abs(_p95):,.0f} 元',
+                          f'{abs(_p95)/total_value*100:.2f}% 組合市值')
+                st.metric('99% 日 VaR', f'{abs(_p99):,.0f} 元',
+                          f'{abs(_p99)/total_value*100:.2f}% 組合市值')
+                st.caption('金融市場有肥尾效應，歷史模擬法通常比參數法更保守')
+            _var_warn = abs(_m99) / total_value > 0.10
+            _colored_box(
+                f'📅 月度 99% VaR（√21 近似）：<b>{abs(_m99):,.0f} 元</b>'
+                f'（{abs(_m99)/total_value*100:.2f}%）'
+                + ('&nbsp; ⚠️ 超過10%，尾部風險偏高，建議增加防禦部位'
+                   if _var_warn else '&nbsp; ✅ 月度尾部風險在可接受範圍內'),
+                'red' if _var_warn else 'green')
+        else:
+            st.warning('歷史資料不足（<20筆），無法計算 VaR')
+    else:
+        st.warning('無法取得價格資料，跳過 VaR 計算')
+
+    # ── 配息日曆 × 年度現金流預估 ──────────────────────────────
+    st.markdown('#### 💰 配息日曆 × 年度現金流預估')
+    st.caption('依過去12個月配息紀錄 × 持有股數（市值/現價）推估未來現金流入')
+    _div_data = []
+    _monthly_cf = {m: 0.0 for m in range(1, 13)}
+    with st.spinner('抓取配息資料...'):
+        for r in rows:
+            _div_s  = fetch_etf_dividends(r['ticker'])
+            _price  = _cur_prices.get(r['ticker'], 0)
+            _shares = int(r['current_value'] / _price) if _price > 0 else 0
+            if _div_s.empty or _shares == 0:
+                continue
+            _cutoff  = pd.Timestamp.now() - pd.DateOffset(years=1)
+            _recent  = _div_s[_div_s.index >= _cutoff]
+            if _recent.empty:
+                continue
+            _annual_per_share = float(_recent.sum())
+            _n_pay = len(_recent)
+            _est_income = _annual_per_share * _shares
+            _div_data.append({
+                'ETF': r['ticker'],
+                '持有股數': _shares,
+                '近1年每股配息': round(_annual_per_share, 4),
+                '預估年收入(元)': round(_est_income),
+                '配息次數/年': _n_pay,
+            })
+            # 月度分配（依歷史配息月份）
+            _pay_months = sorted(set(_recent.index.month.tolist()))
+            for _m in _pay_months:
+                _month_div = float(_recent[_recent.index.month == _m].sum()) * _shares
+                _monthly_cf[_m] = _monthly_cf.get(_m, 0) + _month_div
+
+    if _div_data:
+        _div_df = pd.DataFrame(_div_data)
+        _div_df['預估年收入(元)'] = _div_df['預估年收入(元)'].apply(lambda x: f'{x:,}')
+        st.dataframe(_div_df, use_container_width=True, hide_index=True)
+        _total_annual = sum(d['預估年收入(元)'].replace(',', '')
+                            if isinstance(d['預估年收入(元)'], str)
+                            else d['預估年收入(元)']
+                            for d in _div_data
+                            if isinstance(d.get('預估年收入(元)'), (int, float)))
+        # recalc from raw
+        _total_annual_raw = sum(
+            d['近1年每股配息'] * d['持有股數'] for d in _div_data)
+        _yoc = _total_annual_raw / total_value * 100 if total_value > 0 else 0
+        _colored_box(
+            f'💰 組合預估年度現金流入：<b>{_total_annual_raw:,.0f} 元</b>'
+            f'（組合殖利率 {_yoc:.2f}%）'
+            + ('&nbsp; ✅ 每年現金流穩定，適合存股策略'
+               if _yoc >= 3 else '&nbsp; 🟡 殖利率偏低，可考慮增加高息ETF比例'),
+            'green' if _yoc >= 3 else 'yellow')
+
+        # 月度現金流長條圖
+        import plotly.graph_objects as _go_div
+        _fig_div = _go_div.Figure(_go_div.Bar(
+            x=[f'{m}月' for m in range(1, 13)],
+            y=[_monthly_cf[m] for m in range(1, 13)],
+            marker_color='#3fb950',
+            text=[f'{_monthly_cf[m]:,.0f}' if _monthly_cf[m] > 0 else ''
+                  for m in range(1, 13)],
+            textposition='auto',
+        ))
+        _fig_div.update_layout(
+            title='未來12個月預估配息現金流（元，依歷史月份分配）',
+            template='plotly_dark', height=260,
+            paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+            margin=dict(l=0, r=0, t=32, b=0),
+            yaxis_title='配息金額（元）',
+        )
+        st.plotly_chart(_fig_div, use_container_width=True)
+    else:
+        st.info('⏳ 配息資料無法取得（可能為非配息型ETF或yfinance資料限制）')
 
     # 存入 session_state
     st.session_state['etf_portfolio_data'] = {
@@ -996,6 +1147,34 @@ def render_etf_backtest(gemini_fn=None):
     c3.metric('年化波動率',   f'{vol:.2f}%')
     c4.metric('夏普值',       f'{sharpe:.2f}')
     c5.metric('最大回撤',     f'{mdd:.1f}%')
+
+    # ── 績效評級總結卡（老師標準）──────────────────────────────
+    _grade_pts = 0
+    if cagr >= 10:   _grade_pts += 3
+    elif cagr >= 6:  _grade_pts += 2
+    elif cagr >= 3:  _grade_pts += 1
+    if sharpe >= 1.0:  _grade_pts += 3
+    elif sharpe >= 0.5: _grade_pts += 1
+    if abs(mdd) <= 10: _grade_pts += 3
+    elif abs(mdd) <= 20: _grade_pts += 1
+    _grade_label = ('⭐⭐⭐ 優秀' if _grade_pts >= 7 else
+                    '⭐⭐ 良好' if _grade_pts >= 4 else '⭐ 普通')
+    _grade_color = ('#3fb950' if _grade_pts >= 7 else
+                    '#d29922' if _grade_pts >= 4 else '#f85149')
+    _sharpe_note = ('夏普值≥1.0，承擔風險有充分補償' if sharpe >= 1.0 else
+                    '夏普值<0.5，波動大但報酬低，需檢視配置' if sharpe < 0.5 else
+                    '夏普值介於0.5-1.0，風險報酬比尚可')
+    _mdd_note = ('最大回撤≤10%，心理壓力小，適合長期持有' if abs(mdd) <= 10 else
+                 '最大回撤>20%，空頭時需有足夠心理準備' if abs(mdd) > 20 else
+                 '最大回撤10-20%，合理範圍，按計畫執行')
+    st.markdown(
+        f'<div style="background:#0d1117;border:2px solid {_grade_color};border-radius:10px;'
+        f'padding:12px 16px;margin:10px 0;">'
+        f'<div style="font-size:16px;font-weight:900;color:{_grade_color};">📊 績效評級：{_grade_label}</div>'
+        f'<div style="font-size:12px;color:#c9d1d9;margin-top:6px;">'
+        f'CAGR {cagr:.2f}% | 夏普值 {sharpe:.2f} | 最大回撤 {mdd:.1f}%</div>'
+        f'<div style="font-size:11px;color:#8b949e;margin-top:4px;">💡 {_sharpe_note} ／ {_mdd_note}</div>'
+        f'</div>', unsafe_allow_html=True)
 
     # ── 個別 ETF 績效 ─────────────────────────────────────────
     st.markdown('#### 📋 個別 ETF 績效')
