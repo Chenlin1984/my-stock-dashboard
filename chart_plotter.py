@@ -178,6 +178,7 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
         ), row=2, col=1)
 
     # ========== 外資 ==========
+    _no_inst_data = '外資' not in df.columns and '投信' not in df.columns
     if '外資' in df.columns:
         f_colors = ['#da3633' if v > 0 else ('#2ea043' if v < 0 else '#388bfd') for v in df['外資']]
         fig.add_trace(go.Bar(
@@ -187,6 +188,13 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
             marker_color=f_colors,
             showlegend=False
         ), row=3, col=1)
+    else:
+        fig.add_annotation(
+            text='⏰ 三大法人資料待更新（需 FinMind 授權或收盤後）',
+            xref='x3 domain', yref='y3 domain',
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=11, color='#484f58'), align='center'
+        )
 
     # ========== 投信 ==========
     if '投信' in df.columns:
@@ -198,6 +206,13 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
             marker_color=t_colors,
             showlegend=False
         ), row=4, col=1)
+    else:
+        fig.add_annotation(
+            text='⏰ 投信資料待更新',
+            xref='x4 domain', yref='y4 domain',
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=11, color='#484f58'), align='center'
+        )
 
     # ========== 主力15日累計 + 融資 ==========
     if '主力合計' in df.columns:
