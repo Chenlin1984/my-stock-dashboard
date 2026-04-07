@@ -1206,16 +1206,17 @@ st.markdown(
     '<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;">'    '<span style="font-size:22px;font-weight:900;color:#e6edf3;">&#128202; 台股 AI 戰情室</span>'    '<span style="font-size:10px;color:#484f58;background:#161b22;border-radius:10px;padding:2px 8px;">v4.0 Pro</span>'    '</div>',
     unsafe_allow_html=True)
 
-tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health = st.tabs([
+tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health, tab4_masters = st.tabs([
     '🌍 總經',
     '🗺️ 熱力板塊',
     '🔬 台股',
     '🏦 ETF',
     '🔎 資料診斷',
+    '📚 策略手冊',
 ])
 with tab_stock_grp:
-    tab2_stock, tab3_compare, tab4_masters = st.tabs([
-        '🔬 個股分析', '🏆 比較 × 排行', '📚 策略手冊',
+    tab2_stock, tab3_compare = st.tabs([
+        '🔬 個股分析', '🏆 比較 × 排行',
     ])
 with tab_etf_grp:
     tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
@@ -1448,7 +1449,7 @@ border-radius:12px;padding:14px;text-align:center;">
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">🌍 ① 今日市場總覽</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">🌍 今日市場總覽</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">決定：現在能買嗎？大盤水位？</span>
 </div>""", unsafe_allow_html=True)
     st.markdown(
@@ -2211,7 +2212,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.info('尚無足夠資料計算拐點，請點擊「更新全部總經數據」')
 
             # 拐點參考表 → 已移至 Tab5 策略手冊
-            st.caption('📖 拐點判斷參考表 → 詳見 ⑤ 策略手冊')
+            st.caption('📖 拐點判斷參考表 → 詳見「策略手冊」Tab')
 
     elif not cd:
         with _mkt_placeholder.container():
@@ -2246,7 +2247,21 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     tech_s = {n:calc_stats(s) for n,s in tech.items()}
 
     st.markdown(section_header('一','🌍 國際市場動態（影響台股的全球指標）','🌐'), unsafe_allow_html=True)
-    ci = st.columns(5)
+    _sox1 = intl_s.get('費城半導體 SOX'); _dji1 = intl_s.get('道瓊工業 DJI')
+    if _sox1 and _dji1:
+        _sp = _sox1.get('pct', 0); _dp = _dji1.get('pct', 0)
+        if _sp > 1 and _dp > 0:
+            _i1c = f'費半+道瓊同步上漲（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日可偏多'; _i1a = '科技股+台積電可持有'
+        elif _sp < -2 or _dp < -2:
+            _i1c = f'美股重挫（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日開低機率高'; _i1a = '謹慎減倉，等待止跌訊號'
+        elif _sp < 0 and _dp < 0:
+            _i1c = f'美股雙跌（SOX {_sp:+.1f}%），台股偏空謹慎'; _i1a = '觀望，不追高'
+        else:
+            _i1c = f'費半 {_sp:+.1f}%，走勢分化，方向未定'; _i1a = '等待費半方向確認再行動'
+        _i1_ind = f'SOX {_sp:+.1f}% / DJI {_dp:+.1f}%'
+    else:
+        _i1c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _i1a = ''; _i1_ind = '費半+道瓊'
+    st.markdown(teacher_conclusion('宏爺', _i1_ind, _i1c, _i1a), unsafe_allow_html=True)
     for col,(name,unit) in zip(ci,INTL_UNIT.items()):
         with col: st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
     idx_d = {k:v for k,v in intl.items() if k in ['道瓊工業 DJI','納斯達克 IXIC','費城半導體 SOX']}
@@ -2278,7 +2293,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
-    tc = st.columns(2)
+    _twii2 = tw_s.get('台股加權指數'); _twd2 = tw_s.get('新台幣匯率')
+    if _twii2 and _twd2:
+        _tp = _twii2.get('pct', 0); _fp = _twd2.get('pct', 0)
+        if _tp > 0 and _fp < 0:
+            _t2c = f'台股漲 {_tp:+.1f}% + 台幣升值，外資匯入，確認多頭'; _t2a = '可持股或小幅加碼'
+        elif _tp > 0 and _fp >= 0:
+            _t2c = f'台股漲 {_tp:+.1f}% 但台幣貶值，疑似外資拉高出貨'; _t2a = '不追高，謹慎觀察'
+        elif _tp < 0 and _fp < 0:
+            _t2c = f'台股跌 {_tp:+.1f}% 但台幣升值，可能為技術回調非外資逃跑'; _t2a = '等待止跌訊號，勿貿然抄底'
+        else:
+            _t2c = f'台股跌 {_tp:+.1f}% + 台幣貶值，資金外逃，偏空格局'; _t2a = '降低持倉，保護本金'
+        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}% | 台幣 {_twd2.get("last",0):.2f}'
+    elif _twii2:
+        _tp = _twii2.get('pct', 0)
+        _t2c = f'台股 {_tp:+.1f}%，{"偏多" if _tp > 0 else "偏空"}'; _t2a = '參考其他指標確認方向'
+        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}%'
+    else:
+        _t2c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t2a = ''; _t2_ind = '台股加權 + 台幣'
+    st.markdown(teacher_conclusion('宏爺', _t2_ind, _t2c, _t2a), unsafe_allow_html=True)
     for col,(name,unit) in zip(tc,TW_UNIT.items()):
         with col: st.markdown(stat_card(name,tw_s.get(name),unit,name in tw_s),unsafe_allow_html=True)
     tw1,tw2 = st.columns(2)
@@ -2393,6 +2426,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # 保留 v3_20_7：build_leading_fast 執行緒機制 / 宏爺結論面板
     # ════════════════════════════════════════════════════════════════════
     st.markdown(section_header('四','核心大戶動向：外資「先行指標」','🎯'),unsafe_allow_html=True)
+    _li4 = st.session_state.get('li_latest')
+    if _li4 is not None and not _li4.empty:
+        _fut4 = (float(_li4.iloc[-1].get('外資大小', 0)) if '外資大小' in _li4.columns else None)
+        _pcr4 = (float(_li4.iloc[-1].get('選PCR', 0)) if '選PCR' in _li4.columns else None)
+        if _fut4 is not None:
+            if _fut4 < -30000:
+                _l4c = f'外資期貨空單 {abs(_fut4):,.0f}口 > 3萬，啟動強制防禦'; _l4a = '強制減倉至20%以下，等待空單回補'
+            elif _fut4 < -10000:
+                _l4c = f'外資期貨偏空 {_fut4:,.0f}口，保守操作'; _l4a = '減少新買入，守好現有部位'
+            elif _fut4 > 10000:
+                _l4c = f'外資期貨留多 {_fut4:,.0f}口，法人看多'; _l4a = '可積極持股，跟隨外資方向'
+            else:
+                _l4c = f'外資期貨淨部位 {_fut4:,.0f}口，中性'; _l4a = '謹慎觀望，方向待確認'
+            _pcr_txt = f' | PCR {_pcr4:.1f}' if _pcr4 else ''
+            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_pcr_txt}'
+        else:
+            _l4c = '先行指標欄位異常，請確認 FinMind Token'; _l4a = ''; _l4_ind = '外資期貨留倉'
+    else:
+        _l4c = '先行指標尚未載入，請點擊「🔄 更新全部總經數據」'; _l4a = ''; _l4_ind = '外資期貨留倉'
+    st.markdown(teacher_conclusion('宏爺', _l4_ind, _l4c, _l4a), unsafe_allow_html=True)
 
     # ── 副標籤：欄位確認列（v12 風格）─────────────────────────────────
     st.markdown("""<div style="font-size:11px;color:#484f58;margin:-6px 0 10px 0;">
@@ -2682,6 +2735,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
     st.markdown('<div style="font-size:10px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">📊 市場廣度</div>', unsafe_allow_html=True)
     st.markdown(section_header('五','📊 全市場健康度 × 騰落指標（ADL）','📉'),unsafe_allow_html=True)
+    _adl5 = st.session_state.get('cl_data', {}).get('adl')
+    _mkt5 = st.session_state.get('mkt_info', {})
+    if _adl5 is not None and not _adl5.empty:
+        _ac5 = next((c for c in _adl5.columns if 'adl' in c.lower()), _adl5.columns[0])
+        _adl_vals5 = _adl5[_ac5].dropna().tail(5)
+        _adl_up5 = (len(_adl_vals5) >= 2 and float(_adl_vals5.iloc[-1]) > float(_adl_vals5.iloc[0]))
+        _twii_p5 = _mkt5.get('台股加權指數', {}).get('pct', 0) if isinstance(_mkt5.get('台股加權指數'), dict) else 0
+        if _adl_up5 and _twii_p5 > 0:
+            _a5c = '廣泛多頭：ADL↑+指數↑，市場健康，全面性上漲'; _a5a = '可積極持股'
+        elif not _adl_up5 and _twii_p5 > 0:
+            _a5c = '⚠️ 背離警訊：指數漲但ADL↓，行情由少數權值股撐，不可追'; _a5a = '謹慎，不追高，等待廣度改善'
+        elif _adl_up5 and _twii_p5 < 0:
+            _a5c = 'ADL↑但指數跌，廣度健康，或為技術回調非崩盤'; _a5a = '可留意回調後逢低布局'
+        else:
+            _a5c = '廣泛賣壓：ADL↓+指數↓，空頭格局，降低部位'; _a5a = '降低持倉，保護本金'
+        _a5_ind = f'ADL近5日{"↑上升" if _adl_up5 else "↓下降"}'
+    else:
+        _a5c = 'ADL數據尚未載入，請點擊「🔄 更新全部總經數據」'; _a5a = ''; _a5_ind = 'ADL騰落線'
+    st.markdown(teacher_conclusion('宏爺', _a5_ind, _a5c, _a5a), unsafe_allow_html=True)
     st.caption('💡 衡量「多少股票真的在漲」—— 分數越高 = 廣度越健康；ADL 趨勢 vs 指數是否背離是最重要的觀察點')
     # 如果是代理資料，顯示提示
     _adl_chk = st.session_state.get('cl_data',{}).get('adl')
@@ -2933,11 +3005,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     f'<div style="border-left:5px solid {_ac_c};background:#0d1117;'
                     f'padding:9px 14px;border-radius:0 8px 8px 0;margin:5px 0;">'
                     f'<span style="font-size:14px;font-weight:900;color:{_ac_c};">{_ac_dot} {_ac_clean}</span><br>'
-                    f'<span style="font-size:10px;color:#484f58;">詳細判讀 → ④ 策略手冊</span>'
+                    f'<span style="font-size:10px;color:#484f58;">詳細判讀 → 「策略手冊」Tab</span>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
-        st.caption('📖 ADL判讀方法 → 詳見 ④ 策略手冊')
+        st.caption('📖 ADL判讀方法 → 詳見「策略手冊」Tab')
 
     else:
         _adl_debug = st.session_state.get('adl_debug_msg', '')
@@ -2993,7 +3065,23 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
     st.markdown('<div style="font-size:10px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">🌐 國際市場</div>', unsafe_allow_html=True)
     st.markdown(section_header('六','🖥️ 美股科技巨頭（台股明天的風向球）','🖥️'),unsafe_allow_html=True)
-    tc_list = list(TECH_MAP.keys())
+    _sox6 = intl_s.get('費城半導體 SOX') or tech_s.get('費城半導體 SOX')
+    _nvda6 = next((tech_s[k] for k in tech_s if 'NVDA' in k or '輝達' in k), None)
+    if _sox6:
+        _sp6 = _sox6.get('pct', 0)
+        if _sp6 > 2:
+            _t6c = f'費半強漲 {_sp6:+.1f}%，明日台積電/聯發科可望跟漲'; _t6a = '科技類股可持有或加碼'
+        elif _sp6 > 0:
+            _t6c = f'費半小漲 {_sp6:+.1f}%，台股科技偏多但力道有限'; _t6a = '持有觀察，不急著追高'
+        elif _sp6 < -2:
+            _t6c = f'費半重挫 {_sp6:+.1f}%，明日台股科技開低機率高'; _t6a = '設好停損，避免隔日追殺'
+        else:
+            _t6c = f'費半小跌 {_sp6:+.1f}%，短線偏空但未破關鍵支撐'; _t6a = '觀望等待方向確認'
+        _nvda_txt = f' | NVDA {_nvda6.get("pct",0):+.1f}%' if _nvda6 else ''
+        _t6_ind = f'費半 SOX {_sp6:+.1f}%{_nvda_txt}'
+    else:
+        _t6c = '技術股數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t6a = ''; _t6_ind = '費半+美股科技'
+    st.markdown(teacher_conclusion('蔡森', _t6_ind, _t6c, _t6a), unsafe_allow_html=True)
     tr1=st.columns(4); tr2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
     for i,(col,name) in enumerate(zip(tr1,tc_list[:4])):
         with col: st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
@@ -3112,10 +3200,10 @@ with tab2_stock:
 • <b>趨勢向上還是向下？</b>（健康度評分）<br>
 • <b>大股東在買還是賣？</b>（法人籌碼）<br>
 • <b>什麼時候該進場、出場？</b>（進出場訊號）<br>
-💡 <b>建議：</b>先到②掃描找到候選股，再來這裡做最後確認。
+💡 <b>建議：</b>先到「比較 × 排行」掃描找到候選股，再來這裡做最後確認。
 </div></div>''', unsafe_allow_html=True)
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">🔬 ② 個股深度分析</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">🔬 個股深度分析</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">健康評分 · 357評價 · 領先指標 · VCP · 布林 · K線 · AI五維</span>
 </div>""", unsafe_allow_html=True)
 
@@ -3157,35 +3245,32 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
     if t2_run:
         sid2 = t2_sid or '2330'
         st.info(f'🌐 抓取 {sid2} 全方位數據...')
-        if True:  # noqa
-            df2, name2, err2 = fetch_price_data(sid2, t2_days)
-            avg_div2, yearly2, div_src2 = fetch_dividend_data(sid2)
-            cl2, cx2, _capex2, _cl_src2, _cx_src2, _, _fin_errs2 = fetch_financials(sid2, industry='')
-            rev2, _  = fetch_revenue(sid2)
-            qtr2, _  = fetch_quarterly(sid2)
-            rsi2     = calc_rsi(df2)
-            ibs2     = calc_ibs(df2)
-            vr2      = calc_volume_ratio(df2)
-            k2, d2   = calc_kd(df2)
-            bb2      = calc_bollinger(df2)
-            vcp2     = calc_vcp(df2)
-            health2, details2 = calc_health_score(df2, rsi2, ibs2, vr2, k2, d2, bb2)
-            cur_price2 = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
-            st.session_state['t2_data'] = {
-                'sid':sid2,'name':name2 or sid2,'df':df2,'err':err2,
-                'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
-                'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
-                'cl_src': _cl_src2 if '_cl_src2' in dir() else '',
-                'cx_src': _cx_src2 if '_cx_src2' in dir() else '',
-                'fin_errs': _fin_errs2 if '_fin_errs2' in dir() else [],
-                'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
-                'health':health2,'details':details2,'price':cur_price2,
-            }
-            # 快取最後一次成功抓到的月營收/季財報，供下次失敗時 fallback
-            if rev2 is not None and not rev2.empty:
-                st.session_state[f'_last_rev_{sid2}'] = rev2
-            if qtr2 is not None and not qtr2.empty:
-                st.session_state[f'_last_qtr_{sid2}'] = qtr2
+        df2, name2, err2 = fetch_price_data(sid2, t2_days)
+        avg_div2, yearly2, div_src2 = fetch_dividend_data(sid2)
+        cl2, cx2, _capex2, _cl_src2, _cx_src2, _, _fin_errs2 = fetch_financials(sid2, industry='')
+        rev2, _  = fetch_revenue(sid2)
+        qtr2, _  = fetch_quarterly(sid2)
+        rsi2     = calc_rsi(df2)
+        ibs2     = calc_ibs(df2)
+        vr2      = calc_volume_ratio(df2)
+        k2, d2   = calc_kd(df2)
+        bb2      = calc_bollinger(df2)
+        vcp2     = calc_vcp(df2)
+        health2, details2 = calc_health_score(df2, rsi2, ibs2, vr2, k2, d2, bb2)
+        cur_price2 = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
+        st.session_state['t2_data'] = {
+            'sid':sid2,'name':name2 or sid2,'df':df2,'err':err2,
+            'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
+            'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
+            'cl_src': _cl_src2,'cx_src': _cx_src2,'fin_errs': _fin_errs2,
+            'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
+            'health':health2,'details':details2,'price':cur_price2,
+        }
+        # 快取最後一次成功抓到的月營收/季財報，供下次失敗時 fallback
+        if rev2 is not None and not rev2.empty:
+            st.session_state[f'_last_rev_{sid2}'] = rev2
+        if qtr2 is not None and not qtr2.empty:
+            st.session_state[f'_last_qtr_{sid2}'] = qtr2
 
     t2d = st.session_state.get('t2_data')
     if not t2d:
@@ -3607,6 +3692,13 @@ padding:14px 18px;margin-bottom:12px;">
 
         # ══ A. 健康度評分 ══════════════════════════════════════
         st.markdown('#### 🏥 A. 個股健康度評分（0~100）')
+        if health2 >= 80:
+            _ha = f'健康度 {health2:.0f}分，技術面強勢'; _hb = '確認大盤方向後可建倉，停損設月線下方'
+        elif health2 >= 60:
+            _ha = f'健康度 {health2:.0f}分，中性偏多，尚未達進場標準'; _hb = '等待突破80分或放量突破前高再行動'
+        else:
+            _ha = f'健康度 {health2:.0f}分，技術面偏弱，跳過'; _hb = '不要強求，另找更好標的'
+        st.markdown(teacher_conclusion('宏爺', f'{sid2} 健康度 {health2:.0f}分', _ha, _hb), unsafe_allow_html=True)
         # 評分信心區間說明
         _score_help = (
             '<div style="background:#0a1628;border-left:3px solid #58a6ff;'
@@ -3692,7 +3784,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
 <div style="font-size:11px;color:#8b949e;margin-top:4px;">技術位置：{_price_pos} | RSI={rsi2} | 量比={vr2} | KD=K{k2}/D{d2}</div>
 </div>""", unsafe_allow_html=True)
 
-        st.caption('📖 評分標準與指標說明 → 詳見 ④ 策略手冊')
+        st.caption('📖 評分標準與指標說明 → 詳見「策略手冊」Tab')
 
 
         # ── v4.0 防守線 + 籌碼 + 套牢賣壓 ─────────────────────────────
@@ -3835,6 +3927,19 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
         # ══ B. 357 評價 ════════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 💰 B. 357殖利率評價 [孫慶龍]')
+        if avg_div2 > 0 and price2 > 0:
+            _cp2 = round(avg_div2/0.07, 1); _fp2 = round(avg_div2/0.05, 1); _dp2 = round(avg_div2/0.03, 1)
+            if price2 <= _cp2:
+                _ba = f'現價 {price2:.1f} ≤ 便宜價 {_cp2:.1f}（殖利率>7%），積極買進區'; _bb = '可大膽買進，股息都進口袋'
+            elif price2 <= _fp2:
+                _ba = f'現價 {price2:.1f} 在合理區 {_cp2:.1f}–{_fp2:.1f}（殖利率5-7%）'; _bb = '可分批布局，勿一次梭哈'
+            elif price2 <= _dp2:
+                _ba = f'現價 {price2:.1f} 在昂貴區 {_fp2:.1f}–{_dp2:.1f}（殖利率3-5%）'; _bb = '謹慎，等回調至合理價再進場'
+            else:
+                _ba = f'現價 {price2:.1f} > 昂貴價 {_dp2:.1f}（殖利率<3%），嚴禁追高'; _bb = '放下，等大跌再看'
+        else:
+            _ba = '無股利資料，無法套用357評價'; _bb = '以技術面健康度為主要判斷'
+        st.markdown(teacher_conclusion('孫慶龍', f'{sid2} 現價{price2:.1f} vs 357區間', _ba, _bb), unsafe_allow_html=True)
         if avg_div2 > 0:
             cheap2=round(avg_div2/0.07,1); fair2=round(avg_div2/0.05,1); dear2=round(avg_div2/0.03,1)
             if price2<=cheap2:   sig2,sc2='🟢便宜價 — 積極買進','#3fb950'
@@ -3913,6 +4018,15 @@ padding:12px 16px;margin:8px 0;">
         # ══ C. 領先指標 ════════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🔬 C. 公司真的在賺錢嗎？（財報領先指標）')
+        if cl2 and cl2 > 0 and cx2 and cx2 > 0:
+            _ca = f'合約負債 {cl2/1e8:.1f}億 + 資本支出 {cx2/1e8:.1f}億，雙重確認龍多股'; _cb = '基本面強勢，適合長期持有'
+        elif cl2 and cl2 > 0:
+            _ca = f'合約負債 {cl2/1e8:.1f}億（訂單豐沛），資本支出資料不足'; _cb = '基本面良好，但擴廠意願待確認'
+        elif cx2 and cx2 > 0:
+            _ca = f'資本支出 {cx2/1e8:.1f}億（積極擴產），合約負債資料不足'; _cb = '擴廠意願強，但訂單能見度待確認'
+        else:
+            _ca = '合約負債+資本支出均無資料（可能為金融股或資料源限制）'; _cb = '請至 MOPS 或年報查閱'
+        st.markdown(teacher_conclusion('孫慶龍', f'{sid2} 財報領先指標', _ca, _cb), unsafe_allow_html=True)
         st.markdown(
             '<div style="background:#0a1628;border-left:3px solid #bc8cff;padding:8px 12px;'
             'border-radius:0 6px 6px 0;margin-bottom:8px;font-size:12px;color:#c9d1d9;">'
@@ -3969,7 +4083,7 @@ padding:12px 16px;margin:8px 0;">
             f'padding:10px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
             f'<span style="font-size:12px;color:#8b949e;">🎓 孫慶龍 · 財報領先指標</span><br>'
             f'<span style="font-size:14px;font-weight:800;color:{_fin_color};">{_fin_label}</span><br>'
-            f'<span style="font-size:11px;color:#8b949e;">兩指標均高 = 龍多股首選；詳細門檻見 ④ 策略手冊</span>'
+            f'<span style="font-size:11px;color:#8b949e;">兩指標均高 = 龍多股首選；詳細門檻見「策略手冊」Tab</span>'
             f'</div>',
             unsafe_allow_html=True
         )
@@ -3977,6 +4091,21 @@ padding:12px 16px;margin:8px 0;">
         # ══ D. 月營收 + 季毛利率 ══════════════════════════════
         st.markdown('---')
         st.markdown('#### 📈 D. 公司每月賺多少錢？（營收趨勢）')
+        _d_ind = f'{sid2} 月營收YoY%'; _da = '月營收數據尚未載入'; _db = ''
+        if rev2 is not None and not rev2.empty and len(rev2) >= 3:
+            _yoy_col = next((c for c in rev2.columns if 'yoy' in str(c).lower() or '年增' in str(c) or 'YoY' in str(c)), None)
+            if _yoy_col:
+                _yoy3 = pd.to_numeric(rev2[_yoy_col].tail(3), errors='coerce').dropna()
+                if len(_yoy3) >= 2:
+                    _avg_y = float(_yoy3.mean()); _last_y = float(_yoy3.iloc[-1])
+                    _d_ind = f'{sid2} 近3月平均YoY {_avg_y:+.1f}%'
+                    if _avg_y > 15 and (_yoy3 > 0).all():
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%（最新 {_last_y:+.1f}%），業績爆發，重點關注'; _db = '配合技術面買點可進場'
+                    elif _avg_y > 0:
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%，溫和成長'; _db = '持續追蹤，等待加速跡象'
+                    else:
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%，業績衰退'; _db = '不管K線多好看，先觀望'
+        st.markdown(teacher_conclusion('孫慶龍', _d_ind, _da, _db), unsafe_allow_html=True)
         st.markdown(
             '<div style="background:#0a1628;border-left:3px solid #3fb950;padding:8px 12px;'
             'border-radius:0 6px 6px 0;margin-bottom:8px;font-size:12px;color:#c9d1d9;">'
@@ -4047,6 +4176,15 @@ padding:12px 16px;margin:8px 0;">
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🎯 E. VCP波幅收縮 + 布林通道')
+        if vcp2 and vcp2.get('contracting'):
+            _sw = vcp2.get('swings', [])
+            _ea = f'VCP確認收縮（{len(_sw)}波段），量能萎縮，等待帶量突破進場'; _eb = '突破前高且放量時買入，停損設前波低點'
+        elif vcp2:
+            _sw = vcp2.get('swings', [])
+            _ea = f'VCP尚未形成（{len(_sw)}波段），波動仍大，不宜進場'; _eb = '等待更多整理時間，耐心等候'
+        else:
+            _ea = '數據不足，VCP無法計算（需至少30日價格資料）'; _eb = ''
+        st.markdown(teacher_conclusion('朱家泓', f'{sid2} VCP型態', _ea, _eb), unsafe_allow_html=True)
         ec1,ec2=st.columns(2)
         with ec1:
             st.markdown('**VCP [Mark Minervini]**')
@@ -4117,6 +4255,26 @@ padding:12px 16px;margin:8px 0;">
         # ══ F. K線技術圖 ═══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 📊 F. K線技術圖表（含三大法人籌碼）')
+        _fa = f'{sid2} K線技術'; _fb_txt = ''; _fc_txt = ''
+        if df2 is not None and not df2.empty and len(df2) >= 20:
+            _p_now_f = float(df2['close'].iloc[-1])
+            _ma20_f  = float(df2['close'].rolling(20).mean().iloc[-1])
+            _cl_trend = '上漲' if float(df2['close'].iloc[-1]) > float(df2['close'].iloc[-5]) else '下跌'
+            _above_f = _p_now_f > _ma20_f
+            _inst_f = st.session_state.get('t2_inst', {})
+            _fnet_f = _inst_f.get('外資', 0) if _inst_f else 0
+            if _above_f and _fnet_f > 0:
+                _fb_txt = f'站上月線 + 外資買超，主力進駐訊號，可跟進'; _fc_txt = '停損設月線下方'
+            elif _above_f and _fnet_f < 0:
+                _fb_txt = f'站上月線但外資賣超，需謹慎確認主力方向'; _fc_txt = '等待外資轉買後再行動'
+            elif not _above_f and _fnet_f > 0:
+                _fb_txt = f'月線下方但外資買超，可能正在築底'; _fc_txt = '等待重回月線確認後再評估'
+            else:
+                _fb_txt = f'月線下方且外資賣超，趨勢偏空，暫時迴避'; _fc_txt = '等待更明確的多頭訊號'
+            _fa = f'{sid2} 現價{_p_now_f:.1f}（{"站月線" if _above_f else "跌月線"}）| 外資{"買超" if _fnet_f>0 else "賣超" if _fnet_f<0 else "中性"}'
+        else:
+            _fb_txt = '技術資料載入中，請先點擊「🔍 載入完整分析」'
+        st.markdown(teacher_conclusion('朱家泓', _fa, _fb_txt, _fc_txt), unsafe_allow_html=True)
         if df2 is not None and not df2.empty:
             fig_k = plot_combined_chart(df2, sid2, name2, show_ma_dict, k_line_type='還原K線' if t2_adjusted else '一般K線')
             st.plotly_chart(fig_k, use_container_width=True,
@@ -4196,6 +4354,22 @@ padding:12px 16px;margin:8px 0;">
 
         # ── 即時文字建議（Rule-based，不需 AI API）──────────────
         st.markdown('#### 💡 即時操作建議（規則引擎）')
+        _reg_op = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+        _sig_count = sum([
+            1 if health2 >= 80 else 0,
+            1 if _reg_op == 'bull' else 0,
+            1 if (vcp2 and vcp2.get('contracting')) else 0,
+            1 if (avg_div2 > 0 and price2 > 0 and price2 <= round(avg_div2/0.05, 1)) else 0,
+        ])
+        if _reg_op == 'bear':
+            _op_a = f'大盤空頭格局，{sid2} 無論評分多高，先降倉至20%以下'; _op_b = '市場趨勢優先，個股強不等於能賺錢'
+        elif _sig_count >= 3:
+            _op_a = f'{_sig_count}個訊號共振（健康度+大盤+VCP+估值），可積極進場'; _op_b = '分批建倉，停損設健康度跌破60'
+        elif _sig_count >= 2:
+            _op_a = f'{_sig_count}個訊號共振，中性偏多，可小倉試水溫'; _op_b = '輕倉試探，等待更多確認訊號'
+        else:
+            _op_a = f'只有{_sig_count}個訊號，條件不足，今日不操作 {sid2}'; _op_b = '耐心等待，寧可錯過勿強求'
+        st.markdown(teacher_conclusion('宏爺', f'{sid2} 共振訊號 {_sig_count}/4', _op_a, _op_b), unsafe_allow_html=True)
         try:
             _mkt_top_g = st.session_state.get('mkt_info', {})
             _m1b_top_g = st.session_state.get('m1b_m2_info', {})
@@ -4250,7 +4424,7 @@ padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
 # ══════════════════════════════════════════════════════════════
 with tab3_compare:
     st.markdown("""<div style="padding:6px 0 4px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">📊 ③ 比較 × 排行</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">📊 比較 × 排行</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">市場狀態 · 多股比較 · 多因子排行 · 汰弱留強 · 最終建議</span>
 </div>""", unsafe_allow_html=True)
 
@@ -4291,7 +4465,7 @@ with tab3_compare:
                 f'</div>', unsafe_allow_html=True)
         st.markdown('')
     else:
-        st.info('⏳ 請先到 ① 今日市場總覽 點擊「🔄 更新全部總經數據」取得最新大盤狀態')
+        st.info('⏳ 請先到「🌍 總經」Tab 點擊「🔄 更新全部總經數據」取得最新大盤狀態')
 
     # ══ ② 輸入多檔代碼 ══════════════════════════════════════════
     with st.container(border=True):
@@ -4359,8 +4533,8 @@ with tab3_compare:
                 _fin_st4= {}
 
                 price4  = float(df4['close'].iloc[-1]) if df4 is not None and not df4.empty else 0
-                ma20_4  = float(df4['MA20'].iloc[-1])  if df4 is not None and 'MA20'  in df4.columns else 0
-                ma100_4 = float(df4['MA100'].iloc[-1]) if df4 is not None and 'MA100' in df4.columns else 0
+                ma20_4  = float(df4['MA20'].iloc[-1])  if df4 is not None and 'MA20'  in df4.columns else None
+                ma100_4 = float(df4['MA100'].iloc[-1]) if df4 is not None and 'MA100' in df4.columns else None
                 rsi4    = calc_rsi(df4);  ibs4 = calc_ibs(df4)
                 vr4     = calc_volume_ratio(df4)
                 k4, d4  = calc_kd(df4);   bb4  = calc_bollinger(df4)
@@ -4368,10 +4542,11 @@ with tab3_compare:
                 health4, _ = calc_health_score(df4, rsi4, ibs4, vr4, k4, d4, bb4)
                 grade4, grade_color4, _, emoji4 = health_grade(health4)
 
-                if price4 > ma20_4 > ma100_4:   trend4 = '📈多頭'
-                elif price4 < ma20_4 < ma100_4:  trend4 = '📉空頭'
-                elif price4 > ma100_4:            trend4 = '📊多箱'
-                else:                             trend4 = '📊空箱'
+                if ma20_4 and ma100_4 and price4 > ma20_4 > ma100_4:   trend4 = '📈多頭'
+                elif ma20_4 and ma100_4 and price4 < ma20_4 < ma100_4:  trend4 = '📉空頭'
+                elif ma100_4 and price4 > ma100_4:                      trend4 = '📊多箱'
+                elif price4 > 0:                                         trend4 = '📊空箱'
+                else:                                                     trend4 = '⚪無資料'
 
                 val4 = '⚪無股利'
                 if avg_div4 > 0 and price4 > 0:
@@ -4474,40 +4649,72 @@ with tab3_compare:
         results_t3  = t3_data['results']
         score_t3    = t3_data['score_t3']
         risk_alerts = t3_data.get('risk_alerts', [])
-        ai_txt      = ''  # AI summary moved to bottom unified panel
+
+        # ── 預先計算基本面（③④⑤ 共用）─────────────────────────
+        _fund_map = {}
+        for _r3 in results_t3:
+            _sid3 = _r3.get('stock_id', _r3.get('代碼',''))
+            _qtr3 = None
+            try: _qtr3, _ = fetch_quarterly(_sid3)
+            except Exception: pass
+            _avg3 = None
+            try: _avg3, _, _ = fetch_dividend_data(_sid3)
+            except Exception: pass
+            _eps3 = _gp3 = None
+            if _qtr3 is not None and not _qtr3.empty:
+                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
+                _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
+                if _ec3:
+                    _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
+                    if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
+                if _gc3:
+                    _gs3 = pd.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
+                    if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
+            _fund_map[_sid3] = {
+                '近4季EPS': f'{_eps3:.2f}' if _eps3 is not None else '-',
+                '毛利率%':  f'{_gp3:.1f}'  if _gp3  is not None else '-',
+                '殖利率%':  f'{_avg3:.1f}' if _avg3  is not None else '-',
+            }
 
         # ── ⑤ 最終綜合建議卡 ──────────────────────────────────
         if results_t3:
-            # 建立代碼 → 多因子分數對照表
             score_map = {s['stock_id']: s for s in score_t3}
 
             def _final_rec(row):
-                """合併健康度 + 多因子 + 357 → 最終建議"""
-                health  = row.get('_health', 0)
-                val     = row.get('_val', '')
-                trend   = row.get('_trend', '')
-                sf      = score_map.get(row['stock_id'], {})
-                mf_total = sf.get('total', 0)
-
+                health   = row.get('_health', 0)
+                val      = row.get('_val', '')
+                trend    = row.get('_trend', '')
+                mf_total = score_map.get(row['stock_id'], {}).get('total', 0)
                 pts = 0
-                if health >= 80:           pts += 3
-                elif health >= 50:         pts += 1
-                if mf_total >= 75:         pts += 3
-                elif mf_total >= 55:       pts += 1
-                if '便宜' in val:          pts += 2
-                elif '合理' in val:        pts += 1
-                if '多頭' in trend:        pts += 1
-
+                if health >= 80:     pts += 3
+                elif health >= 50:   pts += 1
+                if mf_total >= 75:   pts += 3
+                elif mf_total >= 55: pts += 1
+                if '便宜' in val:    pts += 2
+                elif '合理' in val:  pts += 1
+                if '多頭' in trend:  pts += 1
                 if pts >= 7:   return '🟢 積極', '#3fb950'
                 elif pts >= 4: return '🟡 觀察', '#d29922'
                 else:          return '🔴 等待', '#f85149'
 
             st.markdown('#### ⑤ 最終綜合建議')
+            # 動態：計算積極/觀察/等待各有幾支
+            _rec_counts = {'積極': 0, '觀察': 0, '等待': 0}
+            for _rr in results_t3:
+                _rl, _ = _final_rec(_rr); _rec_counts[_rl.split()[-1]] = _rec_counts.get(_rl.split()[-1], 0) + 1
+            _active_n = _rec_counts.get('積極', 0); _wait_n = _rec_counts.get('等待', 0)
+            if _active_n >= 2:
+                _r5c = f'本批 {_active_n} 支達積極布局條件'; _r5a = '可同步建倉，停損設健康度跌破50'
+            elif _active_n == 1:
+                _r5c = f'僅 1 支達積極條件，其餘觀察或等待'; _r5a = '單一標的建倉，其餘等訊號確認'
+            else:
+                _r5c = f'本批無積極訊號（{_wait_n} 支等待），市場擇股難度高'; _r5a = '空手等待，勿強求進場'
+            st.markdown(teacher_conclusion('宏爺', f'健康+多因子+357三重確認，共 {len(results_t3)} 支', _r5c, _r5a), unsafe_allow_html=True)
             rec_cols = st.columns(min(len(results_t3), 5))
             for ci, row in enumerate(results_t3[:5]):
                 rec_label, rec_color = _final_rec(row)
-                sf2 = score_map.get(row['stock_id'], {})
-                mf2 = sf2.get('total', 0)
+                mf2 = score_map.get(row['stock_id'], {}).get('total', 0)
+                _fd2 = _fund_map.get(row['stock_id'], {})
                 with rec_cols[ci]:
                     st.markdown(f"""<div style="background:#0d1117;border:2px solid {rec_color};
 border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
@@ -4515,91 +4722,110 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
 <div style="font-size:11px;color:#8b949e;">{row['名稱']}</div>
 <div style="font-size:13px;font-weight:700;color:{rec_color};margin:6px 0;">{rec_label}</div>
 <div style="font-size:11px;color:#8b949e;">健康:{row.get('健康度',0):.0f} | 多因子:{mf2:.0f}</div>
-<div style="font-size:11px;color:#8b949e;">{row.get('357評價','-')} | {row.get('趨勢','-')}</div>
+<div style="font-size:11px;color:#8b949e;">EPS:{_fd2.get('近4季EPS','-')} | 毛利:{_fd2.get('毛利率%','-')}%</div>
 </div>""", unsafe_allow_html=True)
 
-        # ── 評分走勢圖（多因子評分趨勢）────────────────────────
+        # ── RS 走勢對比 ─────────────────────────────────────────
         if score_t3 and len(score_t3) >= 2:
             st.markdown('---')
-            st.markdown('##### 📈 評分趨勢對比（多因子各維度）')
             _sdf = pd.DataFrame([{
-                '代碼': r['stock_id'],
-                '名稱': r.get('stock_name','')[:4],
-                '總分': r.get('total',0),
-                '趨勢': r.get('trend',0),
-                '動能': r.get('momentum',0),
-                '籌碼': r.get('chip',0),
-                '量價': r.get('volume',0),
-                'RS':   r.get('rs_score',50),
+                '代碼': r['stock_id'], '總分': r.get('total',0),
+                '趨勢': r.get('trend',0), '動能': r.get('momentum',0),
+                '籌碼': r.get('chip',0), '量價': r.get('volume',0),
+                'RS': r.get('rs_score',50),
             } for r in score_t3]).sort_values('總分', ascending=False)
-
-            # 雷達/橫條圖
-            # 評分對比表（改用 dataframe，減少 JS chunk）
+            st.markdown('##### 📈 多因子維度對比')
+            # 動態：找出 RS 最高與 RS 向上的股票
+            _rs_top = _sdf.iloc[0] if not _sdf.empty else None
+            _rs_up_pre = [r['stock_id'] for r in score_t3 if r.get('rs_up')]
+            if _rs_top is not None and _rs_up_pre:
+                _rs27c = f'RS 最強 {_rs_top["代碼"]}（{_rs_top["RS"]:.0f}分），{len(_rs_up_pre)} 支 RS 向上'
+                _rs27a = '優先佈局 RS 向上標的，動能最強'
+            elif _rs_top is not None:
+                _rs27c = f'RS 最強 {_rs_top["代碼"]}（{_rs_top["RS"]:.0f}分），無 RS 向上訊號'
+                _rs27a = '等待突破，趨勢+動能>70再行動'
+            else:
+                _rs27c = 'RS 資料計算中'; _rs27a = '等待資料載入後判斷'
+            st.markdown(teacher_conclusion('朱家泓', 'RS相對強度對比', _rs27c, _rs27a), unsafe_allow_html=True)
             _score_pivot = _sdf.head(5).set_index('代碼')[['趨勢','動能','籌碼','量價','RS']]
             st.dataframe(_score_pivot, use_container_width=True,
                 column_config={c: st.column_config.ProgressColumn(c, min_value=0, max_value=100, format='%.0f')
                                for c in ['趨勢','動能','籌碼','量價','RS']})
-
-            # RS 向上標記
             _rs_up_list = [r['stock_id'] for r in score_t3 if r.get('rs_up')]
             if _rs_up_list:
                 st.success(f"📊 RS曲線向上（強勢動能）：{' / '.join(_rs_up_list)}")
 
         st.markdown('---')
 
-        # ── ③+④ 雙欄：多因子排行 vs 汰弱留強明細 ──────────────
+        # ── ③+④ 雙欄：多因子排行（含EPS/毛利率）vs 汰弱留強 ──
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
             st.markdown('##### ③ 多因子評分排行')
             st.caption('趨勢×0.30 + 動能×0.25 + 籌碼×0.20 + 量價×0.15 + 風險×0.10')
+            # 動態：找出最高分與門檻達標數
+            _top_score_r = max(score_t3, key=lambda r: r.get('total', 0)) if score_t3 else None
+            _pass70 = [r for r in score_t3 if r.get('total', 0) >= 70]
+            if _top_score_r:
+                _mf3c = f'最高分 {_top_score_r["stock_id"]} {_top_score_r.get("total",0):.0f}分，{len(_pass70)}/{len(score_t3)} 支≥70分'
+                _mf3a = '≥70分方可列入候選，其餘繼續觀察'
+            else:
+                _mf3c = '多因子資料計算中'; _mf3a = '等待評分載入'
+            st.markdown(teacher_conclusion('孫慶龍', '多因子總分排行', _mf3c, _mf3a), unsafe_allow_html=True)
             if score_t3:
-                render_top_rankings(score_t3, top_n=len(score_t3))
+                from scoring_engine import rank_stocks as _rk3
+                _ranked3 = _rk3(score_t3)
+                _rank_rows = []
+                for _ri, _r in enumerate(_ranked3):
+                    _sid_r = _r.get('stock_id','')
+                    _fd = _fund_map.get(_sid_r, {})
+                    _rank_rows.append({
+                        '排名': _ri + 1, '代碼': _sid_r,
+                        '名稱': (_r.get('stock_name','') or '')[:6],
+                        '總分': _r.get('total', 0),
+                        '近4季EPS': _fd.get('近4季EPS', '-'),
+                        '毛利率%':  _fd.get('毛利率%',  '-'),
+                        '殖利率%':  _fd.get('殖利率%',  '-'),
+                        '評級': _r.get('grade', '-'),
+                    })
+                _rank_df = pd.DataFrame(_rank_rows)
+                st.dataframe(_rank_df, use_container_width=True, hide_index=True,
+                             column_config={
+                                 '總分':     st.column_config.ProgressColumn('總分', min_value=0, max_value=100, format='%.1f'),
+                                 '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
+                                 '毛利率%':  st.column_config.TextColumn('毛利率%'),
+                                 '殖利率%':  st.column_config.TextColumn('殖利率%'),
+                             })
             else:
                 st.info('多因子評分資料載入中')
 
         with col_right:
             st.markdown('##### ④ 汰弱留強明細')
             st.caption('健康度 · 357評價 · VCP · KD · RSI')
+            # 動態：計算被淘汰（健康度<50 或 357超貴）的數量
+            _elim_n = sum(1 for r in results_t3
+                          if r.get('健康度', 100) < 50 or '超貴' in str(r.get('357評價', '')))
+            _keep_n = len(results_t3) - _elim_n
+            if _elim_n > 0:
+                _e4c = f'{_elim_n} 支被淘汰（健康<50 或 357超貴），剩 {_keep_n} 支候選'
+                _e4a = '只看留下的 {_keep_n} 支，被淘汰直接跳過'.format(_keep_n=_keep_n)
+            else:
+                _e4c = f'本批 {len(results_t3)} 支全數通過汰弱篩選'
+                _e4a = '品質整齊，可從多因子排行取前2~3支'
+            st.markdown(teacher_conclusion('弘爺', f'汰弱留強（共 {len(results_t3)} 支）', _e4c, _e4a), unsafe_allow_html=True)
             if results_t3:
-                df_cmp = (pd.DataFrame([{k: v for k, v in r.items()
-                                          if not k.startswith('_') and k != 'stock_id'}
-                                         for r in results_t3])
-                            .sort_values('舊評分', ascending=False))
-                # 基本面比較欄位（從 session 取 t3 快取補充）
-                _t3_fund_rows = []
+                _elim_rows = []
                 for _r3 in results_t3:
                     _sid3 = _r3.get('stock_id', _r3.get('代碼',''))
-                    _qtr3 = None
-                    try:
-                        _qtr3, _ = fetch_quarterly(_sid3)
-                    except Exception: pass
-                    _avg3, _, _ = fetch_dividend_data(_sid3) if _sid3 else (None, None, None)
-                    _eps3 = _gp3 = _div3 = None
-                    if _qtr3 is not None and not _qtr3.empty:
-                        _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
-                        _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
-                        import pandas as _pd3
-                        if _ec3:
-                            _es3 = _pd3.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
-                            if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
-                        if _gc3:
-                            _gs3 = _pd3.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
-                            if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
-                    _t3_fund_rows.append({**_r3,
-                        '近4季EPS': _eps3 if _eps3 else '-',
-                        '毛利率%': f'{_gp3:.1f}' if _gp3 else '-',
-                        '殖利率%': f'{_avg3:.1f}' if _avg3 else '-',
-                    })
-                df_cmp = (pd.DataFrame([{k: v for k, v in r.items()
-                                          if not k.startswith('_') and k != 'stock_id'}
-                                         for r in _t3_fund_rows])
-                            .sort_values('舊評分', ascending=False))
+                    _row = {k: v for k, v in _r3.items() if not k.startswith('_') and k != 'stock_id'}
+                    _row.update(_fund_map.get(_sid3, {}))
+                    _elim_rows.append(_row)
+                df_cmp = pd.DataFrame(_elim_rows).sort_values('舊評分', ascending=False)
                 st.dataframe(df_cmp, use_container_width=True,
                              column_config={
                                  '健康度':   st.column_config.NumberColumn('健康度',  format='%d 🏥'),
                                  '舊評分':   st.column_config.NumberColumn('評分',    format='%d ⭐'),
-                                 '近4季EPS': st.column_config.TextColumn('近4季EPS'),
+                                 '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
                                  '毛利率%':  st.column_config.TextColumn('毛利率%'),
                                  '殖利率%':  st.column_config.TextColumn('殖利率%'),
                              })
@@ -4612,9 +4838,50 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             for alert in risk_alerts:
                 st.warning(alert)
 
-        # ── 每日報表文字版 ──────────────────────────────────────
-        if score_t3:
-            ranked_t3 = rank_stocks(score_t3)
+        # ── 完整AI綜合分析 ──────────────────────────────────────
+        if score_t3 and results_t3:
+            st.markdown('#### 🤖 完整AI投資決策分析')
+            _ai_top_ids = ', '.join(r.get('stock_id','') for r in sorted(score_t3, key=lambda x: x.get('total',0), reverse=True)[:3])
+            st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', f'AI綜合判讀（前3：{_ai_top_ids}）', '技術+籌碼+基本面三重過濾後的最終結論', '點擊下方按鈕生成'), unsafe_allow_html=True)
+            _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id','') for r in results_t3[:5]))
+            _ai_cached = st.session_state.get(_ai_cache_key, '')
+            if _ai_cached:
+                st.markdown(_ai_cached)
+                if st.button('🔄 重新生成AI分析', key='t3_ai_regen'):
+                    st.session_state.pop(_ai_cache_key, None)
+                    st.rerun()
+            else:
+                if st.button('🤖 生成完整AI分析', key='t3_ai_gen', type='primary'):
+                    from scoring_engine import rank_stocks as _rk3ai
+                    _top3 = _rk3ai(score_t3)[:3]
+                    _ai_lines = []
+                    for _r in _top3:
+                        _sid = _r.get('stock_id','')
+                        _fd  = _fund_map.get(_sid, {})
+                        _ht  = next((x.get('_health',0) for x in results_t3 if x.get('stock_id')==_sid), 0)
+                        _ai_lines.append(
+                            f"- {_sid}({_r.get('stock_name','')}) 總分{_r.get('total',0):.0f}分 "
+                            f"健康度{_ht:.0f} EPS={_fd.get('近4季EPS','-')} "
+                            f"毛利={_fd.get('毛利率%','-')}% 殖利率={_fd.get('殖利率%','-')}%"
+                        )
+                    _mkt_reg = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+                    _reg_txt = '多頭' if _mkt_reg == 'bull' else ('空頭' if _mkt_reg == 'bear' else '震盪')
+                    _ai_prompt = (
+                        f"你是宏爺、孫慶龍、朱家泓三位老師的AI助手，以台灣股市實戰語氣分析以下多因子前三名：\n"
+                        f"{chr(10).join(_ai_lines)}\n"
+                        f"大盤：{_reg_txt}格局\n\n"
+                        f"請依序回答（每段不超過60字，像老師WhatsApp群組的風格）：\n"
+                        f"① 最值得關注的一檔及原因\n"
+                        f"② 具體進場條件（技術面確認訊號）\n"
+                        f"③ 停損設定（一句話）\n"
+                        f"④ 風控提醒（一句話）"
+                    )
+                    with st.spinner('AI分析中...'):
+                        _ai_result = gemini_call(_ai_prompt, max_tokens=600)
+                    st.session_state[_ai_cache_key] = _ai_result
+                    st.markdown(_ai_result)
+                else:
+                    st.caption('點擊上方按鈕生成完整AI投資決策分析')
     
 # ══════════════════════════════════════════════════════════════
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
@@ -4719,7 +4986,7 @@ with tab4_masters:
 <div style="background:#0a2818;border:1px solid #3fb950;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:12px;color:#c9d1d9;">
 💡 <b>搭配使用建議：</b>
 合約負債↑ + 資本支出↑ = 「今年訂單爆滿 + 老闆拚命擴廠」→ 這是最強的雙重買入訊號<br>
-在系統③個股分析 → 財報 C節 可看到這兩項數據
+在系統「🔬 個股分析」Tab → 財報 C節 可看到這兩項數據
 </div>
     ''', unsafe_allow_html=True)
     st.markdown('---')
@@ -4756,7 +5023,7 @@ with tab4_masters:
     st.markdown('---')
 
     st.markdown("""<div style="padding:6px 0 8px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">📚 ⑤ 策略手冊</span>
+<span style="font-size:20px;font-weight:900;color:#e6edf3;">📚 策略手冊</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">五大門派完整操作條件 — 層2/3 判斷結論的理論依據</span>
 </div>""", unsafe_allow_html=True)
 
