@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-07（SESSION 2 結束；ETF teacher_conclusion 待補）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-07（ETF teacher_conclusion 全面動態化完成）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -9,7 +9,7 @@
 | 檔案 | 一句話簡介 |
 |---|---|
 | `app.py` | 主 Streamlit UI，6 主 Tab（總經/熱力板塊/台股/ETF/資料診斷/策略手冊），共 5394 行 |
-| `etf_dashboard.py` | ETF AI 儀表板：Tab⑥~⑨ ETF分析 + Tab⑩資料健診 + Tab⑪產業熱力圖 |
+| `etf_dashboard.py` | ETF AI 儀表板：Tab⑥~⑨ ETF分析 + Tab⑩資料健診 + Tab⑪產業熱力圖，共 1800 行 |
 | `scoring_engine.py` | 多因子評分引擎（動態權重/VCP ATR/軋空加分），覆蓋率 91% |
 | `risk_control.py` | 單股停損停利 + 部位計算 + 組合風控（RiskController 類別） |
 | `config.py` | 全域設定：WEIGHT_TABLES（bull/neutral/bear 動態權重）+ 風控參數 |
@@ -86,12 +86,12 @@ ETF子Tab：ETF診斷 | ETF組合 | ETF回測 | ETF AI
 | 18 | **Module C** 配息日曆 | ✅ | 依歷史月份分配年化現金流 + Plotly 12個月長條圖 |
 | 20 | **老師結論全站補齊（靜態）** | ✅ | Tab1 §一二四五六 + Tab2 A-F+操作建議，共12節新增 teacher_conclusion 卡片 |
 | 21 | **老師結論全面動態化** | ✅ | 所有結論改為根據當下真實數據計算：費半漲跌%、台幣升貶、外資期貨口數、ADL走向、VCP波段、357區間、YoY%、訊號共振計數 |
+| 22 | **ETF dashboard 老師結論補齊** | ✅ | `etf_dashboard.py` 新增 `_teacher_conclusion()` + ETF診斷（郭俊宏/孫慶龍/春哥/宏爺×4節）、ETF組合（孫慶龍/弘爺/郭俊宏×3節）、ETF回測（春哥×1節）共 8 處動態卡片 |
 
 ## 待辦事項
 
 | 優先 | 項目 |
 |---|---|
-| 中 | `etf_dashboard.py` ETF診斷/組合/回測 各節補充 teacher_conclusion 動態卡片 |
 | 低 | PR #6 合併至 main（已建立，待 merge） |
 
 ---
