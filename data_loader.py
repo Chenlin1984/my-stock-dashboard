@@ -69,6 +69,16 @@ class StockDataLoader:
                         auto_adjust=True,
                         progress=False
                     )
+                    # 若 .TW 查無資料，嘗試 .TWO（上櫃股票）
+                    if df_yf_adj.empty:
+                        yf_symbol = f"{stock_id}.TWO"
+                        df_yf_adj = yf.download(
+                            yf_symbol,
+                            start=start_date,
+                            end=end_date + datetime.timedelta(days=1),
+                            auto_adjust=True,
+                            progress=False
+                        )
                     if not df_yf_adj.empty:
                         df_yf_adj = df_yf_adj.reset_index()
 
@@ -101,9 +111,12 @@ class StockDataLoader:
                 df_price = _self.dl.taiwan_stock_daily(stock_id=stock_id, start_date=start_str)
 
                 if df_price.empty:
-                    # Yahoo 備援
+                    # Yahoo 備援（先 .TW，再試 .TWO 上櫃）
                     yf_symbol = f"{stock_id}.TW"
                     df_yf = yf.download(yf_symbol, start=start_date, progress=False)
+                    if df_yf.empty:
+                        yf_symbol = f"{stock_id}.TWO"
+                        df_yf = yf.download(yf_symbol, start=start_date, progress=False)
                     if df_yf.empty:
                         return None, "❌ 查無資料", None
 

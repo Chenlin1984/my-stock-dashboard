@@ -4825,9 +4825,20 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     _row = {k: v for k, v in _r3.items() if not k.startswith('_') and k != 'stock_id'}
                     _row.update(_fund_map.get(_sid3, {}))
                     _elim_rows.append(_row)
-                df_cmp = pd.DataFrame(_elim_rows).sort_values('舊評分', ascending=False)
-                st.dataframe(df_cmp, use_container_width=True,
+                df_cmp = pd.DataFrame(_elim_rows).sort_values('舊評分', ascending=False).reset_index(drop=True)
+                # 確保名稱欄位存在
+                if '名稱' not in df_cmp.columns and '代碼' in df_cmp.columns:
+                    df_cmp.insert(0, '名稱', df_cmp['代碼'])
+                _col_order = [c for c in ['名稱','代碼','現價','操作狀態','健康度','評級','舊評分',
+                                           'RSI','KD','量比','IBS','趨勢','357評價','VCP',
+                                           '合約負債','近4季EPS','毛利率%','殖利率%']
+                              if c in df_cmp.columns]
+                st.dataframe(df_cmp[_col_order], use_container_width=True,
+                             hide_index=True,
                              column_config={
+                                 '名稱':     st.column_config.TextColumn('名稱', width='small'),
+                                 '代碼':     st.column_config.TextColumn('代碼', width='small'),
+                                 '現價':     st.column_config.TextColumn('現價'),
                                  '健康度':   st.column_config.NumberColumn('健康度',  format='%d 🏥'),
                                  '舊評分':   st.column_config.NumberColumn('評分',    format='%d ⭐'),
                                  '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
@@ -4844,11 +4855,15 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                 st.warning(alert)
 
         # ── 完整AI綜合分析 ──────────────────────────────────────
-        if score_t3 and results_t3:
+        if results_t3:
             st.markdown('#### 🤖 完整AI投資決策分析')
-            _ai_top_ids = ', '.join(r.get('stock_id','') for r in sorted(score_t3, key=lambda x: x.get('total',0), reverse=True)[:3])
+            _score_src = score_t3 if score_t3 else results_t3
+            _ai_top_ids = ', '.join(
+                r.get('stock_id', r.get('代碼','')) for r in
+                sorted(_score_src, key=lambda x: x.get('total', x.get('舊評分', x.get('_health', 0))), reverse=True)[:3]
+            )
             st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', f'AI綜合判讀（前3：{_ai_top_ids}）', '技術+籌碼+基本面三重過濾後的最終結論', '點擊下方按鈕生成'), unsafe_allow_html=True)
-            _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id','') for r in results_t3[:5]))
+            _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:5]))
             _ai_cached = st.session_state.get(_ai_cache_key, '')
             if _ai_cached:
                 st.markdown(_ai_cached)
@@ -4858,21 +4873,22 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             else:
                 if st.button('🤖 生成完整AI分析', key='t3_ai_gen', type='primary'):
                     from scoring_engine import rank_stocks as _rk3ai
-                    _top3 = _rk3ai(score_t3)[:3]
+                    _top3 = _rk3ai(score_t3)[:3] if score_t3 else results_t3[:3]
                     _ai_lines = []
                     for _r in _top3:
-                        _sid = _r.get('stock_id','')
+                        _sid = _r.get('stock_id', _r.get('代碼',''))
                         _fd  = _fund_map.get(_sid, {})
-                        _ht  = next((x.get('_health',0) for x in results_t3 if x.get('stock_id')==_sid), 0)
+                        _ht  = _r.get('_health', next((x.get('_health',0) for x in results_t3 if x.get('stock_id')==_sid), 0))
                         _ai_lines.append(
-                            f"- {_sid}({_r.get('stock_name','')}) 總分{_r.get('total',0):.0f}分 "
-                            f"健康度{_ht:.0f} EPS={_fd.get('近4季EPS','-')} "
+                            f"- {_sid}({_r.get('stock_name', _r.get('名稱',''))}) "
+                            f"健康度{_ht:.0f} 評分{_r.get('total', _r.get('舊評分',0)):.0f}分 "
+                            f"EPS={_fd.get('近4季EPS','-')} "
                             f"毛利={_fd.get('毛利率%','-')}% 殖利率={_fd.get('殖利率%','-')}%"
                         )
                     _mkt_reg = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
                     _reg_txt = '多頭' if _mkt_reg == 'bull' else ('空頭' if _mkt_reg == 'bear' else '震盪')
                     _ai_prompt = (
-                        f"你是宏爺、孫慶龍、朱家泓三位老師的AI助手，以台灣股市實戰語氣分析以下多因子前三名：\n"
+                        f"你是宏爺、孫慶龍、朱家泓三位老師的AI助手，以台灣股市實戰語氣分析以下候選股：\n"
                         f"{chr(10).join(_ai_lines)}\n"
                         f"大盤：{_reg_txt}格局\n\n"
                         f"請依序回答（每段不超過60字，像老師WhatsApp群組的風格）：\n"
