@@ -3158,35 +3158,32 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
     if t2_run:
         sid2 = t2_sid or '2330'
         st.info(f'🌐 抓取 {sid2} 全方位數據...')
-        if True:  # noqa
-            df2, name2, err2 = fetch_price_data(sid2, t2_days)
-            avg_div2, yearly2, div_src2 = fetch_dividend_data(sid2)
-            cl2, cx2, _capex2, _cl_src2, _cx_src2, _, _fin_errs2 = fetch_financials(sid2, industry='')
-            rev2, _  = fetch_revenue(sid2)
-            qtr2, _  = fetch_quarterly(sid2)
-            rsi2     = calc_rsi(df2)
-            ibs2     = calc_ibs(df2)
-            vr2      = calc_volume_ratio(df2)
-            k2, d2   = calc_kd(df2)
-            bb2      = calc_bollinger(df2)
-            vcp2     = calc_vcp(df2)
-            health2, details2 = calc_health_score(df2, rsi2, ibs2, vr2, k2, d2, bb2)
-            cur_price2 = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
-            st.session_state['t2_data'] = {
-                'sid':sid2,'name':name2 or sid2,'df':df2,'err':err2,
-                'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
-                'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
-                'cl_src': _cl_src2 if '_cl_src2' in dir() else '',
-                'cx_src': _cx_src2 if '_cx_src2' in dir() else '',
-                'fin_errs': _fin_errs2 if '_fin_errs2' in dir() else [],
-                'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
-                'health':health2,'details':details2,'price':cur_price2,
-            }
-            # 快取最後一次成功抓到的月營收/季財報，供下次失敗時 fallback
-            if rev2 is not None and not rev2.empty:
-                st.session_state[f'_last_rev_{sid2}'] = rev2
-            if qtr2 is not None and not qtr2.empty:
-                st.session_state[f'_last_qtr_{sid2}'] = qtr2
+        df2, name2, err2 = fetch_price_data(sid2, t2_days)
+        avg_div2, yearly2, div_src2 = fetch_dividend_data(sid2)
+        cl2, cx2, _capex2, _cl_src2, _cx_src2, _, _fin_errs2 = fetch_financials(sid2, industry='')
+        rev2, _  = fetch_revenue(sid2)
+        qtr2, _  = fetch_quarterly(sid2)
+        rsi2     = calc_rsi(df2)
+        ibs2     = calc_ibs(df2)
+        vr2      = calc_volume_ratio(df2)
+        k2, d2   = calc_kd(df2)
+        bb2      = calc_bollinger(df2)
+        vcp2     = calc_vcp(df2)
+        health2, details2 = calc_health_score(df2, rsi2, ibs2, vr2, k2, d2, bb2)
+        cur_price2 = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
+        st.session_state['t2_data'] = {
+            'sid':sid2,'name':name2 or sid2,'df':df2,'err':err2,
+            'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
+            'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
+            'cl_src': _cl_src2,'cx_src': _cx_src2,'fin_errs': _fin_errs2,
+            'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
+            'health':health2,'details':details2,'price':cur_price2,
+        }
+        # 快取最後一次成功抓到的月營收/季財報，供下次失敗時 fallback
+        if rev2 is not None and not rev2.empty:
+            st.session_state[f'_last_rev_{sid2}'] = rev2
+        if qtr2 is not None and not qtr2.empty:
+            st.session_state[f'_last_qtr_{sid2}'] = qtr2
 
     t2d = st.session_state.get('t2_data')
     if not t2d:
@@ -4360,8 +4357,8 @@ with tab3_compare:
                 _fin_st4= {}
 
                 price4  = float(df4['close'].iloc[-1]) if df4 is not None and not df4.empty else 0
-                ma20_4  = float(df4['MA20'].iloc[-1])  if df4 is not None and 'MA20'  in df4.columns else 0
-                ma100_4 = float(df4['MA100'].iloc[-1]) if df4 is not None and 'MA100' in df4.columns else 0
+                ma20_4  = float(df4['MA20'].iloc[-1])  if df4 is not None and 'MA20'  in df4.columns else None
+                ma100_4 = float(df4['MA100'].iloc[-1]) if df4 is not None and 'MA100' in df4.columns else None
                 rsi4    = calc_rsi(df4);  ibs4 = calc_ibs(df4)
                 vr4     = calc_volume_ratio(df4)
                 k4, d4  = calc_kd(df4);   bb4  = calc_bollinger(df4)
@@ -4369,10 +4366,11 @@ with tab3_compare:
                 health4, _ = calc_health_score(df4, rsi4, ibs4, vr4, k4, d4, bb4)
                 grade4, grade_color4, _, emoji4 = health_grade(health4)
 
-                if price4 > ma20_4 > ma100_4:   trend4 = '📈多頭'
-                elif price4 < ma20_4 < ma100_4:  trend4 = '📉空頭'
-                elif price4 > ma100_4:            trend4 = '📊多箱'
-                else:                             trend4 = '📊空箱'
+                if ma20_4 and ma100_4 and price4 > ma20_4 > ma100_4:   trend4 = '📈多頭'
+                elif ma20_4 and ma100_4 and price4 < ma20_4 < ma100_4:  trend4 = '📉空頭'
+                elif ma100_4 and price4 > ma100_4:                      trend4 = '📊多箱'
+                elif price4 > 0:                                         trend4 = '📊空箱'
+                else:                                                     trend4 = '⚪無資料'
 
                 val4 = '⚪無股利'
                 if avg_div4 > 0 and price4 > 0:
