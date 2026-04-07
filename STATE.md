@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-07（NameError 修復 + 全站假資料審查完成）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-07（tc NameError + 外資0.0誤顯全修復）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -90,6 +90,8 @@ ETF子Tab：ETF診斷 | ETF組合 | ETF回測 | ETF AI
 | 23 | **Tab3 比較×排行結論動態化** | ✅ | ⑤最終建議、RS對比、③多因子排行、④汰弱留強、AI判讀標題全面改為根據實際評分數據計算 |
 | 24 | **NameError 修復** | ✅ | Tab1 §一 teacher_conclusion 插入後導致 `ci` 未定義，補上 `ci = st.columns(len(INTL_UNIT))` |
 | 25 | **全站虛假資料審查** | ✅ | 確認無假數據：v4隨機在 `__main__` 區塊（開發測試），蒙地卡羅為演算法本身，所有財務資料來源均為真實 API（FinMind/yfinance/TWSE/TAIFEX） |
+| 26 | **tc NameError 修復** | ✅ | Tab1 §二 台股大盤 teacher_conclusion 後 `tc` 未定義，補上 `tc = st.columns(len(TW_UNIT))` |
+| 27 | **外資0.0億誤顯修復** | ✅ | 收盤前15:30 TWSE 無當日法人數據，`market_regime()` 現在當 `foreign_buy==0` 時顯示「⏰ 外資數據待更新（收盤後15:30可用）」而非「外資賣超 0.0億」 |
 
 ## 待辦事項
 
