@@ -1472,11 +1472,10 @@ border-radius:12px;padding:14px;text-align:center;">
     _ov_mkt  = st.session_state.get('mkt_info', {})
     _ov_jq   = st.session_state.get('jingqi_info', {})
     _ov_cd   = st.session_state.get('cl_data', {})
-    _ov_inst = _ov_cd.get('inst', {})
+    # inst 優先從 cl_data，fallback 到獨立緩存的 _last_inst
+    _ov_inst = _ov_cd.get('inst') or st.session_state.get('_last_inst', {})
     # 外資 key 匹配：TWSE 格式「外資及陸資(不含外資自營商)」或 FinMind 格式「外資」
     _ov_fk   = next((k for k in _ov_inst if '外資' in k), None)
-    if _ov_fk is None:
-        _ov_fk = next((k for k in _ov_inst if '外資' in k), None)
     _ov_margin = _ov_cd.get('margin')
     _ov_bias = st.session_state.get('bias_info', {})
 
@@ -4411,7 +4410,38 @@ padding:12px 16px;margin:8px 0;">
         except Exception as _ce:
             pass
 
-        st.info('💡 完整AI分析請使用頁面底部「🤖 AI綜合投資決策助理」')
+        # ── Tab2 底部 AI 分析 ──────────────────────────────────────
+        st.markdown('---')
+        st.markdown('#### 🤖 個股 AI 投資決策分析')
+        _t2_ai_key = f't2_ai_{sid2}'
+        _t2_ai_cached = st.session_state.get(_t2_ai_key, '')
+        if _t2_ai_cached:
+            st.markdown(_t2_ai_cached)
+            if st.button('🔄 重新生成', key='t2_ai_regen'):
+                st.session_state.pop(_t2_ai_key, None)
+                st.rerun()
+        else:
+            if st.button('🤖 生成完整AI分析', key='t2_ai_gen', type='primary'):
+                _t2_trend = ('多頭排列' if df2 is not None and 'MA20' in df2.columns and 'MA100' in df2.columns
+                             and price2 > float(df2['MA20'].iloc[-1]) > float(df2['MA100'].iloc[-1])
+                             else '空頭/整理')
+                _t2_prompt = (
+                    f"你是宏爺+孫慶龍的AI助手，以台灣股市實戰語氣分析 {sid2}({name2})：\n"
+                    f"現價={price2:.2f} 健康度={health2:.0f}分 RSI={rsi2} KD=K{k2}/D{d2}\n"
+                    f"趨勢={_t2_trend} 量比={vr2} IBS={ibs2}\n"
+                    f"大盤：{st.session_state.get('mkt_info',{}).get('regime','neutral')}\n\n"
+                    f"請依序回答（每段不超過50字）：\n"
+                    f"① 目前技術面評價（一句話）\n"
+                    f"② 具體進場條件\n"
+                    f"③ 停損價位設定\n"
+                    f"④ 風控建議"
+                )
+                with st.spinner('AI分析中...'):
+                    _t2_result = gemini_call(_t2_prompt, max_tokens=400)
+                st.session_state[_t2_ai_key] = _t2_result
+                st.markdown(_t2_result)
+            else:
+                st.caption('點擊上方按鈕生成此股 AI 投資決策分析')
 
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════
@@ -4506,7 +4536,10 @@ with tab3_compare:
             _cached = _load_cache('t3', sid4, ttl_hours=4)
             if _cached: return _cached
             try:
-                df4, name4, _ = fetch_price_data(sid4, 300)
+                # ⚠️ 直接呼叫 loader，繞過 @st.cache_data（ThreadPoolExecutor 下 cache 不安全）
+                _df4_raw, _err4, _name4 = loader_t3.get_combined_data(sid4, 360, True)
+                df4   = _df4_raw.tail(300).reset_index(drop=True) if _df4_raw is not None and not _df4_raw.empty else None
+                name4 = _name4 or sid4
                 avg_div4, _, _ = fetch_dividend_data(sid4)
                 cl4, cx4, _capex4, _cl_src4, _cx_src4, _, _fin_errs4 = fetch_financials(sid4, industry='')
                 result4 = {'sid': sid4, 'df': df4, 'name': name4,
