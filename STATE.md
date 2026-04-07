@@ -84,7 +84,7 @@ ETF子Tab：ETF診斷 | ETF組合 | ETF回測 | ETF AI
 | 16 | **Module D** 再平衡含股數 | ✅ | `etf_dashboard.py` 再平衡指令加入現價+建議股數欄位及格式化訊息 |
 | 17 | **Module B** VaR 風險值 | ✅ | 歷史模擬法+參數法 95%/99% 日VaR + 月度VaR，插入 ETF組合Tab |
 | 18 | **Module C** 配息日曆 | ✅ | 依歷史月份分配年化現金流 + Plotly 12個月長條圖 |
-| 19 | **Module A** 回測績效評級卡 | ✅ | CAGR/夏普/MDD 三指標評級（優秀/良好/普通）+ 老師解讀文字 |
+| 20 | **老師結論全站補齊** | ✅ | Tab1 §一二四五六 + Tab2 A-F+操作建議，共12節新增 teacher_conclusion 卡片 |
 
 ## 待辦事項
 
