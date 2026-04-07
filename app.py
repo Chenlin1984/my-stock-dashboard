@@ -2262,6 +2262,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     else:
         _i1c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _i1a = ''; _i1_ind = '費半+道瓊'
     st.markdown(teacher_conclusion('宏爺', _i1_ind, _i1c, _i1a), unsafe_allow_html=True)
+    ci = st.columns(len(INTL_UNIT))
     for col,(name,unit) in zip(ci,INTL_UNIT.items()):
         with col: st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
     idx_d = {k:v for k,v in intl.items() if k in ['道瓊工業 DJI','納斯達克 IXIC','費城半導體 SOX']}
