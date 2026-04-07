@@ -2247,7 +2247,21 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     tech_s = {n:calc_stats(s) for n,s in tech.items()}
 
     st.markdown(section_header('一','🌍 國際市場動態（影響台股的全球指標）','🌐'), unsafe_allow_html=True)
-    st.markdown(teacher_conclusion('宏爺', '費半+道瓊', '費半走強→台積電聯發科跟漲，台股可偏多操作', '費半是台股最強領先指標，看方向比看數字重要'), unsafe_allow_html=True)
+    _sox1 = intl_s.get('費城半導體 SOX'); _dji1 = intl_s.get('道瓊工業 DJI')
+    if _sox1 and _dji1:
+        _sp = _sox1.get('pct', 0); _dp = _dji1.get('pct', 0)
+        if _sp > 1 and _dp > 0:
+            _i1c = f'費半+道瓊同步上漲（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日可偏多'; _i1a = '科技股+台積電可持有'
+        elif _sp < -2 or _dp < -2:
+            _i1c = f'美股重挫（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日開低機率高'; _i1a = '謹慎減倉，等待止跌訊號'
+        elif _sp < 0 and _dp < 0:
+            _i1c = f'美股雙跌（SOX {_sp:+.1f}%），台股偏空謹慎'; _i1a = '觀望，不追高'
+        else:
+            _i1c = f'費半 {_sp:+.1f}%，走勢分化，方向未定'; _i1a = '等待費半方向確認再行動'
+        _i1_ind = f'SOX {_sp:+.1f}% / DJI {_dp:+.1f}%'
+    else:
+        _i1c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _i1a = ''; _i1_ind = '費半+道瓊'
+    st.markdown(teacher_conclusion('宏爺', _i1_ind, _i1c, _i1a), unsafe_allow_html=True)
     for col,(name,unit) in zip(ci,INTL_UNIT.items()):
         with col: st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
     idx_d = {k:v for k,v in intl.items() if k in ['道瓊工業 DJI','納斯達克 IXIC','費城半導體 SOX']}
@@ -2279,7 +2293,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
-    st.markdown(teacher_conclusion('宏爺', '大盤加權指數', '站上20日線且外資買超→多方格局，可持股', '量縮回測不跌破月線=強勢整理，可留倉'), unsafe_allow_html=True)
+    _twii2 = tw_s.get('台股加權指數'); _twd2 = tw_s.get('新台幣匯率')
+    if _twii2 and _twd2:
+        _tp = _twii2.get('pct', 0); _fp = _twd2.get('pct', 0)
+        if _tp > 0 and _fp < 0:
+            _t2c = f'台股漲 {_tp:+.1f}% + 台幣升值，外資匯入，確認多頭'; _t2a = '可持股或小幅加碼'
+        elif _tp > 0 and _fp >= 0:
+            _t2c = f'台股漲 {_tp:+.1f}% 但台幣貶值，疑似外資拉高出貨'; _t2a = '不追高，謹慎觀察'
+        elif _tp < 0 and _fp < 0:
+            _t2c = f'台股跌 {_tp:+.1f}% 但台幣升值，可能為技術回調非外資逃跑'; _t2a = '等待止跌訊號，勿貿然抄底'
+        else:
+            _t2c = f'台股跌 {_tp:+.1f}% + 台幣貶值，資金外逃，偏空格局'; _t2a = '降低持倉，保護本金'
+        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}% | 台幣 {_twd2.get("last",0):.2f}'
+    elif _twii2:
+        _tp = _twii2.get('pct', 0)
+        _t2c = f'台股 {_tp:+.1f}%，{"偏多" if _tp > 0 else "偏空"}'; _t2a = '參考其他指標確認方向'
+        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}%'
+    else:
+        _t2c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t2a = ''; _t2_ind = '台股加權 + 台幣'
+    st.markdown(teacher_conclusion('宏爺', _t2_ind, _t2c, _t2a), unsafe_allow_html=True)
     for col,(name,unit) in zip(tc,TW_UNIT.items()):
         with col: st.markdown(stat_card(name,tw_s.get(name),unit,name in tw_s),unsafe_allow_html=True)
     tw1,tw2 = st.columns(2)
@@ -2394,7 +2426,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # 保留 v3_20_7：build_leading_fast 執行緒機制 / 宏爺結論面板
     # ════════════════════════════════════════════════════════════════════
     st.markdown(section_header('四','核心大戶動向：外資「先行指標」','🎯'),unsafe_allow_html=True)
-    st.markdown(teacher_conclusion('宏爺', '外資期貨留倉', '空單>3萬口=高度警戒，減倉防守', '流向比存量重要：空單持續減少代表危機解除'), unsafe_allow_html=True)
+    _li4 = st.session_state.get('li_latest')
+    if _li4 is not None and not _li4.empty:
+        _fut4 = (float(_li4.iloc[-1].get('外資大小', 0)) if '外資大小' in _li4.columns else None)
+        _pcr4 = (float(_li4.iloc[-1].get('選PCR', 0)) if '選PCR' in _li4.columns else None)
+        if _fut4 is not None:
+            if _fut4 < -30000:
+                _l4c = f'外資期貨空單 {abs(_fut4):,.0f}口 > 3萬，啟動強制防禦'; _l4a = '強制減倉至20%以下，等待空單回補'
+            elif _fut4 < -10000:
+                _l4c = f'外資期貨偏空 {_fut4:,.0f}口，保守操作'; _l4a = '減少新買入，守好現有部位'
+            elif _fut4 > 10000:
+                _l4c = f'外資期貨留多 {_fut4:,.0f}口，法人看多'; _l4a = '可積極持股，跟隨外資方向'
+            else:
+                _l4c = f'外資期貨淨部位 {_fut4:,.0f}口，中性'; _l4a = '謹慎觀望，方向待確認'
+            _pcr_txt = f' | PCR {_pcr4:.1f}' if _pcr4 else ''
+            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_pcr_txt}'
+        else:
+            _l4c = '先行指標欄位異常，請確認 FinMind Token'; _l4a = ''; _l4_ind = '外資期貨留倉'
+    else:
+        _l4c = '先行指標尚未載入，請點擊「🔄 更新全部總經數據」'; _l4a = ''; _l4_ind = '外資期貨留倉'
+    st.markdown(teacher_conclusion('宏爺', _l4_ind, _l4c, _l4a), unsafe_allow_html=True)
 
     # ── 副標籤：欄位確認列（v12 風格）─────────────────────────────────
     st.markdown("""<div style="font-size:11px;color:#484f58;margin:-6px 0 10px 0;">
@@ -2684,7 +2735,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
     st.markdown('<div style="font-size:10px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">📊 市場廣度</div>', unsafe_allow_html=True)
     st.markdown(section_header('五','📊 全市場健康度 × 騰落指標（ADL）','📉'),unsafe_allow_html=True)
-    st.markdown(teacher_conclusion('宏爺', 'ADL騰落線', 'ADL↑+指數↑=廣泛多頭，可積極；ADL↓+指數↑=背離警訊，謹慎', 'ADL趨勢比指數漲跌更重要，背離早則1-3個月見頂'), unsafe_allow_html=True)
+    _adl5 = st.session_state.get('cl_data', {}).get('adl')
+    _mkt5 = st.session_state.get('mkt_info', {})
+    if _adl5 is not None and not _adl5.empty:
+        _ac5 = next((c for c in _adl5.columns if 'adl' in c.lower()), _adl5.columns[0])
+        _adl_vals5 = _adl5[_ac5].dropna().tail(5)
+        _adl_up5 = (len(_adl_vals5) >= 2 and float(_adl_vals5.iloc[-1]) > float(_adl_vals5.iloc[0]))
+        _twii_p5 = _mkt5.get('台股加權指數', {}).get('pct', 0) if isinstance(_mkt5.get('台股加權指數'), dict) else 0
+        if _adl_up5 and _twii_p5 > 0:
+            _a5c = '廣泛多頭：ADL↑+指數↑，市場健康，全面性上漲'; _a5a = '可積極持股'
+        elif not _adl_up5 and _twii_p5 > 0:
+            _a5c = '⚠️ 背離警訊：指數漲但ADL↓，行情由少數權值股撐，不可追'; _a5a = '謹慎，不追高，等待廣度改善'
+        elif _adl_up5 and _twii_p5 < 0:
+            _a5c = 'ADL↑但指數跌，廣度健康，或為技術回調非崩盤'; _a5a = '可留意回調後逢低布局'
+        else:
+            _a5c = '廣泛賣壓：ADL↓+指數↓，空頭格局，降低部位'; _a5a = '降低持倉，保護本金'
+        _a5_ind = f'ADL近5日{"↑上升" if _adl_up5 else "↓下降"}'
+    else:
+        _a5c = 'ADL數據尚未載入，請點擊「🔄 更新全部總經數據」'; _a5a = ''; _a5_ind = 'ADL騰落線'
+    st.markdown(teacher_conclusion('宏爺', _a5_ind, _a5c, _a5a), unsafe_allow_html=True)
     st.caption('💡 衡量「多少股票真的在漲」—— 分數越高 = 廣度越健康；ADL 趨勢 vs 指數是否背離是最重要的觀察點')
     # 如果是代理資料，顯示提示
     _adl_chk = st.session_state.get('cl_data',{}).get('adl')
@@ -2996,7 +3065,23 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
     st.markdown('<div style="font-size:10px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">🌐 國際市場</div>', unsafe_allow_html=True)
     st.markdown(section_header('六','🖥️ 美股科技巨頭（台股明天的風向球）','🖥️'),unsafe_allow_html=True)
-    st.markdown(teacher_conclusion('蔡森', '費半+輝達+台積電ADR', '費半走強→隔日台積電/聯發科跟漲，可順勢', '美股夜盤大跌>2%→台股隔日開低，需設好停損'), unsafe_allow_html=True)
+    _sox6 = intl_s.get('費城半導體 SOX') or tech_s.get('費城半導體 SOX')
+    _nvda6 = next((tech_s[k] for k in tech_s if 'NVDA' in k or '輝達' in k), None)
+    if _sox6:
+        _sp6 = _sox6.get('pct', 0)
+        if _sp6 > 2:
+            _t6c = f'費半強漲 {_sp6:+.1f}%，明日台積電/聯發科可望跟漲'; _t6a = '科技類股可持有或加碼'
+        elif _sp6 > 0:
+            _t6c = f'費半小漲 {_sp6:+.1f}%，台股科技偏多但力道有限'; _t6a = '持有觀察，不急著追高'
+        elif _sp6 < -2:
+            _t6c = f'費半重挫 {_sp6:+.1f}%，明日台股科技開低機率高'; _t6a = '設好停損，避免隔日追殺'
+        else:
+            _t6c = f'費半小跌 {_sp6:+.1f}%，短線偏空但未破關鍵支撐'; _t6a = '觀望等待方向確認'
+        _nvda_txt = f' | NVDA {_nvda6.get("pct",0):+.1f}%' if _nvda6 else ''
+        _t6_ind = f'費半 SOX {_sp6:+.1f}%{_nvda_txt}'
+    else:
+        _t6c = '技術股數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t6a = ''; _t6_ind = '費半+美股科技'
+    st.markdown(teacher_conclusion('蔡森', _t6_ind, _t6c, _t6a), unsafe_allow_html=True)
     tr1=st.columns(4); tr2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
     for i,(col,name) in enumerate(zip(tr1,tc_list[:4])):
         with col: st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
@@ -3607,7 +3692,13 @@ padding:14px 18px;margin-bottom:12px;">
 
         # ══ A. 健康度評分 ══════════════════════════════════════
         st.markdown('#### 🏥 A. 個股健康度評分（0~100）')
-        st.markdown(teacher_conclusion('宏爺', '健康度分數', '≥80才考慮進場，60-79觀察等待，<60直接跳過', '評分是機率不是保證，停損紀律決定長期勝率'), unsafe_allow_html=True)
+        if health2 >= 80:
+            _ha = f'健康度 {health2:.0f}分，技術面強勢'; _hb = '確認大盤方向後可建倉，停損設月線下方'
+        elif health2 >= 60:
+            _ha = f'健康度 {health2:.0f}分，中性偏多，尚未達進場標準'; _hb = '等待突破80分或放量突破前高再行動'
+        else:
+            _ha = f'健康度 {health2:.0f}分，技術面偏弱，跳過'; _hb = '不要強求，另找更好標的'
+        st.markdown(teacher_conclusion('宏爺', f'{sid2} 健康度 {health2:.0f}分', _ha, _hb), unsafe_allow_html=True)
         # 評分信心區間說明
         _score_help = (
             '<div style="background:#0a1628;border-left:3px solid #58a6ff;'
@@ -3836,7 +3927,19 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
         # ══ B. 357 評價 ════════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 💰 B. 357殖利率評價 [孫慶龍]')
-        st.markdown(teacher_conclusion('孫慶龍', '357評價區間', '買在便宜價（7%殖利率）以下，合理價可分批', '昂貴價（3%殖利率）以上不追，等回調再買'), unsafe_allow_html=True)
+        if avg_div2 > 0 and price2 > 0:
+            _cp2 = round(avg_div2/0.07, 1); _fp2 = round(avg_div2/0.05, 1); _dp2 = round(avg_div2/0.03, 1)
+            if price2 <= _cp2:
+                _ba = f'現價 {price2:.1f} ≤ 便宜價 {_cp2:.1f}（殖利率>7%），積極買進區'; _bb = '可大膽買進，股息都進口袋'
+            elif price2 <= _fp2:
+                _ba = f'現價 {price2:.1f} 在合理區 {_cp2:.1f}–{_fp2:.1f}（殖利率5-7%）'; _bb = '可分批布局，勿一次梭哈'
+            elif price2 <= _dp2:
+                _ba = f'現價 {price2:.1f} 在昂貴區 {_fp2:.1f}–{_dp2:.1f}（殖利率3-5%）'; _bb = '謹慎，等回調至合理價再進場'
+            else:
+                _ba = f'現價 {price2:.1f} > 昂貴價 {_dp2:.1f}（殖利率<3%），嚴禁追高'; _bb = '放下，等大跌再看'
+        else:
+            _ba = '無股利資料，無法套用357評價'; _bb = '以技術面健康度為主要判斷'
+        st.markdown(teacher_conclusion('孫慶龍', f'{sid2} 現價{price2:.1f} vs 357區間', _ba, _bb), unsafe_allow_html=True)
         if avg_div2 > 0:
             cheap2=round(avg_div2/0.07,1); fair2=round(avg_div2/0.05,1); dear2=round(avg_div2/0.03,1)
             if price2<=cheap2:   sig2,sc2='🟢便宜價 — 積極買進','#3fb950'
@@ -3915,7 +4018,15 @@ padding:12px 16px;margin:8px 0;">
         # ══ C. 領先指標 ════════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🔬 C. 公司真的在賺錢嗎？（財報領先指標）')
-        st.markdown(teacher_conclusion('孫慶龍', '合約負債+資本支出', '兩者同步上升=龍多股，業績有保障+老闆看好未來', '合約負債↑訂單滿=今年穩，資本支出↑擴廠=明年也穩'), unsafe_allow_html=True)
+        if cl2 and cl2 > 0 and cx2 and cx2 > 0:
+            _ca = f'合約負債 {cl2/1e8:.1f}億 + 資本支出 {cx2/1e8:.1f}億，雙重確認龍多股'; _cb = '基本面強勢，適合長期持有'
+        elif cl2 and cl2 > 0:
+            _ca = f'合約負債 {cl2/1e8:.1f}億（訂單豐沛），資本支出資料不足'; _cb = '基本面良好，但擴廠意願待確認'
+        elif cx2 and cx2 > 0:
+            _ca = f'資本支出 {cx2/1e8:.1f}億（積極擴產），合約負債資料不足'; _cb = '擴廠意願強，但訂單能見度待確認'
+        else:
+            _ca = '合約負債+資本支出均無資料（可能為金融股或資料源限制）'; _cb = '請至 MOPS 或年報查閱'
+        st.markdown(teacher_conclusion('孫慶龍', f'{sid2} 財報領先指標', _ca, _cb), unsafe_allow_html=True)
         st.markdown(
             '<div style="background:#0a1628;border-left:3px solid #bc8cff;padding:8px 12px;'
             'border-radius:0 6px 6px 0;margin-bottom:8px;font-size:12px;color:#c9d1d9;">'
@@ -3980,7 +4091,21 @@ padding:12px 16px;margin:8px 0;">
         # ══ D. 月營收 + 季毛利率 ══════════════════════════════
         st.markdown('---')
         st.markdown('#### 📈 D. 公司每月賺多少錢？（營收趨勢）')
-        st.markdown(teacher_conclusion('孫慶龍', '月營收YoY%', '連3月YoY>15%=業績爆發，可重點關注', '連3月YoY<0%=衰退趨勢，不管K線多好看都先觀望'), unsafe_allow_html=True)
+        _d_ind = f'{sid2} 月營收YoY%'; _da = '月營收數據尚未載入'; _db = ''
+        if rev2 is not None and not rev2.empty and len(rev2) >= 3:
+            _yoy_col = next((c for c in rev2.columns if 'yoy' in str(c).lower() or '年增' in str(c) or 'YoY' in str(c)), None)
+            if _yoy_col:
+                _yoy3 = pd.to_numeric(rev2[_yoy_col].tail(3), errors='coerce').dropna()
+                if len(_yoy3) >= 2:
+                    _avg_y = float(_yoy3.mean()); _last_y = float(_yoy3.iloc[-1])
+                    _d_ind = f'{sid2} 近3月平均YoY {_avg_y:+.1f}%'
+                    if _avg_y > 15 and (_yoy3 > 0).all():
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%（最新 {_last_y:+.1f}%），業績爆發，重點關注'; _db = '配合技術面買點可進場'
+                    elif _avg_y > 0:
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%，溫和成長'; _db = '持續追蹤，等待加速跡象'
+                    else:
+                        _da = f'近3月YoY平均 {_avg_y:+.1f}%，業績衰退'; _db = '不管K線多好看，先觀望'
+        st.markdown(teacher_conclusion('孫慶龍', _d_ind, _da, _db), unsafe_allow_html=True)
         st.markdown(
             '<div style="background:#0a1628;border-left:3px solid #3fb950;padding:8px 12px;'
             'border-radius:0 6px 6px 0;margin-bottom:8px;font-size:12px;color:#c9d1d9;">'
@@ -4051,7 +4176,15 @@ padding:12px 16px;margin:8px 0;">
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🎯 E. VCP波幅收縮 + 布林通道')
-        st.markdown(teacher_conclusion('朱家泓', 'VCP型態', '3-5個波段震幅縮小+量能萎縮=突破前兆', '量縮整理後帶量突破前高=最佳買點，停損設前低'), unsafe_allow_html=True)
+        if vcp2 and vcp2.get('contracting'):
+            _sw = vcp2.get('swings', [])
+            _ea = f'VCP確認收縮（{len(_sw)}波段），量能萎縮，等待帶量突破進場'; _eb = '突破前高且放量時買入，停損設前波低點'
+        elif vcp2:
+            _sw = vcp2.get('swings', [])
+            _ea = f'VCP尚未形成（{len(_sw)}波段），波動仍大，不宜進場'; _eb = '等待更多整理時間，耐心等候'
+        else:
+            _ea = '數據不足，VCP無法計算（需至少30日價格資料）'; _eb = ''
+        st.markdown(teacher_conclusion('朱家泓', f'{sid2} VCP型態', _ea, _eb), unsafe_allow_html=True)
         ec1,ec2=st.columns(2)
         with ec1:
             st.markdown('**VCP [Mark Minervini]**')
@@ -4122,7 +4255,26 @@ padding:12px 16px;margin:8px 0;">
         # ══ F. K線技術圖 ═══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 📊 F. K線技術圖表（含三大法人籌碼）')
-        st.markdown(teacher_conclusion('朱家泓', 'K線+籌碼', '外資連買3日+多頭K線組合=主力進駐，可跟進', '價漲量縮或外資偷賣=警訊，不輕易加碼'), unsafe_allow_html=True)
+        _fa = f'{sid2} K線技術'; _fb_txt = ''; _fc_txt = ''
+        if df2 is not None and not df2.empty and len(df2) >= 20:
+            _p_now_f = float(df2['close'].iloc[-1])
+            _ma20_f  = float(df2['close'].rolling(20).mean().iloc[-1])
+            _cl_trend = '上漲' if float(df2['close'].iloc[-1]) > float(df2['close'].iloc[-5]) else '下跌'
+            _above_f = _p_now_f > _ma20_f
+            _inst_f = st.session_state.get('t2_inst', {})
+            _fnet_f = _inst_f.get('外資', 0) if _inst_f else 0
+            if _above_f and _fnet_f > 0:
+                _fb_txt = f'站上月線 + 外資買超，主力進駐訊號，可跟進'; _fc_txt = '停損設月線下方'
+            elif _above_f and _fnet_f < 0:
+                _fb_txt = f'站上月線但外資賣超，需謹慎確認主力方向'; _fc_txt = '等待外資轉買後再行動'
+            elif not _above_f and _fnet_f > 0:
+                _fb_txt = f'月線下方但外資買超，可能正在築底'; _fc_txt = '等待重回月線確認後再評估'
+            else:
+                _fb_txt = f'月線下方且外資賣超，趨勢偏空，暫時迴避'; _fc_txt = '等待更明確的多頭訊號'
+            _fa = f'{sid2} 現價{_p_now_f:.1f}（{"站月線" if _above_f else "跌月線"}）| 外資{"買超" if _fnet_f>0 else "賣超" if _fnet_f<0 else "中性"}'
+        else:
+            _fb_txt = '技術資料載入中，請先點擊「🔍 載入完整分析」'
+        st.markdown(teacher_conclusion('朱家泓', _fa, _fb_txt, _fc_txt), unsafe_allow_html=True)
         if df2 is not None and not df2.empty:
             fig_k = plot_combined_chart(df2, sid2, name2, show_ma_dict, k_line_type='還原K線' if t2_adjusted else '一般K線')
             st.plotly_chart(fig_k, use_container_width=True,
@@ -4202,7 +4354,22 @@ padding:12px 16px;margin:8px 0;">
 
         # ── 即時文字建議（Rule-based，不需 AI API）──────────────
         st.markdown('#### 💡 即時操作建議（規則引擎）')
-        st.markdown(teacher_conclusion('宏爺', '多維度共振', '3個以上訊號同向才進場，單一訊號不夠', '大盤空頭時個股再好也要減碼，市場趨勢優先'), unsafe_allow_html=True)
+        _reg_op = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+        _sig_count = sum([
+            1 if health2 >= 80 else 0,
+            1 if _reg_op == 'bull' else 0,
+            1 if (vcp2 and vcp2.get('contracting')) else 0,
+            1 if (avg_div2 > 0 and price2 > 0 and price2 <= round(avg_div2/0.05, 1)) else 0,
+        ])
+        if _reg_op == 'bear':
+            _op_a = f'大盤空頭格局，{sid2} 無論評分多高，先降倉至20%以下'; _op_b = '市場趨勢優先，個股強不等於能賺錢'
+        elif _sig_count >= 3:
+            _op_a = f'{_sig_count}個訊號共振（健康度+大盤+VCP+估值），可積極進場'; _op_b = '分批建倉，停損設健康度跌破60'
+        elif _sig_count >= 2:
+            _op_a = f'{_sig_count}個訊號共振，中性偏多，可小倉試水溫'; _op_b = '輕倉試探，等待更多確認訊號'
+        else:
+            _op_a = f'只有{_sig_count}個訊號，條件不足，今日不操作 {sid2}'; _op_b = '耐心等待，寧可錯過勿強求'
+        st.markdown(teacher_conclusion('宏爺', f'{sid2} 共振訊號 {_sig_count}/4', _op_a, _op_b), unsafe_allow_html=True)
         try:
             _mkt_top_g = st.session_state.get('mkt_info', {})
             _m1b_top_g = st.session_state.get('m1b_m2_info', {})
