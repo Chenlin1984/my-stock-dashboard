@@ -1,6 +1,6 @@
 # STATE.md — 台股 AI 戰情室
 
-> 上次更新：2026-04-07（ETF teacher_conclusion 全面動態化完成）| 分支：`claude/analyze-test-coverage-070Kf`
+> 上次更新：2026-04-07（NameError 修復 + 全站假資料審查完成）| 分支：`claude/analyze-test-coverage-070Kf`
 
 ---
 
@@ -87,6 +87,9 @@ ETF子Tab：ETF診斷 | ETF組合 | ETF回測 | ETF AI
 | 20 | **老師結論全站補齊（靜態）** | ✅ | Tab1 §一二四五六 + Tab2 A-F+操作建議，共12節新增 teacher_conclusion 卡片 |
 | 21 | **老師結論全面動態化** | ✅ | 所有結論改為根據當下真實數據計算：費半漲跌%、台幣升貶、外資期貨口數、ADL走向、VCP波段、357區間、YoY%、訊號共振計數 |
 | 22 | **ETF dashboard 老師結論補齊** | ✅ | `etf_dashboard.py` 新增 `_teacher_conclusion()` + ETF診斷（郭俊宏/孫慶龍/春哥/宏爺×4節）、ETF組合（孫慶龍/弘爺/郭俊宏×3節）、ETF回測（春哥×1節）共 8 處動態卡片 |
+| 23 | **Tab3 比較×排行結論動態化** | ✅ | ⑤最終建議、RS對比、③多因子排行、④汰弱留強、AI判讀標題全面改為根據實際評分數據計算 |
+| 24 | **NameError 修復** | ✅ | Tab1 §一 teacher_conclusion 插入後導致 `ci` 未定義，補上 `ci = st.columns(len(INTL_UNIT))` |
+| 25 | **全站虛假資料審查** | ✅ | 確認無假數據：v4隨機在 `__main__` 區塊（開發測試），蒙地卡羅為演算法本身，所有財務資料來源均為真實 API（FinMind/yfinance/TWSE/TAIFEX） |
 
 ## 待辦事項
 
