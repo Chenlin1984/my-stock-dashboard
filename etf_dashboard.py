@@ -733,8 +733,19 @@ def render_etf_portfolio(gemini_fn=None):
         r['deviation']   = round(r['actual_pct'] - r['target_pct'], 2)
 
     st.markdown(f'**總資產現值：{total_value:,.0f} 元**')
+    # 查詢 ETF 名稱（去掉 .TW/.TWO 後綴後查 stock_names）
+    try:
+        from stock_names import get_stock_name as _gsn_etf
+        def _etf_name(tk):
+            code = tk.replace('.TWO','').replace('.TW','')
+            n = _gsn_etf(code)
+            return n if n and n != code else (fetch_etf_info(tk).get('shortName') or fetch_etf_info(tk).get('longName') or tk)
+    except Exception:
+        def _etf_name(tk): return tk
     overview_df = pd.DataFrame([{
-        'ETF': r['ticker'], '目標權重%': r['target_pct'],
+        'ETF': r['ticker'],
+        '名稱': _etf_name(r['ticker']),
+        '目標權重%': r['target_pct'],
         '實際權重%': r['actual_pct'], '偏離度%': r['deviation'],
         '現值(元)': f'{r["current_value"]:,.0f}',
     } for r in rows])
@@ -1795,8 +1806,8 @@ def _build_treemap_data(sectors: dict, returns: dict, market: str) -> go.Figure:
         textinfo='label',
         marker=dict(
             colors=colors,
-            colorscale=[[0, '#7b1212'], [0.35, '#c0392b'], [0.5, '#1e2530'],
-                        [0.65, '#1a6e36'], [1, '#0f5132']],
+            colorscale=[[0, '#0f5132'], [0.35, '#1a6e36'], [0.5, '#1e2530'],
+                        [0.65, '#c0392b'], [1, '#7b1212']],  # 台灣慣例：漲=紅 跌=綠
             cmid=0, cmin=-max_abs, cmax=max_abs,
             colorbar=dict(title='漲跌%', thickness=12),
             line=dict(width=1, color='#0d1117'),
@@ -1814,7 +1825,7 @@ def _build_treemap_data(sectors: dict, returns: dict, market: str) -> go.Figure:
 
 def render_sector_heatmap():
     st.markdown('### 🗺️ 產業熱力圖')
-    st.caption('即時抓取各類股漲跌幅，紅=跌 / 綠=漲。點選區塊可展開子類股。')
+    st.caption('即時抓取各類股漲跌幅，紅=漲 / 綠=跌（台灣慣例）。點選區塊可展開子類股。')
 
     col_m, col_p, col_r = st.columns([2, 2, 1])
     market = col_m.selectbox('市場', ['🇺🇸 美股（GICS 11大類）', '🇹🇼 台股（主要類股）'],

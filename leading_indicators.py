@@ -456,10 +456,32 @@ def twse_volume(yyyymm):
                 return result
         except Exception as _e:
             print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
-    print(f"[VOL] FMTQIK {yyyymm} 全部失敗")
+    print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
+    # ── 備援：yfinance ^TWII Volume（= 全市場成交金額，單位：元）
+    try:
+        import yfinance as _yf_v
+        _yr, _mo = int(yyyymm[:4]), int(yyyymm[4:6])
+        _s = f"{_yr}-{_mo:02d}-01"
+        _e = f"{_yr if _mo < 12 else _yr+1}-{_mo+1 if _mo < 12 else 1:02d}-01"
+        _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False, auto_adjust=True)
+        if not _tw.empty and "Volume" in _tw.columns:
+            _res_yf = {}
+            for _idx, _row in _tw.iterrows():
+                _dk = _idx.strftime("%Y%m%d")
+                try:
+                    _v = round(float(_row["Volume"]) / 1e8, 1)
+                    if 100 < _v < 20000:
+                        _res_yf[_dk] = _v
+                except: pass
+            if _res_yf:
+                print(f"[VOL] yfinance ^TWII {yyyymm}: {len(_res_yf)} 天")
+                return _res_yf
+    except Exception as _yfe:
+        print(f"[VOL] yfinance ^TWII {yyyymm}: {_yfe}")
     return {}
 
 
+@_safe_cache(ttl=1800, show_spinner=False)
 def twse_volume_daily(ymd8):
     """
     單日成交量 from TWSE MI_INDEX（搜尋所有 tables，row[2]=成交金額備援 row[1]）
@@ -880,7 +902,7 @@ def build_leading_fast(days=7, token=""):
         if _vd not in vol_dict:
             _v = twse_volume_daily(_vd)
             if _v: vol_dict[_vd] = _v
-        _vt2.sleep(0.15)
+            _vt2.sleep(0.15)  # 只在實際發出 request 後才 sleep
     print(f"[LI-v8] 成交量（最終）{len(vol_dict)} 天")
 
     # ═══ 6. 確定日期範圍 ════════════════════════════════════════
