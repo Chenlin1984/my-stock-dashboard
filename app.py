@@ -1456,13 +1456,13 @@ border-radius:12px;padding:14px;text-align:center;">
         '<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 14px;margin-bottom:10px;">'
         '<div style="font-size:10px;color:#8b949e;margin-bottom:6px;">&#128203; 專業判讀五步流程</div>'
         '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;">'
-        '<span style="border:1px solid #1f6feb;border-radius:5px;padding:3px 8px;color:#58a6ff;">🌐①市場總覽</span>'
+        '<span style="border:1px solid #1f6feb;border-radius:5px;padding:3px 8px;color:#58a6ff;">🌍①總經</span>'
         '&rarr;'
-        '<span style="border:1px solid #3fb950;border-radius:5px;padding:3px 8px;color:#3fb950;">🔍②掃描築股</span>'
+        '<span style="border:1px solid #3fb950;border-radius:5px;padding:3px 8px;color:#3fb950;">🔬②個股分析</span>'
         '&rarr;'
-        '<span style="border:1px solid #d29922;border-radius:5px;padding:3px 8px;color:#d29922;">📈③個股健檢</span>'
+        '<span style="border:1px solid #d29922;border-radius:5px;padding:3px 8px;color:#d29922;">🏆③比較排行</span>'
         '&rarr;'
-        '<span style="border:1px solid #bc8cff;border-radius:5px;padding:3px 8px;color:#bc8cff;">🏆④比較排行</span>'
+        '<span style="border:1px solid #bc8cff;border-radius:5px;padding:3px 8px;color:#bc8cff;">🏦④ETF</span>'
         '&rarr;'
         '<span style="border:1px solid #484848;border-radius:5px;padding:3px 8px;color:#8b949e;">📚⑤策略手冊</span>'
         '</div></div>',
@@ -2279,7 +2279,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
                             use_container_width=True,config={'displayModeBar':False})
-    with st.expander('📖 宏爺 結論', expanded=True):
+    with st.expander('📖 宏爺 結論', expanded=False):
         # 動態結論：根據真實資料
         _sox = intl_s.get('費城半導體 SOX')
         _dxy = intl_s.get('美元指數 DXY')
@@ -2329,7 +2329,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
                                 use_container_width=True,config={'displayModeBar':False})
         except Exception: pass
-    with st.expander('📖 宏爺 結論（台股 + 台幣）', expanded=True):
+    with st.expander('📖 宏爺 結論（台股 + 台幣）', expanded=False):
         st.caption('💡 本節看「今天漲跌」和「台幣走向」。資金面M1B-M2見Section七。')
         _twii = tw_s.get('台股加權指數')
         _twd  = tw_s.get('新台幣匯率')
@@ -2393,7 +2393,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.warning('⚠️ 市場偏多但融資過高，注意假突破風險')
             elif margin and margin <= 2000 and _mkt_r.get('regime') == 'bull':
                 st.success('✅ 融資乾淨 + 市場偏多 = 健康多頭格局')
-    with st.expander('📖 孫慶龍 · 宏爺 結論', expanded=True):
+    with st.expander('📖 孫慶龍 · 宏爺 結論', expanded=False):
         # 連動結論
         _inst_concl = []
         if inst:
@@ -3106,7 +3106,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 if name in tech:
                     st.plotly_chart(sparkline(tech[name],name,clrs[i+4] if i+4<len(clrs) else '#ffd700'),
                                     use_container_width=True,config={'displayModeBar':False})
-    with st.expander('📖 宏爺 結論', expanded=True):
+    with st.expander('📖 宏爺 結論', expanded=False):
         _tsm = tech_s.get('台積電 ADR')
         _nvda = tech_s.get('輝達 NVDA')
         _concl_tech = []
@@ -3163,7 +3163,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         else:
             st.markdown(kpi('月線乖離率(20MA)', '計算中', '', '#484f58', '#0d1117'), unsafe_allow_html=True)
 
-    with st.expander('📖 弘爺 · 孫慶龍 結論', expanded=True):
+    with st.expander('📖 弘爺 · 孫慶龍 結論', expanded=False):
         _macro_concl = []
         if _m1b_info:
             _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)

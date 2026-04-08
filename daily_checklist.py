@@ -46,14 +46,28 @@ def fetch_institutional(date_str=None):
     if date_str is None: date_str = _recent_date()
     base = datetime.datetime.strptime(date_str, "%Y%m%d").date()
 
+    _bfi_urls = [
+        "https://www.twse.com.tw/rwd/zh/fund/BFI82U",  # 新版優先
+        "https://www.twse.com.tw/fund/BFI82U",          # 舊版備援
+    ]
+
     for delta in range(5):   # 最多找 5 個交易日（避免 timeout）
         d = base - datetime.timedelta(days=delta)
         if d.weekday() >= 5: continue
         ds = d.strftime("%Y%m%d")
         try:
-            r = requests.get("https://www.twse.com.tw/fund/BFI82U",
-                             params={"response":"json","dayDate":ds},
-                             headers=HDR, timeout=10)
+            _bfi_j = None
+            for _bfi_url in _bfi_urls:
+                try:
+                    _bfi_r = requests.get(_bfi_url, params={"response":"json","dayDate":ds},
+                                          headers=HDR, timeout=10)
+                    _bfi_j = _bfi_r.json()
+                    if _bfi_j.get("stat") == "OK" and _bfi_j.get("data"):
+                        print(f"[BFI82U] ✅ {_bfi_url.split('/')[-3]}")
+                        break
+                except Exception as _be:
+                    print(f"[BFI82U] {_bfi_url}: {_be}")
+            j = _bfi_j or {}
             j = r.json()
             if j.get("stat")=="OK" and j.get("data"):
                 result = {}
