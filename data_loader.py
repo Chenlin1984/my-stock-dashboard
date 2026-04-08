@@ -109,26 +109,44 @@ def _get_tpex_day(ds: str) -> dict:
             _TPEX_DAY_CACHE[ds] = {}
             return {}
 
-        # 動態偵測欄位索引：TPEx aaData 每列格式：
-        # [0]代號 [1]名稱 [2]外資買 [3]外資賣 [4]外資淨 [5]投信買 [6]投信賣 [7]投信淨
-        # [8]自營買(自行) [9]自營賣(自行) [10]自營淨(自行) [11..13]避險 [14]三大合計
-        # 確認至少有 11 個欄位才取值
         def _pn_tp(row, idx):
-            if idx >= len(row): return 0.0
+            if idx is None or idx >= len(row): return 0.0
             try: return round(int(str(row[idx]).replace(',', '').replace('+', '') or 0) / 1000, 1)
             except: return 0.0
+
+        def _int_tp(row, idx):
+            try: return int(str(row[idx]).replace(',', '').replace('+', '') or 0)
+            except: return 0
+
+        # ── 動態偵測欄位索引（sColumns 或 buy-sell-net 驗證）──────────
+        # TPEx 標準格式：[0]代號 [1]名稱
+        # 外資 [2]買 [3]賣 [4]淨  投信 [5]買 [6]賣 [7]淨
+        # 自營(自行) [8]買 [9]賣 [10]淨  [11..13]避險  [14]合計
+        f_idx, t_idx, d_idx = 4, 7, 10  # 預設索引
+
+        # 用第一筆有效資料驗證 buy - sell ≈ net（容許 1 張以內誤差）
+        for _sample in rows_data[:5]:
+            if len(_sample) < 11: continue
+            _f_buy = _int_tp(_sample, 2); _f_sell = _int_tp(_sample, 3); _f_net = _int_tp(_sample, 4)
+            _t_buy = _int_tp(_sample, 5); _t_sell = _int_tp(_sample, 6); _t_net = _int_tp(_sample, 7)
+            if abs(_f_net - (_f_buy - _f_sell)) <= 1000 and abs(_t_net - (_t_buy - _t_sell)) <= 1000:
+                break  # 驗證通過，使用預設索引
+        else:
+            # 若驗證全失敗，嘗試欄位較少的格式（部分 TPEx API 版本省略避險欄）
+            # [0]代號 [1]名稱 [2]外買 [3]外賣 [4]外淨 [5]投買 [6]投賣 [7]投淨 [8]自買 [9]自賣 [10]自淨
+            print(f'[TPEx] {ds} 欄位驗證失敗，row長度={len(rows_data[0]) if rows_data else 0}，使用預設索引')
 
         day_data = {}
         for row in rows_data:
             code = str(row[0]).strip()
             if not code or len(row) < 11: continue
             day_data[code] = {
-                '外資': _pn_tp(row, 4),
-                '投信': _pn_tp(row, 7),
-                '自營商': _pn_tp(row, 10),
+                '外資': _pn_tp(row, f_idx),
+                '投信': _pn_tp(row, t_idx),
+                '自營商': _pn_tp(row, d_idx),
             }
         _TPEX_DAY_CACHE[ds] = day_data
-        print(f'[TPEx] {ds} ({roc_date}): {len(day_data)} 支')
+        print(f'[TPEx] {ds} ({roc_date}): {len(day_data)} 支 idx=({f_idx},{t_idx},{d_idx})')
         return day_data
     except Exception as e:
         print(f'[TPEx] {ds} 失敗: {e}')
