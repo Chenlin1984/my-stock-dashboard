@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub
 - **進度**: 18 commits 待 Merge → main（所有修復尚未部署）
 - **分支**: claude/analyze-test-coverage-070Kf → main
-- **最新 commit**: 75ea74e（成交量修復）
+- **最新 commit**: b4f221d（成交量三URL備援 + row[2]/row[1] 雙索引）
 - **⚠️ 行動項目**: 請前往 GitHub Merge PR → https://github.com/Chenlin1984/my-stock-dashboard/compare/main...claude/analyze-test-coverage-070Kf
 
 ## 🛠️ 檔案結構與核心組件
@@ -30,6 +30,7 @@
 | `b39bf54` | **毛利率備援**（Goodinfo 季損益 step 5c）|
 | `1da2ffd` | **股名快取 TTL 保護**（API 失敗時保留舊 2600+ 筆）+ TPEx 欄位驗證 |
 | `75ea74e` | **總經成交量修復**（FMTQIK 多 URL 備援 + MI_INDEX 不硬編碼 table[6]）|
+| `b4f221d` | **成交量補強**（FMTQIK 三 URL + OpenAPI + row[2]/row[1] 雙索引 + MI_INDEX 搜尋所有 tables）|
 
 ## 🔄 Merge 後驗證清單
 - [ ] 上市股技術線圖外資/投信子圖顯示（T86 買賣超修正）
