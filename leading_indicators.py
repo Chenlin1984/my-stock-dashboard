@@ -456,7 +456,28 @@ def twse_volume(yyyymm):
                 return result
         except Exception as _e:
             print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
-    print(f"[VOL] FMTQIK {yyyymm} 全部失敗")
+    print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
+    # ── 備援：yfinance ^TWII Volume（= 全市場成交金額，單位：元）
+    try:
+        import yfinance as _yf_v
+        _yr, _mo = int(yyyymm[:4]), int(yyyymm[4:6])
+        _s = f"{_yr}-{_mo:02d}-01"
+        _e = f"{_yr if _mo < 12 else _yr+1}-{_mo+1 if _mo < 12 else 1:02d}-01"
+        _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False, auto_adjust=True)
+        if not _tw.empty and "Volume" in _tw.columns:
+            _res_yf = {}
+            for _idx, _row in _tw.iterrows():
+                _dk = _idx.strftime("%Y%m%d")
+                try:
+                    _v = round(float(_row["Volume"]) / 1e8, 1)
+                    if 100 < _v < 20000:
+                        _res_yf[_dk] = _v
+                except: pass
+            if _res_yf:
+                print(f"[VOL] yfinance ^TWII {yyyymm}: {len(_res_yf)} 天")
+                return _res_yf
+    except Exception as _yfe:
+        print(f"[VOL] yfinance ^TWII {yyyymm}: {_yfe}")
     return {}
 
 

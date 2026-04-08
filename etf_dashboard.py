@@ -733,8 +733,19 @@ def render_etf_portfolio(gemini_fn=None):
         r['deviation']   = round(r['actual_pct'] - r['target_pct'], 2)
 
     st.markdown(f'**總資產現值：{total_value:,.0f} 元**')
+    # 查詢 ETF 名稱（去掉 .TW/.TWO 後綴後查 stock_names）
+    try:
+        from stock_names import get_stock_name as _gsn_etf
+        def _etf_name(tk):
+            code = tk.replace('.TWO','').replace('.TW','')
+            n = _gsn_etf(code)
+            return n if n and n != code else (fetch_etf_info(tk).get('shortName') or fetch_etf_info(tk).get('longName') or tk)
+    except Exception:
+        def _etf_name(tk): return tk
     overview_df = pd.DataFrame([{
-        'ETF': r['ticker'], '目標權重%': r['target_pct'],
+        'ETF': r['ticker'],
+        '名稱': _etf_name(r['ticker']),
+        '目標權重%': r['target_pct'],
         '實際權重%': r['actual_pct'], '偏離度%': r['deviation'],
         '現值(元)': f'{r["current_value"]:,.0f}',
     } for r in rows])

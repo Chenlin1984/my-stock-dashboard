@@ -410,23 +410,28 @@ class StockDataLoader:
                             df_pivot[col] = (df_pivot[col] / 1000)
 
                     # 標準化欄位（支援中文名稱和英文名稱）
+                    # FinMind 返回長名稱如 "外陸資買賣超股數(不含外資自營商)"，括號前才是主體
+                    import re as _re_inst
                     rename_dict = {}
                     for col in df_pivot.columns:
-                        col_lower = col.lower()
                         col_str = str(col)
-                        # 中文名稱判斷（FinMind 'name' 欄位為中文）
-                        if '外資' in col_str and '自營' not in col_str:
+                        col_lower = col_str.lower()
+                        # 取括號前、"買賣" 前的主體：e.g. "外陸資買賣超股數(不含...)" → "外陸資"
+                        col_base = _re_inst.split(r'[（(買賣]', col_str)[0].strip()
+                        # 中文：外資 / 外陸資 / 外資及陸資
+                        if ('外' in col_base and '資' in col_base and '自' not in col_base) \
+                                or col_str in ('外資', '外陸資', '外資及陸資'):
                             rename_dict[col] = '外資'
-                        elif '投信' in col_str:
+                        elif '投信' in col_base:
                             rename_dict[col] = '投信'
-                        elif '自營商' in col_str:
+                        elif '自營' in col_base:
                             rename_dict[col] = '自營商'
-                        # 英文名稱判斷
+                        # 英文名稱
                         elif 'foreign' in col_lower and 'dealer' not in col_lower:
                             rename_dict[col] = '外資'
                         elif 'investment' in col_lower or 'trust' in col_lower:
                             rename_dict[col] = '投信'
-                        elif 'dealer' in col_lower and 'self' in col_lower:
+                        elif 'dealer' in col_lower:
                             rename_dict[col] = '自營商'
                     print(f'[籌碼] {stock_id} 欄位:{list(df_pivot.columns[:8])}, rename:{rename_dict}', flush=True)
 
@@ -1129,6 +1134,39 @@ class StockDataLoader:
                                     break
                 except Exception as _e_gp:
                     print(f'[Goodinfo 毛利率] {stock_id}: {_e_gp}')
+
+            # ===== 5d) 毛利率備援：yfinance quarterly_financials =====
+            if not is_finance and df_quarterly['毛利率'].isna().all():
+                try:
+                    import yfinance as _yf_gp
+                    _tk_gp = _yf_gp.Ticker(f"{stock_id}.TW")
+                    _qfin = _tk_gp.quarterly_financials
+                    if _qfin is None or _qfin.empty:
+                        _tk_gp2 = _yf_gp.Ticker(f"{stock_id}.TWO")
+                        _qfin = _tk_gp2.quarterly_financials
+                    if _qfin is not None and not _qfin.empty:
+                        # 取 GrossProfit 與 TotalRevenue
+                        _gp_row = next((r for r in _qfin.index if 'Gross' in str(r) and 'Profit' in str(r)), None)
+                        _rv_row = next((r for r in _qfin.index if 'Total' in str(r) and 'Revenue' in str(r)), None)
+                        if _gp_row and _rv_row:
+                            _yf_updated = 0
+                            for _col in _qfin.columns:
+                                try:
+                                    _yr_q = _col.year; _mo_q = _col.month
+                                    _q_q  = ((_mo_q - 1) // 3) + 1
+                                    _lbl  = f"{_yr_q}Q{_q_q}"
+                                    _mk   = df_quarterly.index[df_quarterly['季度標籤'] == _lbl]
+                                    if len(_mk) and pd.isna(df_quarterly.loc[_mk[0], '毛利率']):
+                                        _gp_v = float(_qfin.loc[_gp_row, _col])
+                                        _rv_v = float(_qfin.loc[_rv_row, _col])
+                                        if _rv_v and abs(_rv_v) > 0:
+                                            df_quarterly.loc[_mk[0], '毛利率'] = round(_gp_v / _rv_v * 100, 2)
+                                            _yf_updated += 1
+                                except Exception: pass
+                            if _yf_updated > 0:
+                                print(f'[yfinance 毛利率] {stock_id}: ✅ {_yf_updated} 季')
+                except Exception as _e_yf_gp:
+                    print(f'[yfinance 毛利率] {stock_id}: {_e_yf_gp}')
 
             # ===== 6) 清洗與排序 =====
             df_quarterly = df_quarterly.dropna(subset=['營收']).copy()

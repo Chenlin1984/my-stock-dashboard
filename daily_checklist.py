@@ -68,7 +68,7 @@ def fetch_institutional(date_str=None):
                 except Exception as _be:
                     print(f"[BFI82U] {_bfi_url}: {_be}")
             j = _bfi_j or {}
-            j = r.json()
+            # (舊版殘留的 j = r.json() 已移除，r 在新架構下未定義)
             if j.get("stat")=="OK" and j.get("data"):
                 result = {}
                 fields = [str(f) for f in j.get("fields", [])]
