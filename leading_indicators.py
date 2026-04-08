@@ -72,7 +72,12 @@ FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
 # ── 工具 ─────────────────────────────────────────────────
 def roc_to_ymd(s):
-    m = re.match(r"(\d{2,3})[/年](\d{1,2})[/月](\d{1,2})", str(s).strip())
+    s = str(s).strip()
+    # 已是 YYYYMMDD（8位西元，OpenAPI 直接回傳）
+    if re.match(r"^\d{8}$", s):
+        return s
+    # ROC 格式: YYY/MM/DD 或 YY/MM/DD
+    m = re.match(r"(\d{2,3})[/年](\d{1,2})[/月](\d{1,2})", s)
     return f"{int(m.group(1))+1911}{m.group(2).zfill(2)}{m.group(3).zfill(2)}" if m else ""
 
 def ymd_to_slash(s): return f"{s[:4]}/{s[4:6]}/{s[6:]}"
