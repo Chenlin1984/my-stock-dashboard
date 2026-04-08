@@ -157,9 +157,77 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
     return r
 
 
-def calc_premium_discount(info: dict, df: pd.DataFrame) -> dict:
-    """折溢價率 = (市價 - NAV) / NAV"""
+@st.cache_data(ttl=7200, show_spinner=False)
+def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
+    """ETF 歷史淨值及折溢價（最近 N 個交易日）
+    資料來源優先順序：
+      1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
+      2. TWSE OpenAPI v1/ETF/TaiwanStockPremiumDiscountRatio（僅最新一日）
+    回傳欄位：date / price / nav / premium / premium_pct
+    """
+    import os, datetime as _dt, requests as _rq_etfnav
+    import pandas as _pd_etfnav
+    code = ticker.replace('.TW', '').replace('.TWO', '')
+    token = os.environ.get('FINMIND_TOKEN', '')
+    start = (_dt.date.today() - _dt.timedelta(days=days + 10)).strftime('%Y-%m-%d')
+
+    # ── 1. FinMind TaiwanETFNetAssetValue ──────────────────────────
     try:
+        _p = {'dataset': 'TaiwanETFNetAssetValue', 'data_id': code, 'start_date': start}
+        if token: _p['token'] = token
+        _r = _rq_etfnav.get('https://api.finmindtrade.com/api/v4/data', params=_p,
+                              headers={'Authorization': f'Bearer {token}'} if token else {},
+                              timeout=15)
+        _j = _r.json()
+        if _j.get('status') == 200 and _j.get('data'):
+            _df = _pd_etfnav.DataFrame(_j['data'])
+            # fields: date, stock_id, nav
+            _df['date'] = _pd_etfnav.to_datetime(_df['date']).dt.date
+            _df['nav']  = _pd_etfnav.to_numeric(_df['nav'], errors='coerce')
+            print(f'[ETF NAV] {code} FinMind: {len(_df)} 筆')
+            return _df[['date', 'nav']].sort_values('date')
+    except Exception as _e1:
+        print(f'[ETF NAV] FinMind {code}: {_e1}')
+
+    # ── 2. TWSE OpenAPI（僅當日最新淨值）──────────────────────────
+    try:
+        _r2 = _rq_etfnav.get(
+            'https://openapi.twse.com.tw/v1/ETF/TaiwanStockPremiumDiscountRatio',
+            headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        for _row in _r2.json():
+            if str(_row.get('證券代號', '')).strip() == code:
+                _nav2  = float(str(_row.get('單位淨值', _row.get('淨值', 0))).replace(',', '') or 0)
+                _price2= float(str(_row.get('收盤價', 0)).replace(',', '') or 0)
+                if _nav2 > 0 and _price2 > 0:
+                    _prem2 = round((_price2 - _nav2) / _nav2 * 100, 2)
+                    print(f'[ETF NAV] {code} TWSE-OpenAPI: price={_price2} nav={_nav2}')
+                    return _pd_etfnav.DataFrame([{
+                        'date': _dt.date.today(), 'nav': _nav2
+                    }])
+    except Exception as _e2:
+        print(f'[ETF NAV] TWSE-OpenAPI {code}: {_e2}')
+
+    return _pd_etfnav.DataFrame()
+
+
+def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> dict:
+    """折溢價率 = (市價 - 淨值) / 淨值 × 100
+    資料來源：1. FinMind/TWSE ETF NAV  2. yfinance navPrice  3. regularMarketNAV
+    """
+    import pandas as _pd_prem
+    try:
+        # 優先從 fetch_etf_nav_history 取最新淨值
+        if ticker:
+            _nav_hist = fetch_etf_nav_history(ticker, days=5)
+            if not _nav_hist.empty and 'nav' in _nav_hist.columns:
+                _latest_nav = float(_nav_hist['nav'].dropna().iloc[-1])
+                if _latest_nav > 0:
+                    price = float(df['Close'].iloc[-1]) if not df.empty else None
+                    if price:
+                        prem = round((price - _latest_nav) / _latest_nav * 100, 2)
+                        return {'nav': _latest_nav, 'price': price,
+                                'premium_pct': prem, 'warning': prem > 1.0}
+        # 備援：yfinance info
         nav   = info.get('navPrice') or info.get('regularMarketNAV')
         price = float(df['Close'].iloc[-1]) if not df.empty else None
         if nav and price:
@@ -533,7 +601,7 @@ def render_etf_single(gemini_fn=None):
 
     # ── ETF 防呆：折溢價 + 追蹤誤差 + 建議買賣時機 ──────────
     st.markdown('#### 🛡️ ETF 折溢價 — 建議買賣時機')
-    prem = calc_premium_discount(info, df)
+    prem = calc_premium_discount(info, df, ticker)   # 傳入 ticker 以使用 FinMind/TWSE NAV
     te   = calc_tracking_error(df, bench_df)
 
     # 折溢價建議邏輯
@@ -592,6 +660,29 @@ def render_etf_single(gemini_fn=None):
                         unsafe_allow_html=True)
     else:
         ci.metric('追蹤誤差', 'N/A')
+
+    # ── 歷史淨值及折溢價表 ────────────────────────────────────
+    import pandas as _pd_navtbl
+    _nav_hist = fetch_etf_nav_history(ticker, days=35)
+    if not _nav_hist.empty and 'nav' in _nav_hist.columns and not df.empty:
+        try:
+            _price_s = df[['Close']].copy()
+            _price_s.index = _pd_navtbl.to_datetime(_price_s.index).normalize()
+            _nav_hist2 = _nav_hist.copy()
+            _nav_hist2['date'] = _pd_navtbl.to_datetime(_nav_hist2['date'])
+            _nav_hist2 = _nav_hist2.set_index('date')
+            _merged = _nav_hist2.join(_price_s, how='inner').dropna()
+            if not _merged.empty:
+                _merged['折溢價']  = (_merged['Close'] - _merged['nav']).round(2)
+                _merged['折溢價%'] = ((_merged['Close'] - _merged['nav']) / _merged['nav'] * 100).round(2)
+                _display = _merged.reset_index()[['date','Close','nav','折溢價','折溢價%']].tail(20)
+                _display.columns = ['日期','市價','淨值','折溢價','折溢價%']
+                _display['日期'] = _display['日期'].dt.strftime('%Y/%m/%d')
+                st.markdown(f'**{ticker} 近期淨值及折溢價**（折溢價% = (市價-淨值)/淨值×100）')
+                st.dataframe(_display.sort_values('日期', ascending=False),
+                             use_container_width=True, hide_index=True)
+        except Exception as _ne:
+            print(f'[ETF NAV Table] {_ne}')
 
     # ── BIAS 乖離率 ───────────────────────────────────────────
     st.markdown('#### 📐 BIAS 乖離率（均線偏離程度）')

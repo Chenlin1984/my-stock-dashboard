@@ -1155,15 +1155,17 @@ class StockDataLoader:
                 except Exception as _e_gp:
                     print(f'[Goodinfo 毛利率] {stock_id}: {_e_gp}')
 
-            # ===== 5d) 毛利率備援：yfinance quarterly_financials =====
+            # ===== 5d) 毛利率備援：yfinance quarterly_income_stmt（含舊名稱相容） =====
             if not is_finance and df_quarterly['毛利率'].isna().all():
                 try:
                     import yfinance as _yf_gp
-                    _tk_gp = _yf_gp.Ticker(f"{stock_id}.TW")
-                    _qfin = _tk_gp.quarterly_financials
-                    if _qfin is None or _qfin.empty:
-                        _tk_gp2 = _yf_gp.Ticker(f"{stock_id}.TWO")
-                        _qfin = _tk_gp2.quarterly_financials
+                    for _yf_sfx in ('.TW', '.TWO'):
+                        _tk_gp = _yf_gp.Ticker(f"{stock_id}{_yf_sfx}")
+                        # yfinance ≥0.2.36: quarterly_income_stmt; 舊版用 quarterly_financials
+                        _qfin = (getattr(_tk_gp, 'quarterly_income_stmt', None)
+                                 or getattr(_tk_gp, 'quarterly_financials', None))
+                        if _qfin is not None and not _qfin.empty:
+                            break
                     if _qfin is not None and not _qfin.empty:
                         # 取 GrossProfit 與 TotalRevenue
                         _gp_row = next((r for r in _qfin.index if 'Gross' in str(r) and 'Profit' in str(r)), None)

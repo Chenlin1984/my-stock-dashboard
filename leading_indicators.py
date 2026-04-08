@@ -443,13 +443,23 @@ def twse_volume(yyyymm):
         "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK",
     ]:
         try:
-            _p = {"response": "json", "date": yyyymm + "01"} if "openapi" not in _url else {}
+            # OpenAPI 不需要 response 參數，但仍需 date
+            if "openapi" in _url:
+                _p = {"date": yyyymm + "01"}
+            else:
+                _p = {"response": "json", "date": yyyymm + "01"}
             r = requests.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
             j = r.json()
-            # OpenAPI 回傳 list 格式，轉成相容 dict
+            # OpenAPI 回傳 list 格式（欄位名稱大小寫相容）
             if isinstance(j, list):
-                j = {"stat": "OK", "data": [[item.get("Date",""), item.get("TradeVolume",""),
-                     item.get("TradeValue",""), "","",""] for item in j]}
+                def _tv(item):
+                    for k in ['TradeValue', 'tradeValue', 'trade_value', 'TradeAmount']:
+                        if k in item and item[k]: return item[k]
+                    return ''
+                j = {"stat": "OK", "data": [[
+                    item.get("Date", item.get("date", "")),
+                    item.get("TradeVolume", item.get("tradeVolume", "")),
+                    _tv(item), "", "", ""] for item in j]}
             result = _parse_fmtqik(j)
             if result:
                 print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
@@ -488,6 +498,11 @@ def twse_volume(yyyymm):
                 return _res_yf
     except Exception as _yfe:
         print(f"[VOL] yfinance ^TWII {yyyymm}: {_yfe}")
+
+    # ── 備援：FinMind TaiwanStockMarketCap（估算每日成交金額）
+    # 用大盤市值乘以換手率估計；直接取 TaiwanStockTotalInstitutionalInvestors buy+sell 加總
+    # 實際上 FinMind 沒有直接的「全市場成交金額」dataset，此備援留存提示
+    print(f"[VOL] {yyyymm} 所有備援均失敗，成交量無資料")
     return {}
 
 

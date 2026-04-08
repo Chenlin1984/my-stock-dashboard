@@ -1452,21 +1452,7 @@ border-radius:12px;padding:14px;text-align:center;">
 <span style="font-size:20px;font-weight:900;color:#e6edf3;">🌍 今日市場總覽</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">決定：現在能買嗎？大盤水位？</span>
 </div>""", unsafe_allow_html=True)
-    st.markdown(
-        '<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 14px;margin-bottom:10px;">'
-        '<div style="font-size:10px;color:#8b949e;margin-bottom:6px;">&#128203; 專業判讀五步流程</div>'
-        '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;">'
-        '<span style="border:1px solid #1f6feb;border-radius:5px;padding:3px 8px;color:#58a6ff;">🌍①總經</span>'
-        '&rarr;'
-        '<span style="border:1px solid #3fb950;border-radius:5px;padding:3px 8px;color:#3fb950;">🔬②個股分析</span>'
-        '&rarr;'
-        '<span style="border:1px solid #d29922;border-radius:5px;padding:3px 8px;color:#d29922;">🏆③比較排行</span>'
-        '&rarr;'
-        '<span style="border:1px solid #bc8cff;border-radius:5px;padding:3px 8px;color:#bc8cff;">🏦④ETF</span>'
-        '&rarr;'
-        '<span style="border:1px solid #484848;border-radius:5px;padding:3px 8px;color:#8b949e;">📚⑤策略手冊</span>'
-        '</div></div>',
-        unsafe_allow_html=True)
+    # 五步流程說明已整合至主導覽列，此處不重複顯示
 
     # ══ 戰情概覽（一眼看清今日市場）══════════════════════════
     _ov_mkt  = st.session_state.get('mkt_info', {})
