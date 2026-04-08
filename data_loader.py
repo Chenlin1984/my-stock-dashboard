@@ -85,6 +85,81 @@ def _fetch_twse_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+_TPEX_DAY_CACHE: dict = {}  # {日期字串: {股票代碼: {外資,投信,自營商}}} TPEx 進程級快取
+
+
+def _get_tpex_day(ds: str) -> dict:
+    """抓取 TPEx 特定日期的全市場法人資料（上櫃股），進程內快取。
+    回傳 {股票代碼: {'外資':float, '投信':float, '自營商':float}}，單位：張"""
+    if ds in _TPEX_DAY_CACHE:
+        return _TPEX_DAY_CACHE[ds]
+    HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*',
+           'Referer': 'https://www.tpex.org.tw/'}
+    try:
+        dt = datetime.date(int(ds[:4]), int(ds[4:6]), int(ds[6:8]))
+        roc_year = dt.year - 1911
+        roc_date = f'{roc_year}/{dt.month:02d}/{dt.day:02d}'
+        r = _req_dl.get(
+            'https://www.tpex.org.tw/web/stock/3insti/daily_report/3itrade_hedge_result.php',
+            params={'l': 'zh-tw', 'se': 'EW', 't': 'D', 'd': roc_date, 'o': 'json'},
+            headers=HDR, timeout=15)
+        j = r.json()
+        rows_data = j.get('aaData', [])
+        if not rows_data:
+            _TPEX_DAY_CACHE[ds] = {}
+            return {}
+
+        # 動態偵測欄位索引：TPEx aaData 每列格式：
+        # [0]代號 [1]名稱 [2]外資買 [3]外資賣 [4]外資淨 [5]投信買 [6]投信賣 [7]投信淨
+        # [8]自營買(自行) [9]自營賣(自行) [10]自營淨(自行) [11..13]避險 [14]三大合計
+        # 確認至少有 11 個欄位才取值
+        def _pn_tp(row, idx):
+            if idx >= len(row): return 0.0
+            try: return round(int(str(row[idx]).replace(',', '').replace('+', '') or 0) / 1000, 1)
+            except: return 0.0
+
+        day_data = {}
+        for row in rows_data:
+            code = str(row[0]).strip()
+            if not code or len(row) < 11: continue
+            day_data[code] = {
+                '外資': _pn_tp(row, 4),
+                '投信': _pn_tp(row, 7),
+                '自營商': _pn_tp(row, 10),
+            }
+        _TPEX_DAY_CACHE[ds] = day_data
+        print(f'[TPEx] {ds} ({roc_date}): {len(day_data)} 支')
+        return day_data
+    except Exception as e:
+        print(f'[TPEx] {ds} 失敗: {e}')
+        _TPEX_DAY_CACHE[ds] = {}
+        return {}
+
+
+def _fetch_tpex_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
+    """TPEx 上櫃股法人備援，邏輯同 TWSE T86，使用 TPEx 三大法人 API。"""
+    try:
+        rows = []
+        base = datetime.date.today()
+        checked = 0
+        for delta in range(20):
+            if checked >= 10: break
+            d = base - datetime.timedelta(days=delta)
+            if d.weekday() >= 5: continue
+            day = _get_tpex_day(d.strftime('%Y%m%d'))
+            checked += 1
+            if stock_id in day:
+                rows.append({'date': d, **day[stock_id]})
+        if rows:
+            _df_tp = pd.DataFrame(rows)
+            _df_tp['主力合計'] = _df_tp['外資'] + _df_tp['投信'] + _df_tp['自營商']
+            df = pd.merge(df, _df_tp, on='date', how='left')
+            print(f'[TPEx] {stock_id} 補充 {len(rows)} 日')
+    except Exception as e:
+        print(f'[TPEx] {stock_id} 失敗: {e}')
+    return df
+
+
 class StockDataLoader:
     """台股數據引擎 - FinMind 優先，Yahoo 備援"""
 
@@ -355,13 +430,17 @@ class StockDataLoader:
 
                     df = pd.merge(df, df_pivot, on='date', how='left')
                 else:
-                    # FinMind 無資料 → fallback: TWSE T86 免費 API（最近10個交易日）
+                    # FinMind 無資料 → fallback: TWSE T86（上市）→ TPEx（上櫃）
                     df = _fetch_twse_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_tpex_inst_fallback(stock_id, df)
 
             except Exception as e:
                 print(f"法人數據錯誤: {e}")
                 try:
                     df = _fetch_twse_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_tpex_inst_fallback(stock_id, df)
                 except Exception:
                     pass
 
