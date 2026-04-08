@@ -178,6 +178,79 @@ def _fetch_tpex_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _normalize_inst_pivot(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """把 FinMind/T86 原始法人 DataFrame 轉成含 外資/投信/自營商/主力合計 欄位的 pivot。
+    df_raw 必須有 date / name / buy / sell 欄位，單位為股。"""
+    import re as _re_ni
+    df_raw = df_raw.copy()
+    df_raw['net_buy'] = (pd.to_numeric(df_raw['buy'],  errors='coerce').fillna(0) -
+                         pd.to_numeric(df_raw['sell'], errors='coerce').fillna(0))
+    df_raw['date'] = pd.to_datetime(df_raw['date']).dt.date
+    pv = df_raw.pivot_table(index='date', columns='name', values='net_buy',
+                             aggfunc='sum').reset_index()
+    # 股→張
+    for c in pv.columns:
+        if c != 'date':
+            pv[c] = pv[c] / 1000
+    # 重命名：支援英文（Foreign_Investor）與中文（外陸資…）
+    rn = {}
+    for c in pv.columns:
+        cs = str(c); cl = cs.lower()
+        cb = _re_ni.split(r'[（(買賣]', cs)[0].strip()
+        if ('外' in cb and '資' in cb and '自' not in cb) or cs in ('外資', '外陸資', '外資及陸資'):
+            rn[c] = '外資'
+        elif '投信' in cb:
+            rn[c] = '投信'
+        elif '自營' in cb:
+            rn[c] = '自營商'
+        elif 'foreign' in cl and 'dealer' not in cl:
+            rn[c] = '外資'
+        elif 'investment' in cl or 'trust' in cl:
+            rn[c] = '投信'
+        elif 'dealer' in cl:
+            rn[c] = '自營商'
+    pv.rename(columns=rn, inplace=True)
+    # 重複欄合併（pandas 3.0 相容）
+    if pv.columns.duplicated().any():
+        _dp = pv[['date']]
+        _np = pv.drop(columns=['date'])
+        _np = _np.T.groupby(level=0).sum().T
+        pv = pd.concat([_dp, _np], axis=1)
+    main = [c for c in ['外資', '投信', '自營商'] if c in pv.columns]
+    if main:
+        pv['主力合計'] = pv[main].sum(axis=1)
+    return pv
+
+
+def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> pd.DataFrame:
+    """FinMind 原始 API 備援（不依賴 Python SDK）
+    - 有 FINMIND_TOKEN: 使用 token 提高速率限制
+    - 無 token: 匿名請求（FinMind 公開資料，限速 3 req/min，仍可取得）
+    """
+    import os
+    _token = os.environ.get('FINMIND_TOKEN', '')
+    try:
+        _params = {'dataset': 'TaiwanStockInstitutionalInvestors',
+                   'data_id': stock_id, 'start_date': start_str}
+        if _token:
+            _params['token'] = _token
+        _r = _req_dl.get(
+            'https://api.finmindtrade.com/api/v4/data',
+            params=_params,
+            headers={'Authorization': f'Bearer {_token}'} if _token else {},
+            timeout=20)
+        _j = _r.json()
+        if _j.get('status') == 200 and _j.get('data'):
+            _pv = _normalize_inst_pivot(pd.DataFrame(_j['data']))
+            df = pd.merge(df, _pv, on='date', how='left')
+            print(f'[FM-Raw] {stock_id}: ✅ {len(_j["data"])} 筆 → {len(_pv)} 日')
+        else:
+            print(f'[FM-Raw] {stock_id}: status={_j.get("status")} msg={_j.get("msg","")}')
+    except Exception as _e:
+        print(f'[FM-Raw] {stock_id}: ❌ {_e}')
+    return df
+
+
 class StockDataLoader:
     """台股數據引擎 - FinMind 優先，Yahoo 備援"""
 
@@ -392,71 +465,16 @@ class StockDataLoader:
                 )
 
                 if not df_inst.empty:
-                    # 計算淨買賣（股）
-                    df_inst['net_buy'] = (df_inst['buy'] - df_inst['sell'])
-                    df_inst['date'] = pd.to_datetime(df_inst['date']).dt.date
-
-                    # 透視表
-                    df_pivot = df_inst.pivot_table(
-                        index='date',
-                        columns='name',
-                        values='net_buy',
-                        aggfunc='sum'
-                    ).reset_index()
-
-                    # 股 → 張
-                    for col in df_pivot.columns:
-                        if col != 'date':
-                            df_pivot[col] = (df_pivot[col] / 1000)
-
-                    # 標準化欄位（支援中文名稱和英文名稱）
-                    # FinMind 返回長名稱如 "外陸資買賣超股數(不含外資自營商)"，括號前才是主體
-                    import re as _re_inst
-                    rename_dict = {}
-                    for col in df_pivot.columns:
-                        col_str = str(col)
-                        col_lower = col_str.lower()
-                        # 取括號前、"買賣" 前的主體：e.g. "外陸資買賣超股數(不含...)" → "外陸資"
-                        col_base = _re_inst.split(r'[（(買賣]', col_str)[0].strip()
-                        # 中文：外資 / 外陸資 / 外資及陸資
-                        if ('外' in col_base and '資' in col_base and '自' not in col_base) \
-                                or col_str in ('外資', '外陸資', '外資及陸資'):
-                            rename_dict[col] = '外資'
-                        elif '投信' in col_base:
-                            rename_dict[col] = '投信'
-                        elif '自營' in col_base:
-                            rename_dict[col] = '自營商'
-                        # 英文名稱
-                        elif 'foreign' in col_lower and 'dealer' not in col_lower:
-                            rename_dict[col] = '外資'
-                        elif 'investment' in col_lower or 'trust' in col_lower:
-                            rename_dict[col] = '投信'
-                        elif 'dealer' in col_lower:
-                            rename_dict[col] = '自營商'
-                    print(f'[籌碼] {stock_id} 欄位:{list(df_pivot.columns[:8])}, rename:{rename_dict}', flush=True)
-
-                    df_pivot.rename(columns=rename_dict, inplace=True)
-
-                    # ✅ 防呆：rename 後可能產生「重複欄名」，會讓後續 pd.to_numeric 爆掉
-                    if df_pivot.columns.duplicated().any():
-                        date_part = df_pivot[['date']]
-                        num_part = df_pivot.drop(columns=['date'])
-                        # 重複欄名合併加總（pandas 3.0 移除 axis=1，改用 T.groupby.T）
-                        num_part = num_part.T.groupby(level=0).sum().T
-                        df_pivot = pd.concat([date_part, num_part], axis=1)
-
-
-                    # 主力合計
-                    main_cols = [c for c in ['外資', '投信', '自營商'] if c in df_pivot.columns]
-                    if main_cols:
-                        df_pivot['主力合計'] = df_pivot[main_cols].sum(axis=1)
-
+                    df_pivot = _normalize_inst_pivot(df_inst)
+                    print(f'[籌碼] {stock_id}: SDK ✅ {len(df_inst)}筆 → 欄位={[c for c in df_pivot.columns if c!="date"]}', flush=True)
                     df = pd.merge(df, df_pivot, on='date', how='left')
                 else:
-                    # FinMind 無資料 → fallback: TWSE T86（上市）→ TPEx（上櫃）
+                    # FinMind SDK 無資料 → T86 → TPEx → FinMind 原始 API
                     df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_finmind_inst_raw(stock_id, df, start_str)
 
             except Exception as e:
                 print(f"法人數據錯誤: {e}")
@@ -464,6 +482,8 @@ class StockDataLoader:
                     df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_finmind_inst_raw(stock_id, df, start_str)
                 except Exception:
                     pass
 
