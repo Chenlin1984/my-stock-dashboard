@@ -2,10 +2,10 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub
-- **進度**: 18 commits 待 Merge → main（所有修復尚未部署）
-- **分支**: claude/analyze-test-coverage-070Kf → main
-- **最新 commit**: a6cf5c1（roc_to_ymd 支援 YYYYMMDD 格式）
-- **⚠️ 行動項目**: 請前往 GitHub Merge PR → https://github.com/Chenlin1984/my-stock-dashboard/compare/main...claude/analyze-test-coverage-070Kf
+- **進度**: ✅ PR #17 已 Merge — 所有修復已部署至 main
+- **分支**: main（最新）
+- **最新 commit**: 10c80a2（Merge PR #17）
+- **部署狀態**: Streamlit Cloud 自動重新部署中（約 2-3 分鐘）
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室，~5500行）
@@ -16,7 +16,7 @@
 - `leading_indicators.py`: 先行指標（外資期貨/PCR/成交量/三大法人）
 - `daily_checklist.py`: 每日清單
 
-## ✅ 所有已推送修復（18 commits，待 Merge）
+## ✅ 已部署修復清單（PR #17，共 22 commits）
 
 | Commit | 內容 |
 |--------|------|
@@ -28,12 +28,12 @@
 | `646abfd` | **get_quarterly_data 新增 EPS 欄位提取** |
 | `e02c06c` | **TPEx 上櫃股法人備援**（_get_tpex_day / _fetch_tpex_inst_fallback）|
 | `b39bf54` | **毛利率備援**（Goodinfo 季損益 step 5c）|
-| `1da2ffd` | **股名快取 TTL 保護**（API 失敗時保留舊 2600+ 筆）+ TPEx 欄位驗證 |
-| `75ea74e` | **總經成交量修復**（FMTQIK 多 URL 備援 + MI_INDEX 不硬編碼 table[6]）|
-| `b4f221d` | **成交量補強**（FMTQIK 三 URL + OpenAPI + row[2]/row[1] 雙索引 + MI_INDEX 搜尋所有 tables）|
-| `a6cf5c1` | **roc_to_ymd 修正**（支援 YYYYMMDD 西元格式，OpenAPI 第三備援 URL 實際生效）|
+| `1da2ffd` | **股名快取 TTL 保護** + TPEx 欄位驗證 |
+| `75ea74e` | **總經成交量修復**（FMTQIK 多 URL + MI_INDEX 不硬編碼）|
+| `b4f221d` | **成交量補強**（三 URL + OpenAPI + row[2]/row[1] 雙索引）|
+| `a6cf5c1` | **roc_to_ymd 修正**（支援 YYYYMMDD 西元格式）|
 
-## 🔄 Merge 後驗證清單
+## 🔄 部署後驗證清單
 - [ ] 上市股技術線圖外資/投信子圖顯示（T86 買賣超修正）
 - [ ] 上櫃股技術線圖外資/投信子圖顯示（TPEx 備援）
 - [ ] 多因子排行顯示正確股票名稱
