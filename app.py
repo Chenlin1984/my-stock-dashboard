@@ -3262,8 +3262,10 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
         vcp2     = calc_vcp(df2)
         health2, details2 = calc_health_score(df2, rsi2, ibs2, vr2, k2, d2, bb2)
         cur_price2 = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
+        from stock_names import get_stock_name as _gsn2
+        _name2_resolved = (name2 if name2 and name2 != sid2 else None) or _gsn2(sid2) or sid2
         st.session_state['t2_data'] = {
-            'sid':sid2,'name':name2 or sid2,'df':df2,'err':err2,
+            'sid':sid2,'name':_name2_resolved,'df':df2,'err':err2,
             'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
             'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
             'cl_src': _cl_src2,'cx_src': _cx_src2,'fin_errs': _fin_errs2,
@@ -4542,7 +4544,8 @@ with tab3_compare:
                 with _t3_loader_lock:
                     _df4_raw, _err4, _name4 = loader_t3.get_combined_data(sid4, 360, True)
                 df4   = _df4_raw.tail(300).reset_index(drop=True) if _df4_raw is not None and not _df4_raw.empty else None
-                name4 = _name4 or sid4
+                # _name4 可能就是 sid4（get_stock_name fallback），需確認是真正的名稱
+                name4 = (_name4 if _name4 and _name4 != sid4 else None) or _gsn(sid4) or sid4
                 avg_div4, _, _ = fetch_dividend_data(sid4)
                 cl4, cx4, _capex4, _cl_src4, _cx_src4, _, _fin_errs4 = fetch_financials(sid4, industry='')
                 result4 = {'sid': sid4, 'df': df4, 'name': name4,
@@ -4655,7 +4658,9 @@ with tab3_compare:
                     try:
                         df4_full, _, name4_full = loader_t3.get_combined_data(sid4, 300, True)
                         if df4_full is not None and not df4_full.empty:
-                            sf = _sss(df4_full, sid4, name4_full or name4 or _gsn(sid4))
+                            # name4_full 可能等於 sid4（代碼），需排除才能使用後備
+                            _n4_use = (name4_full if name4_full and name4_full != sid4 else None) or name4 or _gsn(sid4)
+                            sf = _sss(df4_full, sid4, _n4_use)
                             score_t3.append(sf)
                     except Exception:
                         pass
@@ -4706,7 +4711,7 @@ with tab3_compare:
             except Exception: pass
             _eps3 = _gp3 = None
             if _qtr3 is not None and not _qtr3.empty:
-                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper()), None)
+                _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper() or '每股盈餘' in str(c)), None)
                 _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
                 if _ec3:
                     _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()

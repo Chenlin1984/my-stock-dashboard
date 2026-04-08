@@ -36,9 +36,11 @@ def _get_t86_day(ds: str) -> dict:
             return {}
         fields = [str(f) for f in j.get('fields', [])]
         fi = {n: i for i, n in enumerate(fields)}
-        f_idx = next((v for k, v in fi.items() if '外資' in k and '淨' in k and '自營' not in k), None)
-        t_idx = next((v for k, v in fi.items() if '投信' in k and '淨' in k), None)
-        d_idx = next((v for k, v in fi.items() if '自營' in k and '淨' in k), None)
+        # T86 欄位名稱用「買賣超」而非「淨」，例如「外陸資買賣超股數」「投信買賣超股數」
+        f_idx = next((v for k, v in fi.items() if '外' in k and '買賣超' in k and '自營' not in k), None)
+        t_idx = next((v for k, v in fi.items() if '投信' in k and '買賣超' in k), None)
+        d_idx = next((v for k, v in fi.items() if '自營' in k and '買賣超' in k and '自行' in k), None)
+        print(f'[T86] {ds} fields={fields[:5]} f_idx={f_idx} t_idx={t_idx} d_idx={d_idx}')
 
         def _pn(row, idx):
             if idx is None or idx >= len(row): return 0.0
@@ -80,6 +82,99 @@ def _fetch_twse_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
             print(f'[TWSE T86] {stock_id} 補充 {len(rows)} 日')
     except Exception as e:
         print(f'[TWSE T86] {stock_id} 失敗: {e}')
+    return df
+
+
+_TPEX_DAY_CACHE: dict = {}  # {日期字串: {股票代碼: {外資,投信,自營商}}} TPEx 進程級快取
+
+
+def _get_tpex_day(ds: str) -> dict:
+    """抓取 TPEx 特定日期的全市場法人資料（上櫃股），進程內快取。
+    回傳 {股票代碼: {'外資':float, '投信':float, '自營商':float}}，單位：張"""
+    if ds in _TPEX_DAY_CACHE:
+        return _TPEX_DAY_CACHE[ds]
+    HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*',
+           'Referer': 'https://www.tpex.org.tw/'}
+    try:
+        dt = datetime.date(int(ds[:4]), int(ds[4:6]), int(ds[6:8]))
+        roc_year = dt.year - 1911
+        roc_date = f'{roc_year}/{dt.month:02d}/{dt.day:02d}'
+        r = _req_dl.get(
+            'https://www.tpex.org.tw/web/stock/3insti/daily_report/3itrade_hedge_result.php',
+            params={'l': 'zh-tw', 'se': 'EW', 't': 'D', 'd': roc_date, 'o': 'json'},
+            headers=HDR, timeout=15)
+        j = r.json()
+        rows_data = j.get('aaData', [])
+        if not rows_data:
+            _TPEX_DAY_CACHE[ds] = {}
+            return {}
+
+        def _pn_tp(row, idx):
+            if idx is None or idx >= len(row): return 0.0
+            try: return round(int(str(row[idx]).replace(',', '').replace('+', '') or 0) / 1000, 1)
+            except: return 0.0
+
+        def _int_tp(row, idx):
+            try: return int(str(row[idx]).replace(',', '').replace('+', '') or 0)
+            except: return 0
+
+        # ── 動態偵測欄位索引（sColumns 或 buy-sell-net 驗證）──────────
+        # TPEx 標準格式：[0]代號 [1]名稱
+        # 外資 [2]買 [3]賣 [4]淨  投信 [5]買 [6]賣 [7]淨
+        # 自營(自行) [8]買 [9]賣 [10]淨  [11..13]避險  [14]合計
+        f_idx, t_idx, d_idx = 4, 7, 10  # 預設索引
+
+        # 用第一筆有效資料驗證 buy - sell ≈ net（容許 1 張以內誤差）
+        for _sample in rows_data[:5]:
+            if len(_sample) < 11: continue
+            _f_buy = _int_tp(_sample, 2); _f_sell = _int_tp(_sample, 3); _f_net = _int_tp(_sample, 4)
+            _t_buy = _int_tp(_sample, 5); _t_sell = _int_tp(_sample, 6); _t_net = _int_tp(_sample, 7)
+            if abs(_f_net - (_f_buy - _f_sell)) <= 1000 and abs(_t_net - (_t_buy - _t_sell)) <= 1000:
+                break  # 驗證通過，使用預設索引
+        else:
+            # 若驗證全失敗，嘗試欄位較少的格式（部分 TPEx API 版本省略避險欄）
+            # [0]代號 [1]名稱 [2]外買 [3]外賣 [4]外淨 [5]投買 [6]投賣 [7]投淨 [8]自買 [9]自賣 [10]自淨
+            print(f'[TPEx] {ds} 欄位驗證失敗，row長度={len(rows_data[0]) if rows_data else 0}，使用預設索引')
+
+        day_data = {}
+        for row in rows_data:
+            code = str(row[0]).strip()
+            if not code or len(row) < 11: continue
+            day_data[code] = {
+                '外資': _pn_tp(row, f_idx),
+                '投信': _pn_tp(row, t_idx),
+                '自營商': _pn_tp(row, d_idx),
+            }
+        _TPEX_DAY_CACHE[ds] = day_data
+        print(f'[TPEx] {ds} ({roc_date}): {len(day_data)} 支 idx=({f_idx},{t_idx},{d_idx})')
+        return day_data
+    except Exception as e:
+        print(f'[TPEx] {ds} 失敗: {e}')
+        _TPEX_DAY_CACHE[ds] = {}
+        return {}
+
+
+def _fetch_tpex_inst_fallback(stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
+    """TPEx 上櫃股法人備援，邏輯同 TWSE T86，使用 TPEx 三大法人 API。"""
+    try:
+        rows = []
+        base = datetime.date.today()
+        checked = 0
+        for delta in range(20):
+            if checked >= 10: break
+            d = base - datetime.timedelta(days=delta)
+            if d.weekday() >= 5: continue
+            day = _get_tpex_day(d.strftime('%Y%m%d'))
+            checked += 1
+            if stock_id in day:
+                rows.append({'date': d, **day[stock_id]})
+        if rows:
+            _df_tp = pd.DataFrame(rows)
+            _df_tp['主力合計'] = _df_tp['外資'] + _df_tp['投信'] + _df_tp['自營商']
+            df = pd.merge(df, _df_tp, on='date', how='left')
+            print(f'[TPEx] {stock_id} 補充 {len(rows)} 日')
+    except Exception as e:
+        print(f'[TPEx] {stock_id} 失敗: {e}')
     return df
 
 
@@ -353,13 +448,17 @@ class StockDataLoader:
 
                     df = pd.merge(df, df_pivot, on='date', how='left')
                 else:
-                    # FinMind 無資料 → fallback: TWSE T86 免費 API（最近10個交易日）
+                    # FinMind 無資料 → fallback: TWSE T86（上市）→ TPEx（上櫃）
                     df = _fetch_twse_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_tpex_inst_fallback(stock_id, df)
 
             except Exception as e:
                 print(f"法人數據錯誤: {e}")
                 try:
                     df = _fetch_twse_inst_fallback(stock_id, df)
+                    if '外資' not in df.columns:
+                        df = _fetch_tpex_inst_fallback(stock_id, df)
                 except Exception:
                     pass
 
@@ -967,6 +1066,69 @@ class StockDataLoader:
                 else:
                     df_quarterly['毛利率'] = float('nan')
                     print("⚠️ 無法找到毛利/成本欄位，毛利率將顯示空值")
+
+            # ===== 5b) EPS：每股盈餘 =====
+            eps_col = None
+            for col in df_pivot.columns:
+                c = str(col)
+                if any(k in c for k in ['每股盈餘', '基本每股', 'EPS']) or re.search(r"basic\s*eps|earnings\s*per\s*share", c, re.I):
+                    eps_col = col
+                    break
+            if eps_col is not None:
+                print(f"✓ EPS 欄位: {eps_col}")
+                df_quarterly['EPS'] = pd.to_numeric(df_pivot[eps_col], errors='coerce')
+            else:
+                df_quarterly['EPS'] = float('nan')
+                print("⚠️ 無法找到 EPS 欄位")
+
+            # ===== 5c) 毛利率備援：Goodinfo 季損益 =====
+            # FinMind 無毛利/成本欄位（毛利率全 NaN）時，改從 Goodinfo 直接抓取季度毛利率
+            if not is_finance and df_quarterly['毛利率'].isna().all():
+                try:
+                    import requests as _rq_gi_gp
+                    _gi_hdr_gp = {'User-Agent': 'Mozilla/5.0',
+                                  'Accept': 'text/html,application/xhtml+xml',
+                                  'Referer': 'https://goodinfo.tw/tw/index.asp'}
+                    _gi_url_gp = (f'https://goodinfo.tw/tw/StockFinDetail.asp'
+                                  f'?RPT_CAT=IS_M_QUAR&STOCK_ID={stock_id}')
+                    _gi_r_gp = _rq_gi_gp.get(_gi_url_gp, headers=_gi_hdr_gp, timeout=25)
+                    _gi_r_gp.encoding = 'utf-8'
+                    if _gi_r_gp.status_code == 200 and len(_gi_r_gp.text) > 500:
+                        _gi_tbls_gp = pd.read_html(_gi_r_gp.text, encoding='utf-8')
+                        _found_gp = False
+                        for _tb_gp in _gi_tbls_gp:
+                            if _found_gp: break
+                            _cols_gp = [str(c) for c in _tb_gp.columns]
+                            # 只處理含季度標籤的表（如 113Q4 / 2024Q4）
+                            if not any(re.search(r'Q[1-4]|\d{3}Q|\d{4}Q', c) for c in _cols_gp):
+                                continue
+                            for _, _row_gp in _tb_gp.iterrows():
+                                if '毛利率' not in str(_row_gp.iloc[0]): continue
+                                _updated_gp = 0
+                                for _ci_gp, _col_gp in enumerate(_cols_gp[1:], 1):
+                                    _qm_gp = re.search(r'(\d{3,4})Q([1-4])', str(_col_gp))
+                                    if not _qm_gp: continue
+                                    _yr_gp = int(_qm_gp.group(1))
+                                    _qt_gp = int(_qm_gp.group(2))
+                                    if _yr_gp < 1000: _yr_gp += 1911  # ROC → 西元
+                                    _v_s = (str(_row_gp.iloc[_ci_gp])
+                                            .replace(',', '').replace('%', '')
+                                            .replace('N/A', '').replace('--', '').strip())
+                                    try:
+                                        _v_gp = float(_v_s)
+                                        _mk = ((df_quarterly['年度'].astype(int) == _yr_gp) &
+                                               (df_quarterly['季度'].astype(int) == _qt_gp))
+                                        if _mk.any():
+                                            df_quarterly.loc[_mk, '毛利率'] = _v_gp
+                                            _updated_gp += 1
+                                    except Exception:
+                                        pass
+                                if _updated_gp > 0:
+                                    print(f'[Goodinfo 毛利率] {stock_id}: ✅ {_updated_gp} 季')
+                                    _found_gp = True
+                                    break
+                except Exception as _e_gp:
+                    print(f'[Goodinfo 毛利率] {stock_id}: {_e_gp}')
 
             # ===== 6) 清洗與排序 =====
             df_quarterly = df_quarterly.dropna(subset=['營收']).copy()

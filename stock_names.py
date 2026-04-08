@@ -40,17 +40,23 @@ _STATIC_NAMES = {
 
 # ── 動態快取：TWSE + TPEx OpenAPI ───────────────────────────
 def _load_dynamic_cache() -> dict:
-    """從磁碟讀取動態名稱快取（未過期才用）"""
+    """從磁碟讀取動態名稱快取（無論是否過期皆載入）"""
     if os.path.exists(_DYNAMIC_CACHE_PATH):
-        age_h = (datetime.datetime.now().timestamp()
-                 - os.path.getmtime(_DYNAMIC_CACHE_PATH)) / 3600
-        if age_h < _DYNAMIC_CACHE_TTL:
-            try:
-                with open(_DYNAMIC_CACHE_PATH, 'rb') as f:
-                    return pickle.load(f)
-            except Exception:
-                pass
+        try:
+            with open(_DYNAMIC_CACHE_PATH, 'rb') as f:
+                return pickle.load(f)
+        except Exception:
+            pass
     return {}
+
+
+def _is_cache_stale() -> bool:
+    """回傳 True 若快取檔不存在或已超過 TTL。"""
+    if not os.path.exists(_DYNAMIC_CACHE_PATH):
+        return True
+    age_h = (datetime.datetime.now().timestamp()
+             - os.path.getmtime(_DYNAMIC_CACHE_PATH)) / 3600
+    return age_h >= _DYNAMIC_CACHE_TTL
 
 
 def _save_dynamic_cache(name_dict: dict) -> None:
@@ -120,11 +126,13 @@ _dynamic_cache: dict = _load_dynamic_cache()
 
 
 def _ensure_cache() -> dict:
-    """確保動態快取存在；若空白或過期則重新抓取。"""
+    """確保動態快取存在；若空白或過期則嘗試重新抓取。
+    只有在新快取筆數多於舊快取時才取代，避免 API 失敗時以少量靜態資料覆蓋大快取。"""
     global _dynamic_cache
-    if not _dynamic_cache:
-        _dynamic_cache = _build_dynamic_name_cache()
-        if _dynamic_cache:
+    if not _dynamic_cache or _is_cache_stale():
+        new_cache = _build_dynamic_name_cache()
+        if len(new_cache) > len(_dynamic_cache):
+            _dynamic_cache = new_cache
             _save_dynamic_cache(_dynamic_cache)
     return _dynamic_cache
 
