@@ -413,34 +413,39 @@ def taifex_mtx_data(date_ymd):
 @_safe_cache(ttl=1800, show_spinner=False)
 def twse_volume(yyyymm):
     """
-    成交量（億元）from TWSE FMTQIK
+    成交量（億元）from TWSE FMTQIK，多 URL 備援。
     欄位: row[0]=日期(ROC), row[2]=成交金額(元) → /1e8 = 億元
     """
-    try:
-        r = requests.get("https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK",
-                         params={"response":"json","date":yyyymm+"01"},
-                         headers=TWSE_HDR, timeout=15)
-        d = r.json()
-        if d.get("stat") != "OK":
-            print(f"[VOL] FMTQIK {yyyymm} stat={d.get('stat')} → 嘗試 MI_INDEX 逐日")
-            return {}
+    def _parse_fmtqik(d):
         result = {}
+        if d.get("stat") != "OK": return result
         for row in d.get("data", []):
             dk = roc_to_ymd(row[0])
-            if dk:
-                try:
-                    result[dk] = round(float(row[2].replace(",", "")) / 1e8, 1)
+            if dk and len(row) > 2:
+                try: result[dk] = round(float(str(row[2]).replace(",", "")) / 1e8, 1)
                 except: pass
-        print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天")
         return result
-    except Exception as _e:
-        print(f"[VOL] FMTQIK {yyyymm} ❌ {_e}")
-        return {}
+
+    for _url in [
+        "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK",
+        "https://www.twse.com.tw/zh/afterTrading/FMTQIK",
+    ]:
+        try:
+            r = requests.get(_url, params={"response":"json","date":yyyymm+"01"},
+                             headers=TWSE_HDR, timeout=15)
+            result = _parse_fmtqik(r.json())
+            if result:
+                print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[-3]})")
+                return result
+        except Exception as _e:
+            print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
+    print(f"[VOL] FMTQIK {yyyymm} 全部失敗")
+    return {}
 
 
 def twse_volume_daily(ymd8):
     """
-    單日成交量 from TWSE MI_INDEX table[6] 總計(1~15)
+    單日成交量 from TWSE MI_INDEX（搜尋所有 tables，不依賴固定索引）
     ymd8: YYYYMMDD (e.g., '20260320')
     """
     try:
@@ -450,11 +455,15 @@ def twse_volume_daily(ymd8):
         d = r.json()
         if d.get("stat") != "OK": return None
         tables = d.get("tables", [])
-        if len(tables) < 7: return None
-        for row in tables[6].get("data", []):
-            if "總計" in str(row[0]) and "(1~15)" in str(row[0]):
-                amt = round(float(str(row[1]).replace(",","")) / 1e8, 1)
-                if amt > 0: return amt
+        # 搜尋所有 tables，不依賴固定索引（TWSE 改版後 table 數量可能改變）
+        for tbl in tables:
+            for row in tbl.get("data", []):
+                r0 = str(row[0]) if row else ""
+                if "總計" in r0 and len(row) >= 2:
+                    try:
+                        amt = round(float(str(row[1]).replace(",","")) / 1e8, 1)
+                        if 100 < amt < 10000: return amt  # 合理範圍：百億到萬億
+                    except: pass
         return None
     except: return None
 
