@@ -1063,6 +1063,55 @@ class StockDataLoader:
                 df_quarterly['EPS'] = float('nan')
                 print("⚠️ 無法找到 EPS 欄位")
 
+            # ===== 5c) 毛利率備援：Goodinfo 季損益 =====
+            # FinMind 無毛利/成本欄位（毛利率全 NaN）時，改從 Goodinfo 直接抓取季度毛利率
+            if not is_finance and df_quarterly['毛利率'].isna().all():
+                try:
+                    import requests as _rq_gi_gp
+                    _gi_hdr_gp = {'User-Agent': 'Mozilla/5.0',
+                                  'Accept': 'text/html,application/xhtml+xml',
+                                  'Referer': 'https://goodinfo.tw/tw/index.asp'}
+                    _gi_url_gp = (f'https://goodinfo.tw/tw/StockFinDetail.asp'
+                                  f'?RPT_CAT=IS_M_QUAR&STOCK_ID={stock_id}')
+                    _gi_r_gp = _rq_gi_gp.get(_gi_url_gp, headers=_gi_hdr_gp, timeout=25)
+                    _gi_r_gp.encoding = 'utf-8'
+                    if _gi_r_gp.status_code == 200 and len(_gi_r_gp.text) > 500:
+                        _gi_tbls_gp = pd.read_html(_gi_r_gp.text, encoding='utf-8')
+                        _found_gp = False
+                        for _tb_gp in _gi_tbls_gp:
+                            if _found_gp: break
+                            _cols_gp = [str(c) for c in _tb_gp.columns]
+                            # 只處理含季度標籤的表（如 113Q4 / 2024Q4）
+                            if not any(re.search(r'Q[1-4]|\d{3}Q|\d{4}Q', c) for c in _cols_gp):
+                                continue
+                            for _, _row_gp in _tb_gp.iterrows():
+                                if '毛利率' not in str(_row_gp.iloc[0]): continue
+                                _updated_gp = 0
+                                for _ci_gp, _col_gp in enumerate(_cols_gp[1:], 1):
+                                    _qm_gp = re.search(r'(\d{3,4})Q([1-4])', str(_col_gp))
+                                    if not _qm_gp: continue
+                                    _yr_gp = int(_qm_gp.group(1))
+                                    _qt_gp = int(_qm_gp.group(2))
+                                    if _yr_gp < 1000: _yr_gp += 1911  # ROC → 西元
+                                    _v_s = (str(_row_gp.iloc[_ci_gp])
+                                            .replace(',', '').replace('%', '')
+                                            .replace('N/A', '').replace('--', '').strip())
+                                    try:
+                                        _v_gp = float(_v_s)
+                                        _mk = ((df_quarterly['年度'].astype(int) == _yr_gp) &
+                                               (df_quarterly['季度'].astype(int) == _qt_gp))
+                                        if _mk.any():
+                                            df_quarterly.loc[_mk, '毛利率'] = _v_gp
+                                            _updated_gp += 1
+                                    except Exception:
+                                        pass
+                                if _updated_gp > 0:
+                                    print(f'[Goodinfo 毛利率] {stock_id}: ✅ {_updated_gp} 季')
+                                    _found_gp = True
+                                    break
+                except Exception as _e_gp:
+                    print(f'[Goodinfo 毛利率] {stock_id}: {_e_gp}')
+
             # ===== 6) 清洗與排序 =====
             df_quarterly = df_quarterly.dropna(subset=['營收']).copy()
             # ✅ 金融股：允許負數營收（投資損失等）；一般公司：過濾負數
