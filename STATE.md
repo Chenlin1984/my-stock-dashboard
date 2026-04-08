@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub
-- **進度**: 18 commits 待 Merge → main（所有修復尚未部署）
+- **進度**: 22 commits 待 Merge → main（所有修復尚未部署）
 - **分支**: claude/analyze-test-coverage-070Kf → main
-- **最新 commit**: a6cf5c1（roc_to_ymd 支援 YYYYMMDD 格式）
+- **最新 commit**: 362c2db（STATE.md 更新）
 - **⚠️ 行動項目**: 請前往 GitHub Merge PR → https://github.com/Chenlin1984/my-stock-dashboard/compare/main...claude/analyze-test-coverage-070Kf
 
 ## 🛠️ 檔案結構與核心組件
