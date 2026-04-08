@@ -140,38 +140,42 @@ def fetch_institutional(date_str=None):
     except Exception as _e_oa:
         print(f'[TWSE-OpenAPI法人] ❌ {type(_e_oa).__name__}: {_e_oa}')
 
-    # ── 備援2: FinMind TaiwanStockTotalInstitutionalInvestors（診斷確認 rows=324，可用！）
-    if FINMIND_TOKEN:
-        try:
-            start = (datetime.date.today()-datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-            r2 = requests.get("https://api.finmindtrade.com/api/v4/data",
-                              params={"dataset":"TaiwanStockTotalInstitutionalInvestors",
-                                      "start_date":start,"token":FINMIND_TOKEN},
-                              headers={"Authorization":f"Bearer {FINMIND_TOKEN}"},timeout=20)
-            j2 = r2.json()
-            if j2.get("status")==200 and j2.get("data"):
-                df = pd.DataFrame(j2["data"]); last = df["date"].max()
-                dd = df[df["date"]==last]; result={}
-                _dealer_net = 0.0
-                for _,row in dd.iterrows():
-                    nm=str(row.get("name","")); 
-                    b=float(pd.to_numeric(row.get("buy",0),errors='coerce') or 0)
-                    s=float(pd.to_numeric(row.get("sell",0),errors='coerce') or 0)
-                    net_v = round((b-s)/1e8, 2)
-                    # 統一 key 名稱（讓主程式 _fk 查找正確）
-                    if '外資' in nm:
-                        result['外資及陸資'] = {'net': net_v}
-                    elif '投信' in nm:
-                        result['投信'] = {'net': net_v}
-                    elif '自營' in nm:
-                        _dealer_net += net_v
-                if _dealer_net != 0:
-                    result['自營商'] = {'net': round(_dealer_net, 2)}
-                if result:
-                    print(f"[FM法人] ✅ {last}: 外資={result.get('外資及陸資',{}).get('net',0):.1f} 投信={result.get('投信',{}).get('net',0):.1f} 自營={result.get('自營商',{}).get('net',0):.1f}億")
-                    return result, str(last)
-        except Exception as e:
-            print(f"[FM法人] {e}")
+    # ── 備援2: FinMind TaiwanStockTotalInstitutionalInvestors（公開資料，無需 Token）
+    try:
+        start = (datetime.date.today()-datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+        _fm_p2 = {"dataset":"TaiwanStockTotalInstitutionalInvestors","start_date":start}
+        if FINMIND_TOKEN: _fm_p2["token"] = FINMIND_TOKEN
+        r2 = requests.get("https://api.finmindtrade.com/api/v4/data",
+                          params=_fm_p2,
+                          headers={"Authorization":f"Bearer {FINMIND_TOKEN}"} if FINMIND_TOKEN else {},
+                          timeout=20)
+        j2 = r2.json()
+        if j2.get("status")==200 and j2.get("data"):
+            df = pd.DataFrame(j2["data"]); last = df["date"].max()
+            dd = df[df["date"]==last]; result={}
+            _dealer_net = 0.0
+            for _,row in dd.iterrows():
+                nm=str(row.get("name",""))
+                b=float(pd.to_numeric(row.get("buy",0),errors='coerce') or 0)
+                s=float(pd.to_numeric(row.get("sell",0),errors='coerce') or 0)
+                net_v = round((b-s)/1e8, 2)
+                # 相容 FinMind 英文名稱（Foreign_Investor）與中文名稱（外資及陸資）
+                _is_foreign = nm == 'Foreign_Investor' or ('外資' in nm and '自營' not in nm)
+                _is_trust   = nm == 'Investment_Trust'  or '投信' in nm
+                _is_dealer  = nm in ('Dealer_self', 'Dealer_Hedging') or '自營' in nm
+                if _is_foreign:
+                    result['外資及陸資'] = {'net': net_v}
+                elif _is_trust:
+                    result['投信'] = {'net': net_v}
+                elif _is_dealer:
+                    _dealer_net += net_v
+            if _dealer_net != 0:
+                result['自營商'] = {'net': round(_dealer_net, 2)}
+            if result:
+                print(f"[FM法人] ✅ {last}: 外資={result.get('外資及陸資',{}).get('net',0):.1f} 投信={result.get('投信',{}).get('net',0):.1f} 自營={result.get('自營商',{}).get('net',0):.1f}億")
+                return result, str(last)
+    except Exception as e:
+        print(f"[FM法人] {e}")
     return {}, date_str
 
 

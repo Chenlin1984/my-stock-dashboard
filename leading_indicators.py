@@ -457,20 +457,30 @@ def twse_volume(yyyymm):
         except Exception as _e:
             print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
     print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
-    # ── 備援：yfinance ^TWII Volume（= 全市場成交金額，單位：元）
+    # ── 備援：yfinance ^TWII Volume
+    # ^TWII Volume 在 Yahoo Finance 為全市場成交金額(元)或成交股數，視版本而異
+    # 成交金額(元)：約 3-5×10^11 → /1e8 = 3000-5000億 ✓
+    # 成交股數：    約 3-8×10^9  → /1e8 = 30-80億  → 閾值降至 10
     try:
         import yfinance as _yf_v
+        import pandas as _pd_yf_vol
         _yr, _mo = int(yyyymm[:4]), int(yyyymm[4:6])
         _s = f"{_yr}-{_mo:02d}-01"
         _e = f"{_yr if _mo < 12 else _yr+1}-{_mo+1 if _mo < 12 else 1:02d}-01"
         _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False, auto_adjust=True)
+        # 相容 yfinance ≥0.2.28 的 MultiIndex 欄位
+        if isinstance(_tw.columns, _pd_yf_vol.MultiIndex):
+            _lv = 0 if 'Volume' in _tw.columns.get_level_values(0) else 1
+            _tw.columns = _tw.columns.get_level_values(_lv)
         if not _tw.empty and "Volume" in _tw.columns:
             _res_yf = {}
             for _idx, _row in _tw.iterrows():
                 _dk = _idx.strftime("%Y%m%d")
                 try:
-                    _v = round(float(_row["Volume"]) / 1e8, 1)
-                    if 100 < _v < 20000:
+                    _raw = float(_row["Volume"])
+                    _v = round(_raw / 1e8, 1)
+                    # 接受 10-20000 億範圍（相容成交金額元 與 成交股數 兩種情境）
+                    if 10 < _v < 20000:
                         _res_yf[_dk] = _v
                 except: pass
             if _res_yf:
