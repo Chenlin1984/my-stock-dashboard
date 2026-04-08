@@ -441,8 +441,8 @@ class StockDataLoader:
                     if df_pivot.columns.duplicated().any():
                         date_part = df_pivot[['date']]
                         num_part = df_pivot.drop(columns=['date'])
-                        # 重複欄名合併加總（同一法人不同名稱歸類到同一欄時）
-                        num_part = num_part.groupby(level=0, axis=1).sum()
+                        # 重複欄名合併加總（pandas 3.0 移除 axis=1，改用 T.groupby.T）
+                        num_part = num_part.T.groupby(level=0).sum().T
                         df_pivot = pd.concat([date_part, num_part], axis=1)
 
 
@@ -500,8 +500,8 @@ class StockDataLoader:
 
             # ✅ 防呆：若合併後仍有重複欄名，先處理掉（避免 pd.to_numeric 收到 DataFrame）
             if df.columns.duplicated().any():
-                # 同名欄位以加總合併（常見於三大法人欄位 rename 撞名）
-                df = df.groupby(level=0, axis=1).sum()
+                # 同名欄位以加總合併（pandas 3.0 移除 axis=1，改用 T.groupby.T）
+                df = df.T.groupby(level=0).sum().T
 
             # 強制轉數值
             numeric_cols = ['open', 'high', 'low', 'close', 'volume',
