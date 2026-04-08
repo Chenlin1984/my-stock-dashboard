@@ -72,7 +72,12 @@ FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
 # ── 工具 ─────────────────────────────────────────────────
 def roc_to_ymd(s):
-    m = re.match(r"(\d{2,3})[/年](\d{1,2})[/月](\d{1,2})", str(s).strip())
+    s = str(s).strip()
+    # 已是 YYYYMMDD（8位西元，OpenAPI 直接回傳）
+    if re.match(r"^\d{8}$", s):
+        return s
+    # ROC 格式: YYY/MM/DD 或 YY/MM/DD
+    m = re.match(r"(\d{2,3})[/年](\d{1,2})[/月](\d{1,2})", s)
     return f"{int(m.group(1))+1911}{m.group(2).zfill(2)}{m.group(3).zfill(2)}" if m else ""
 
 def ymd_to_slash(s): return f"{s[:4]}/{s[4:6]}/{s[6:]}"
@@ -421,21 +426,33 @@ def twse_volume(yyyymm):
         if d.get("stat") != "OK": return result
         for row in d.get("data", []):
             dk = roc_to_ymd(row[0])
-            if dk and len(row) > 2:
-                try: result[dk] = round(float(str(row[2]).replace(",", "")) / 1e8, 1)
+            if not dk or len(row) < 3: continue
+            # 嘗試 row[2]（成交金額）；若值不合理再試 row[1]
+            for idx in [2, 1]:
+                try:
+                    v = round(float(str(row[idx]).replace(",", "")) / 1e8, 1)
+                    if 100 < v < 20000:
+                        result[dk] = v
+                        break
                 except: pass
         return result
 
     for _url in [
         "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK",
         "https://www.twse.com.tw/zh/afterTrading/FMTQIK",
+        "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK",
     ]:
         try:
-            r = requests.get(_url, params={"response":"json","date":yyyymm+"01"},
-                             headers=TWSE_HDR, timeout=15)
-            result = _parse_fmtqik(r.json())
+            _p = {"response": "json", "date": yyyymm + "01"} if "openapi" not in _url else {}
+            r = requests.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
+            j = r.json()
+            # OpenAPI 回傳 list 格式，轉成相容 dict
+            if isinstance(j, list):
+                j = {"stat": "OK", "data": [[item.get("Date",""), item.get("TradeVolume",""),
+                     item.get("TradeValue",""), "","",""] for item in j]}
+            result = _parse_fmtqik(j)
             if result:
-                print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[-3]})")
+                print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
                 return result
         except Exception as _e:
             print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
@@ -445,7 +462,7 @@ def twse_volume(yyyymm):
 
 def twse_volume_daily(ymd8):
     """
-    單日成交量 from TWSE MI_INDEX（搜尋所有 tables，不依賴固定索引）
+    單日成交量 from TWSE MI_INDEX（搜尋所有 tables，row[2]=成交金額備援 row[1]）
     ymd8: YYYYMMDD (e.g., '20260320')
     """
     try:
@@ -455,14 +472,15 @@ def twse_volume_daily(ymd8):
         d = r.json()
         if d.get("stat") != "OK": return None
         tables = d.get("tables", [])
-        # 搜尋所有 tables，不依賴固定索引（TWSE 改版後 table 數量可能改變）
+        # 搜尋所有 tables，找「總計」列；row[2]=成交金額，row[1] 備援
         for tbl in tables:
             for row in tbl.get("data", []):
-                r0 = str(row[0]) if row else ""
-                if "總計" in r0 and len(row) >= 2:
+                if not row or "總計" not in str(row[0]): continue
+                for idx in [2, 1]:
+                    if idx >= len(row): continue
                     try:
-                        amt = round(float(str(row[1]).replace(",","")) / 1e8, 1)
-                        if 100 < amt < 10000: return amt  # 合理範圍：百億到萬億
+                        amt = round(float(str(row[idx]).replace(",","")) / 1e8, 1)
+                        if 100 < amt < 20000: return amt
                     except: pass
         return None
     except: return None
