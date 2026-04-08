@@ -460,6 +460,7 @@ def twse_volume(yyyymm):
     return {}
 
 
+@_safe_cache(ttl=1800, show_spinner=False)
 def twse_volume_daily(ymd8):
     """
     單日成交量 from TWSE MI_INDEX（搜尋所有 tables，row[2]=成交金額備援 row[1]）
@@ -880,7 +881,7 @@ def build_leading_fast(days=7, token=""):
         if _vd not in vol_dict:
             _v = twse_volume_daily(_vd)
             if _v: vol_dict[_vd] = _v
-        _vt2.sleep(0.15)
+            _vt2.sleep(0.15)  # 只在實際發出 request 後才 sleep
     print(f"[LI-v8] 成交量（最終）{len(vol_dict)} 天")
 
     # ═══ 6. 確定日期範圍 ════════════════════════════════════════
