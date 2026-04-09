@@ -26,7 +26,7 @@
 | `a2bbcba` | **成交量/殖利率**: roc_to_ymd補7位民國格式 + 殖利率X軸鎖定 + yfinance volume閾值 |
 | `e8d4dec` | **技術線圖法人子圖**: FinMind API 加 end_date + 日期型別正規化 + 零值改顯示提示訊息 |
 | `69e2cdc` | **DataLoader=None + CBC SSL + dividend import**: 跳過SDK走RawAPI / CBC verify=False / 雙路徑import |
-| 待推送 | **三大問題修復**: 外資自營商rename→外資 / annotation xref='paper' / 殖利率動態河流+Y軸鎖定 |
+| `c8d3c14` | **四大根本修復**: FinMind dataset名稱BuySell / TPEx SSL verify=False / scoring_engine list防護 / 現價0快取驗證 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -37,10 +37,12 @@
 ## 🔄 待驗證項目
 - [x] 先行指標成交量：roc_to_ymd 7位民國格式已修正 ✅
 - [x] 先行指標顏色：正數藍色/負數紅色 ✅
-- [ ] BFI82U 外資方向：TWSE 主動封鎖，需 FinMind 備援
-- [ ] 技術線圖外資/投信/主力：已修正 FinMind API 呼叫（加 end_date + 日期正規化）；若仍空白看 [DBG-INST] log 確認 FinMind status/data_rows
-- [ ] 毛利率：token 修正已 push，待 Streamlit Cloud 驗證
-- [ ] debug checkpoints（DBG-VOL/INST/GP）：確認資料正常後可移除
+- [x] FinMind法人 API 422：dataset → TaiwanStockInstitutionalInvestorsBuySell ✅
+- [x] TPEx SSL：verify=False ✅
+- [x] scoring_engine list崩潰：hasattr防護 ✅
+- [x] 現價=0：快取驗證 + close≤0過濾 ✅
+- [ ] 毛利率圖表：資料應已正常，待 Cloud 驗證
+- [ ] debug print（DBG-VOL/INST/DBG-GP）：確認正常後可移除
 
 ## 🐞 長期已知限制
 - TWSE 直接 API 被 Streamlit Cloud IP 封鎖（`頁面無法執行`）→ 全部依賴 FinMind/openapi 備援
