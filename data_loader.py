@@ -856,8 +856,10 @@ class StockDataLoader:
                 _df_q_tmp = None
                 for _ds_q in ['TaiwanStockFinancialStatement', 'TaiwanStockFinancialStatements']:
                     try:
+                        _pq = {'dataset': _ds_q, 'data_id': stock_id, 'start_date': start_str}
+                        if _tok_q: _pq['token'] = _tok_q  # FinMind v4 需要 token 在 params
                         _resp_q = _rq_q.get('https://api.finmindtrade.com/api/v4/data',
-                            params={'dataset': _ds_q, 'data_id': stock_id, 'start_date': start_str},
+                            params=_pq,
                             headers={'Authorization': f'Bearer {_tok_q}'} if _tok_q else {},
                             timeout=25)
                         print(f'[DBG-GP] [?] HTTP={_resp_q.status_code}  dataset={_ds_q}')
@@ -1125,35 +1127,36 @@ class StockDataLoader:
                     df_quarterly['毛利率名稱'] = '稅後純益率'
                     print("⚠️ 金融股：找不到稅後淨利欄位，稅後純益率留空")
 
-            # 一般公司：照舊計算毛利率
-            print(f'[DBG-GP] [*] 步驟: 搜尋毛利欄位  df_pivot.columns={list(df_pivot.columns)[:20]}')
-            gp_col = None
-            for col in df_pivot.columns:
-                c = str(col)
-                if any(k in c for k in ['毛利', '營業毛利']) or re.search(r"gross\s*profit", c, re.I):
-                    gp_col = col
-                    break
-
-            print(f'[DBG-GP] [>] gp_col={gp_col}')
-            if gp_col is not None:
-                print(f"✓ 毛利欄位: {gp_col}")
-                gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')
-                df_quarterly['毛利率'] = (gp / df_quarterly['營收'] * 100).round(2)
-            else:
-                cost_col = None
+            # 一般公司：照舊計算毛利率（金融股已在上方 if is_finance 區塊處理，此處略過）
+            if not is_finance:
+                print(f'[DBG-GP] [*] 步驟: 搜尋毛利欄位  df_pivot.columns={list(df_pivot.columns)[:20]}')
+                gp_col = None
                 for col in df_pivot.columns:
                     c = str(col)
-                    if any(k in c for k in ['營業成本', '成本合計']) or re.search(r"cost\s+of\s+revenue|cost\s+of\s+goods", c, re.I):
-                        cost_col = col
+                    if any(k in c for k in ['毛利', '營業毛利']) or re.search(r"gross\s*profit", c, re.I):
+                        gp_col = col
                         break
 
-                if cost_col is not None:
-                    print(f"✓ 成本欄位: {cost_col}")
-                    cost = pd.to_numeric(df_pivot[cost_col], errors='coerce')
-                    df_quarterly['毛利率'] = ((df_quarterly['營收'] - cost) / df_quarterly['營收'] * 100).round(2)
+                print(f'[DBG-GP] [>] gp_col={gp_col}')
+                if gp_col is not None:
+                    print(f"✓ 毛利欄位: {gp_col}")
+                    gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')
+                    df_quarterly['毛利率'] = (gp / df_quarterly['營收'] * 100).round(2)
                 else:
-                    df_quarterly['毛利率'] = float('nan')
-                    print("⚠️ 無法找到毛利/成本欄位，毛利率將顯示空值")
+                    cost_col = None
+                    for col in df_pivot.columns:
+                        c = str(col)
+                        if any(k in c for k in ['營業成本', '成本合計']) or re.search(r"cost\s+of\s+revenue|cost\s+of\s+goods", c, re.I):
+                            cost_col = col
+                            break
+
+                    if cost_col is not None:
+                        print(f"✓ 成本欄位: {cost_col}")
+                        cost = pd.to_numeric(df_pivot[cost_col], errors='coerce')
+                        df_quarterly['毛利率'] = ((df_quarterly['營收'] - cost) / df_quarterly['營收'] * 100).round(2)
+                    else:
+                        df_quarterly['毛利率'] = float('nan')
+                        print("⚠️ 無法找到毛利/成本欄位，毛利率將顯示空值")
 
             # ===== 5b) EPS：每股盈餘 =====
             eps_col = None
