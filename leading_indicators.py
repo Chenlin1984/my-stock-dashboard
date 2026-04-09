@@ -81,6 +81,9 @@ def roc_to_ymd(s):
     # 已是 YYYYMMDD（8位西元，OpenAPI 直接回傳）
     if re.match(r"^\d{8}$", s):
         return s
+    # 7位民國 YYYMMDD（openapi.twse.com.tw 回傳格式，如 '1150401' = 2026-04-01）
+    if re.match(r"^\d{7}$", s):
+        return f"{int(s[:3])+1911}{s[3:5]}{s[5:7]}"
     # ROC 格式: YYY/MM/DD 或 YY/MM/DD
     m = re.match(r"(\d{2,3})[/年](\d{1,2})[/月](\d{1,2})", s)
     return f"{int(m.group(1))+1911}{m.group(2).zfill(2)}{m.group(3).zfill(2)}" if m else ""
@@ -519,9 +522,12 @@ def twse_volume(yyyymm):
                     _dk = _idx.strftime("%Y%m%d") if hasattr(_idx, 'strftime') else str(_idx)[:10].replace('-','')
                     try:
                         _raw = float(_row["Volume"])
-                        _v = round(_raw / 1e8, 1)
-                        if 5 < _v < 20000:
-                            _res_yf[_dk] = _v
+                        # ^TWII yfinance volume 單位不穩定；嘗試多種換算
+                        for _div in [1e8, 1e4, 1e3]:
+                            _v = round(_raw / _div, 1)
+                            if 5 < _v < 20000:
+                                _res_yf[_dk] = _v
+                                break
                     except: pass
         except Exception as _yfe_a:
             print(f"[DBG-VOL] ❌ 方法A 例外: {type(_yfe_a).__name__}: {str(_yfe_a)[:200]}")
@@ -544,9 +550,11 @@ def twse_volume(yyyymm):
                         _dk = _idx.strftime("%Y%m%d")
                         try:
                             _raw = float(_row["Volume"])
-                            _v = round(_raw / 1e8, 1)
-                            if 5 < _v < 20000:
-                                _res_yf[_dk] = _v
+                            for _div in [1e8, 1e4, 1e3]:
+                                _v = round(_raw / _div, 1)
+                                if 5 < _v < 20000:
+                                    _res_yf[_dk] = _v
+                                    break
                         except: pass
             except Exception as _yfe_b:
                 print(f"[DBG-VOL] ❌ 方法B 例外: {type(_yfe_b).__name__}: {str(_yfe_b)[:200]}")

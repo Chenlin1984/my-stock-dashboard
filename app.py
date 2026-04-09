@@ -3996,12 +3996,16 @@ padding:12px 16px;margin:8px 0;">
             _fig_riv.add_hrect(y0=0,    y1=_p7r, fillcolor='rgba(63,185,80,0.07)',  line_width=0)
             _fig_riv.add_hrect(y0=_p7r, y1=_p5r, fillcolor='rgba(210,153,34,0.07)', line_width=0)
             _fig_riv.add_hrect(y0=_p5r, y1=_p3r, fillcolor='rgba(248,81,73,0.05)',  line_width=0)
+            # 鎖定 X 軸範圍，防止 add_hline annotation_position='right' 將 X 軸延伸至未來
+            _xmin = _rdates.iloc[0]  if hasattr(_rdates, 'iloc') else _rdates[0]
+            _xmax = _rdates.iloc[-1] if hasattr(_rdates, 'iloc') else _rdates[-1]
             _fig_riv.update_layout(
                 title=dict(text=f'📊 {sid2} {name2} 殖利率河流圖（年均股利 {avg_div2:.2f}元）',
                            font=dict(color='#8b949e',size=12)),
                 height=300, plot_bgcolor='#0e1117', paper_bgcolor='#0e1117',
                 font=dict(color='white',size=11), margin=dict(l=10,r=90,t=40,b=10),
-                xaxis=dict(gridcolor='#21262d'), yaxis=dict(gridcolor='#21262d'),
+                xaxis=dict(range=[_xmin, _xmax], gridcolor='#21262d'),
+                yaxis=dict(gridcolor='#21262d'),
                 hovermode='x unified', showlegend=False)
             st.plotly_chart(_fig_riv, use_container_width=True, config={'displayModeBar':False})
             _cur_zone = '🟢 便宜區' if (df2['close'].iloc[-1] if not df2.empty else 0) < _p7r else ('🟡 合理區' if (df2['close'].iloc[-1] if not df2.empty else 0) < _p5r else '🔴 昂貴區')
