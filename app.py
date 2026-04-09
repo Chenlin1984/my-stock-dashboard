@@ -180,7 +180,10 @@ def fetch_price_data(sid, days):
 def fetch_dividend_data(sid):
     avg_div, yearly, source = 0.0, [], ''
     try:
-        from FinMind.data import DataLoader as FM
+        try:
+            from FinMind.data import DataLoader as FM
+        except ImportError:
+            from finmind.data import DataLoader as FM
         dl = FM()
         _fm_tok_div = _get_fm_token()
         if _fm_tok_div:
@@ -1914,7 +1917,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     try:
                         _r_cbc = requests.get(
                             'https://www.cbc.gov.tw/public/data/ms1.json',
-                            headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
+                            headers={'User-Agent':'Mozilla/5.0'}, timeout=15, verify=False)
                         if _r_cbc.status_code == 200:
                             _cbc_data = _r_cbc.json()
                             print(f'[M1B/CBC] 回傳 {type(_cbc_data)} len={len(str(_cbc_data)[:200])}')

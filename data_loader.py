@@ -487,54 +487,44 @@ class StockDataLoader:
                 df[f'MA{period}'] = df['close'].rolling(window=period).mean()
 
             # ========== 4. 三大法人 ==========
-            print(f'[DBG-INST] ═══ 三大法人 {stock_id} 開始 ═══')
-            print(f'[DBG-INST] [*] 步驟: SDK dl={type(_self.dl).__name__ if _self.dl else "None"}')
-            try:
-                df_inst = _self.dl.taiwan_stock_institutional_investors(
-                    stock_id=stock_id,
-                    start_date=start_str
-                )
-                print(f'[DBG-INST] [?] SDK型態: {type(df_inst).__name__}')
-                # 防 None 與非 DataFrame 回傳
-                _sdk_ok = (df_inst is not None and
-                           hasattr(df_inst, 'empty') and
-                           not df_inst.empty)
-                if _sdk_ok:
-                    print(f'[DBG-INST] [#] SDK rows={len(df_inst)}  cols={list(df_inst.columns)}')
-                    print(f'[DBG-INST] [>] name值={list(df_inst["name"].unique()[:5]) if "name" in df_inst.columns else "無name欄"}')
-                    df_pivot = _normalize_inst_pivot(df_inst)
-                    print(f'[DBG-INST] [#] pivot cols={list(df_pivot.columns)}  rows={len(df_pivot)}')
-                    # 確保日期型別一致再 merge
-                    df_pivot['date'] = pd.to_datetime(df_pivot['date']).dt.date
-                    df['date']       = pd.to_datetime(df['date']).dt.date
-                    _df_dates = set(df['date']); _pv_dates = set(df_pivot['date'])
-                    print(f'[DBG-INST] [#] df={min(_df_dates)}~{max(_df_dates)}  pv={min(_pv_dates)}~{max(_pv_dates)}  重疊={len(_df_dates&_pv_dates)}日')
-                    df = pd.merge(df, df_pivot, on='date', how='left')
-                    _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
-                    print(f'[籌碼] {stock_id}: SDK ✅ {len(df_inst)}筆 → 外資非零={_nz}', flush=True)
-                else:
-                    # FinMind SDK 無資料 → FinMind Raw API → T86 → TPEx
-                    print(f'[DBG-INST] SDK 空/None資料，進入 FinMind Raw API fallback')
-                    df = _fetch_finmind_inst_raw(stock_id, df, start_str)
-                    if '外資' not in df.columns:
-                        print(f'[DBG-INST] 外資欄缺失，進入 T86 fallback')
-                        df = _fetch_twse_inst_fallback(stock_id, df)
-                    if '外資' not in df.columns:
-                        print(f'[DBG-INST] 外資欄缺失，進入 TPEx fallback')
-                        df = _fetch_tpex_inst_fallback(stock_id, df)
-                    print(f'[DBG-INST] 最終欄位: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
-
-            except Exception as e:
-                print(f'[DBG-INST] ❌ SDK 例外: {type(e).__name__}: {str(e)[:300]}')
+            print(f'[DBG-INST] ═══ 三大法人 {stock_id} 開始  dl={type(_self.dl).__name__ if _self.dl else "None(→RawAPI)"} ═══')
+            if _self.dl is not None:
                 try:
-                    df = _fetch_finmind_inst_raw(stock_id, df, start_str)
-                    if '外資' not in df.columns:
-                        df = _fetch_twse_inst_fallback(stock_id, df)
-                    if '外資' not in df.columns:
-                        df = _fetch_tpex_inst_fallback(stock_id, df)
-                    print(f'[DBG-INST] 例外後最終欄位: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
-                except Exception as _e2:
-                    print(f'[DBG-INST] ❌ fallback 例外: {type(_e2).__name__}: {str(_e2)[:200]}')
+                    df_inst = _self.dl.taiwan_stock_institutional_investors(
+                        stock_id=stock_id,
+                        start_date=start_str
+                    )
+                    _sdk_ok = (df_inst is not None and
+                               hasattr(df_inst, 'empty') and
+                               not df_inst.empty)
+                    if _sdk_ok:
+                        print(f'[DBG-INST] SDK ✅ rows={len(df_inst)}')
+                        df_pivot = _normalize_inst_pivot(df_inst)
+                        df_pivot['date'] = pd.to_datetime(df_pivot['date']).dt.date
+                        df['date']       = pd.to_datetime(df['date']).dt.date
+                        _overlap = len(set(df['date']) & set(df_pivot['date']))
+                        print(f'[DBG-INST] pivot cols={list(df_pivot.columns)}  重疊={_overlap}日')
+                        df = pd.merge(df, df_pivot, on='date', how='left')
+                        _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
+                        print(f'[籌碼] {stock_id}: SDK ✅ 外資非零={_nz}', flush=True)
+                        _sdk_used = True
+                    else:
+                        print(f'[DBG-INST] SDK 空/None資料')
+                        _sdk_used = False
+                except Exception as e:
+                    print(f'[DBG-INST] ❌ SDK 例外: {type(e).__name__}: {str(e)[:200]}')
+                    _sdk_used = False
+            else:
+                _sdk_used = False
+
+            if not _sdk_used:
+                # SDK 不可用 → FinMind Raw HTTP API（不依賴 SDK）
+                df = _fetch_finmind_inst_raw(stock_id, df, start_str)
+                if '外資' not in df.columns:
+                    df = _fetch_twse_inst_fallback(stock_id, df)
+                if '外資' not in df.columns:
+                    df = _fetch_tpex_inst_fallback(stock_id, df)
+                print(f'[DBG-INST] RawAPI後: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
 
             # ========== 5. 融資融券 ==========
             try:
