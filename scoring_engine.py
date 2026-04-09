@@ -407,7 +407,7 @@ def calc_fundamental_score(revenue_df=None, yoy_months: int = 3) -> float:
     月營收 YoY 連續成長 + 加速度判斷
     無財報數據時回傳中性值 50
     """
-    if revenue_df is None or revenue_df.empty:
+    if revenue_df is None or not hasattr(revenue_df, 'empty') or revenue_df.empty:
         return 50.0
     try:
         if 'yoy' not in revenue_df.columns and 'revenue' in revenue_df.columns:

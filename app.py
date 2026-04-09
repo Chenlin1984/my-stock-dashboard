@@ -168,7 +168,10 @@ def fetch_price_data(sid, days):
     _c = _load_cache('price', sid, str(days), ttl_hours=4)
     if _c is not None:
         df_c, name_c = _c
-        return df_c, name_c, None
+        # 驗證快取資料有效（close不為全0）
+        if df_c is not None and not df_c.empty and float(df_c['close'].max()) > 0:
+            return df_c, name_c, None
+        # 快取有問題，重新抓取
     loader = _get_loader()
     df, err, name = loader.get_combined_data(sid, days + 60, True)
     if err or df is None: return None, None, err
