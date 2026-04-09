@@ -29,7 +29,7 @@ def _get_t86_day(ds: str) -> dict:
     try:
         r = _req_dl.get('https://www.twse.com.tw/fund/T86',
                         params={'response': 'json', 'date': ds, 'selectType': 'ALL'},
-                        headers=HDR, timeout=10)
+                        headers=HDR, timeout=5)
         j = r.json()
         if j.get('stat') != 'OK' or not j.get('data'):
             _T86_DAY_CACHE[ds] = {}
@@ -102,7 +102,7 @@ def _get_tpex_day(ds: str) -> dict:
         r = _req_dl.get(
             'https://www.tpex.org.tw/web/stock/3insti/daily_report/3itrade_hedge_result.php',
             params={'l': 'zh-tw', 'se': 'EW', 't': 'D', 'd': roc_date, 'o': 'json'},
-            headers=HDR, timeout=15)
+            headers=HDR, timeout=5)
         j = r.json()
         rows_data = j.get('aaData', [])
         if not rows_data:
@@ -469,21 +469,21 @@ class StockDataLoader:
                     print(f'[籌碼] {stock_id}: SDK ✅ {len(df_inst)}筆 → 欄位={[c for c in df_pivot.columns if c!="date"]}', flush=True)
                     df = pd.merge(df, df_pivot, on='date', how='left')
                 else:
-                    # FinMind SDK 無資料 → T86 → TPEx → FinMind 原始 API
-                    df = _fetch_twse_inst_fallback(stock_id, df)
+                    # FinMind SDK 無資料 → FinMind Raw API → T86 → TPEx
+                    df = _fetch_finmind_inst_raw(stock_id, df, start_str)
+                    if '外資' not in df.columns:
+                        df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
-                    if '外資' not in df.columns:
-                        df = _fetch_finmind_inst_raw(stock_id, df, start_str)
 
             except Exception as e:
                 print(f"法人數據錯誤: {e}")
                 try:
-                    df = _fetch_twse_inst_fallback(stock_id, df)
+                    df = _fetch_finmind_inst_raw(stock_id, df, start_str)
+                    if '外資' not in df.columns:
+                        df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
-                    if '外資' not in df.columns:
-                        df = _fetch_finmind_inst_raw(stock_id, df, start_str)
                 except Exception:
                     pass
 
@@ -872,8 +872,12 @@ class StockDataLoader:
                 # ── 最終備援: yfinance 季度 EPS ──
                 try:
                     import yfinance as _yf_q, pandas as _pd_yf_q
-                    _tk_q = _yf_q.Ticker(f"{stock_id}.TW")
-                    _qf_q = _tk_q.quarterly_financials
+                    for _sfx_q in ('.TW', '.TWO'):
+                        _tk_q = _yf_q.Ticker(f"{stock_id}{_sfx_q}")
+                        _qf_q = (getattr(_tk_q, 'quarterly_income_stmt', None)
+                                 or getattr(_tk_q, 'quarterly_financials', None))
+                        if _qf_q is not None and not _qf_q.empty:
+                            break
                     if _qf_q is not None and not _qf_q.empty:
                         _rows_yf = []
                         for _col_q in _qf_q.columns:
