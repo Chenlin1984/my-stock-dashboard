@@ -1131,9 +1131,14 @@ def render_leading_table(df):
         if col == "選PCR":
             if n < 0.8: return "color:#58a6ff;"   # 偏多（Call 多）→ 藍
             if n > 1.2: return "color:#f85149;"   # 偏空（Put 多）→ 紅
+        if col == "未平倉口數":
+            if n > 0: return "color:#58a6ff;"
+            if n < 0: return "color:#f85149;"
         if col == "韭菜指數":
-            if n > 10:  return "color:#f85149;font-weight:bold;"   # 散戶大幅看多→警戒
-            if n < -10: return "color:#58a6ff;font-weight:bold;"   # 散戶大幅看空→機會
+            if n > 10:  return "color:#58a6ff;font-weight:bold;"   # 散戶大幅看多→藍
+            elif n > 0: return "color:#58a6ff;"                    # 輕微看多→藍
+            elif n < -10: return "color:#f85149;font-weight:bold;" # 散戶大幅看空→紅
+            elif n < 0: return "color:#f85149;"                    # 輕微看空→紅
         return ""
     h = (
         "<style>\n"
