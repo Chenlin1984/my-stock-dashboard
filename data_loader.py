@@ -235,11 +235,12 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
     """
     import os
     _token = os.environ.get('FINMIND_TOKEN', '')
+    _end_str = datetime.date.today().strftime('%Y-%m-%d')
     print(f'[DBG-INST] ═══ _fetch_finmind_inst_raw({stock_id}) ═══')
-    print(f'[DBG-INST] [*] 步驟: token存在={bool(_token)}  start_date={start_str}')
+    print(f'[DBG-INST] [*] 步驟: token存在={bool(_token)}  start_date={start_str}  end_date={_end_str}')
     try:
         _params = {'dataset': 'TaiwanStockInstitutionalInvestors',
-                   'data_id': stock_id, 'start_date': start_str}
+                   'data_id': stock_id, 'start_date': start_str, 'end_date': _end_str}
         if _token:
             _params['token'] = _token
         print(f'[DBG-INST] [*] 步驟: GET api.finmindtrade.com  params={_params}')
@@ -249,11 +250,8 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
             headers={'Authorization': f'Bearer {_token}'} if _token else {},
             timeout=20)
         print(f'[DBG-INST] [?] 型態: {type(_r).__name__}  HTTP={_r.status_code}')
-        print(f'[DBG-INST] [#] 長度: content={len(_r.content) if hasattr(_r.content,"__len__") else "N/A"}')
         print(f'[DBG-INST] [>] 預覽: {repr(_r.text[:300])}')
         _j = _r.json()
-        print(f'[DBG-INST] [*] 步驟: json 解析完成')
-        print(f'[DBG-INST] [?] 型態: {type(_j).__name__}')
         print(f'[DBG-INST] [>] 預覽: status={_j.get("status")} msg={repr(_j.get("msg",""))[:100]} data_rows={len(_j.get("data",[]))}')
         if _j.get('data'):
             _first = _j['data'][0]
@@ -262,17 +260,18 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
             print(f'[DBG-INST] [>] name 值集合: {_names}')
         if _j.get('status') == 200 and _j.get('data'):
             _pv = _normalize_inst_pivot(pd.DataFrame(_j['data']))
-            print(f'[DBG-INST] [*] 步驟: _normalize_inst_pivot 完成')
-            print(f'[DBG-INST] [?] 型態: {type(_pv).__name__}')
-            print(f'[DBG-INST] [#] 長度: rows={len(_pv)}  cols={list(_pv.columns)}')
-            print(f'[DBG-INST] [>] 預覽:\n{repr(_pv.head(2).to_dict())}')
-            _cols_before = list(df.columns)
+            print(f'[DBG-INST] [#] pivot cols={list(_pv.columns)}  rows={len(_pv)}')
+            # 確保兩側 date 型別一致再 merge
+            _pv['date'] = pd.to_datetime(_pv['date']).dt.date
+            df['date']  = pd.to_datetime(df['date']).dt.date
+            _df_dates   = set(df['date'])
+            _pv_dates   = set(_pv['date'])
+            _overlap    = len(_df_dates & _pv_dates)
+            print(f'[DBG-INST] [#] df日期範圍={min(_df_dates)}~{max(_df_dates)}  pv日期範圍={min(_pv_dates)}~{max(_pv_dates)}  重疊={_overlap}日')
             df = pd.merge(df, _pv, on='date', how='left')
-            _cols_after = list(df.columns)
-            print(f'[DBG-INST] [*] 步驟: merge 完成')
-            print(f'[DBG-INST] [#] merge 前欄位: {_cols_before}')
-            print(f'[DBG-INST] [#] merge 後欄位: {_cols_after}')
-            print(f'[FM-Raw] {stock_id}: ✅ {len(_j["data"])} 筆 → {len(_pv)} 日')
+            _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
+            print(f'[DBG-INST] [#] merge後外資非零行數: {_nz}/{len(df)}')
+            print(f'[FM-Raw] {stock_id}: ✅ {len(_j["data"])} 筆 → {len(_pv)} 日  外資非零={_nz}')
         else:
             print(f'[FM-Raw] {stock_id}: status={_j.get("status")} msg={_j.get("msg","")}')
     except Exception as _e:
@@ -495,40 +494,45 @@ class StockDataLoader:
                     stock_id=stock_id,
                     start_date=start_str
                 )
-                print(f'[DBG-INST] [*] 步驟: SDK 呼叫完成')
-                print(f'[DBG-INST] [?] 型態: {type(df_inst).__name__}')
-                print(f'[DBG-INST] [#] 長度: rows={len(df_inst)}  cols={list(df_inst.columns) if hasattr(df_inst,"columns") else "N/A"}')
-                if not df_inst.empty:
-                    print(f'[DBG-INST] [>] 預覽: name值={list(df_inst["name"].unique()[:5]) if "name" in df_inst.columns else "無name欄"}')
-
-                if not df_inst.empty:
+                print(f'[DBG-INST] [?] SDK型態: {type(df_inst).__name__}')
+                # 防 None 與非 DataFrame 回傳
+                _sdk_ok = (df_inst is not None and
+                           hasattr(df_inst, 'empty') and
+                           not df_inst.empty)
+                if _sdk_ok:
+                    print(f'[DBG-INST] [#] SDK rows={len(df_inst)}  cols={list(df_inst.columns)}')
+                    print(f'[DBG-INST] [>] name值={list(df_inst["name"].unique()[:5]) if "name" in df_inst.columns else "無name欄"}')
                     df_pivot = _normalize_inst_pivot(df_inst)
-                    print(f'[籌碼] {stock_id}: SDK ✅ {len(df_inst)}筆 → 欄位={[c for c in df_pivot.columns if c!="date"]}', flush=True)
+                    print(f'[DBG-INST] [#] pivot cols={list(df_pivot.columns)}  rows={len(df_pivot)}')
+                    # 確保日期型別一致再 merge
+                    df_pivot['date'] = pd.to_datetime(df_pivot['date']).dt.date
+                    df['date']       = pd.to_datetime(df['date']).dt.date
+                    _df_dates = set(df['date']); _pv_dates = set(df_pivot['date'])
+                    print(f'[DBG-INST] [#] df={min(_df_dates)}~{max(_df_dates)}  pv={min(_pv_dates)}~{max(_pv_dates)}  重疊={len(_df_dates&_pv_dates)}日')
                     df = pd.merge(df, df_pivot, on='date', how='left')
+                    _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
+                    print(f'[籌碼] {stock_id}: SDK ✅ {len(df_inst)}筆 → 外資非零={_nz}', flush=True)
                 else:
                     # FinMind SDK 無資料 → FinMind Raw API → T86 → TPEx
-                    print(f'[DBG-INST] SDK 空資料，進入 FinMind Raw API fallback')
+                    print(f'[DBG-INST] SDK 空/None資料，進入 FinMind Raw API fallback')
                     df = _fetch_finmind_inst_raw(stock_id, df, start_str)
-                    print(f'[DBG-INST] FinMind Raw 後欄位: {list(df.columns)}')
                     if '外資' not in df.columns:
                         print(f'[DBG-INST] 外資欄缺失，進入 T86 fallback')
                         df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         print(f'[DBG-INST] 外資欄缺失，進入 TPEx fallback')
                         df = _fetch_tpex_inst_fallback(stock_id, df)
-                    print(f'[DBG-INST] 最終欄位: {list(df.columns)}')
+                    print(f'[DBG-INST] 最終欄位: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
 
             except Exception as e:
                 print(f'[DBG-INST] ❌ SDK 例外: {type(e).__name__}: {str(e)[:300]}')
-                print(f"法人數據錯誤: {e}")
                 try:
                     df = _fetch_finmind_inst_raw(stock_id, df, start_str)
-                    print(f'[DBG-INST] 例外後 FinMind Raw 欄位: {list(df.columns)}')
                     if '外資' not in df.columns:
                         df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
-                    print(f'[DBG-INST] 例外後最終欄位: {list(df.columns)}')
+                    print(f'[DBG-INST] 例外後最終欄位: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
                 except Exception as _e2:
                     print(f'[DBG-INST] ❌ fallback 例外: {type(_e2).__name__}: {str(_e2)[:200]}')
 

@@ -178,8 +178,8 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
         ), row=2, col=1)
 
     # ========== 外資 ==========
-    _no_inst_data = '外資' not in df.columns and '投信' not in df.columns
-    if '外資' in df.columns:
+    _f_has_data = '外資' in df.columns and (df['外資'] != 0).any()
+    if _f_has_data:
         f_colors = ['#da3633' if v > 0 else ('#2ea043' if v < 0 else '#388bfd') for v in df['外資']]
         fig.add_trace(go.Bar(
             x=df['date'],
@@ -190,14 +190,15 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
         ), row=3, col=1)
     else:
         fig.add_annotation(
-            text='⏰ 三大法人資料待更新（需 FinMind 授權或收盤後）',
+            text='⏰ 外資籌碼待更新（FinMind 收盤後更新）',
             xref='x3 domain', yref='y3 domain',
             x=0.5, y=0.5, showarrow=False,
             font=dict(size=11, color='#484f58'), align='center'
         )
 
     # ========== 投信 ==========
-    if '投信' in df.columns:
+    _t_has_data = '投信' in df.columns and (df['投信'] != 0).any()
+    if _t_has_data:
         t_colors = ['#da3633' if v > 0 else ('#2ea043' if v < 0 else '#388bfd') for v in df['投信']]
         fig.add_trace(go.Bar(
             x=df['date'],
@@ -208,7 +209,7 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
         ), row=4, col=1)
     else:
         fig.add_annotation(
-            text='⏰ 投信資料待更新',
+            text='⏰ 投信籌碼待更新（FinMind 收盤後更新）',
             xref='x4 domain', yref='y4 domain',
             x=0.5, y=0.5, showarrow=False,
             font=dict(size=11, color='#484f58'), align='center'
@@ -217,6 +218,10 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
     # ========== 主力15日累計 + 融資 ==========
     if '主力合計' in df.columns:
         net_15 = df['主力合計'].rolling(15).sum().fillna(0)
+        _m_has_data = (net_15 != 0).any()
+    else:
+        net_15 = None; _m_has_data = False
+    if _m_has_data:
         n_colors = ['#da3633' if v > 0 else ('#2ea043' if v < 0 else '#388bfd') for v in net_15]
         fig.add_trace(go.Bar(
             x=df['date'],
@@ -225,6 +230,13 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
             marker_color=n_colors,
             showlegend=False
         ), row=5, col=1)
+    else:
+        fig.add_annotation(
+            text='⏰ 主力籌碼待更新',
+            xref='x5 domain', yref='y5 domain',
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=11, color='#484f58'), align='center'
+        )
 
     if '融資餘額' in df.columns:
         df_margin = df[df['融資餘額'] > 0].copy()
