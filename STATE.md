@@ -29,6 +29,7 @@
 | `d7146e6` | debug: 插入 DBG-VOL/INST/GP 檢查點（可移除） |
 | `efd051b` | **SSL根治**: Python 3.14 TWSE憑證問題 → Session(verify=False) × 3檔 + finmind 1.3.0 import fix |
 | `8ee7b34` | **先行指標顏色**: 未平倉口數補色 + 韭菜指數全範圍著色 + 正藍負紅修正 |
+| `23853db` | **毛利率修正**: FinMind季財報 token 漏傳 params + is_finance 覆蓋 NaN bug |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -41,7 +42,7 @@
 - [x] 先行指標顏色：正數藍色/負數紅色 ✅ 已修正（commit 8ee7b34）
 - [ ] BFI82U 外資方向：SSL 修正後應恢復
 - [ ] 技術線圖外資/投信/主力：FinMind raw API 備援
-- [ ] 毛利率：FinMind TaiwanStockFinancialStatement
+- [ ] 毛利率：token 修正已 push，待 Streamlit Cloud 驗證
 - [ ] debug checkpoints（DBG-VOL/INST/GP）：確認資料正常後可移除
 
 ## 🐞 長期已知限制
