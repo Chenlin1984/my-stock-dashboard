@@ -229,24 +229,48 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
     """
     import os
     _token = os.environ.get('FINMIND_TOKEN', '')
+    print(f'[DBG-INST] ═══ _fetch_finmind_inst_raw({stock_id}) ═══')
+    print(f'[DBG-INST] [*] 步驟: token存在={bool(_token)}  start_date={start_str}')
     try:
         _params = {'dataset': 'TaiwanStockInstitutionalInvestors',
                    'data_id': stock_id, 'start_date': start_str}
         if _token:
             _params['token'] = _token
+        print(f'[DBG-INST] [*] 步驟: GET api.finmindtrade.com  params={_params}')
         _r = _req_dl.get(
             'https://api.finmindtrade.com/api/v4/data',
             params=_params,
             headers={'Authorization': f'Bearer {_token}'} if _token else {},
             timeout=20)
+        print(f'[DBG-INST] [?] 型態: {type(_r).__name__}  HTTP={_r.status_code}')
+        print(f'[DBG-INST] [#] 長度: content={len(_r.content) if hasattr(_r.content,"__len__") else "N/A"}')
+        print(f'[DBG-INST] [>] 預覽: {repr(_r.text[:300])}')
         _j = _r.json()
+        print(f'[DBG-INST] [*] 步驟: json 解析完成')
+        print(f'[DBG-INST] [?] 型態: {type(_j).__name__}')
+        print(f'[DBG-INST] [>] 預覽: status={_j.get("status")} msg={repr(_j.get("msg",""))[:100]} data_rows={len(_j.get("data",[]))}')
+        if _j.get('data'):
+            _first = _j['data'][0]
+            print(f'[DBG-INST] [>] 第一筆 data: {repr(_first)[:200]}')
+            _names = list(set(r.get('name','') for r in _j['data'][:20]))
+            print(f'[DBG-INST] [>] name 值集合: {_names}')
         if _j.get('status') == 200 and _j.get('data'):
             _pv = _normalize_inst_pivot(pd.DataFrame(_j['data']))
+            print(f'[DBG-INST] [*] 步驟: _normalize_inst_pivot 完成')
+            print(f'[DBG-INST] [?] 型態: {type(_pv).__name__}')
+            print(f'[DBG-INST] [#] 長度: rows={len(_pv)}  cols={list(_pv.columns)}')
+            print(f'[DBG-INST] [>] 預覽:\n{repr(_pv.head(2).to_dict())}')
+            _cols_before = list(df.columns)
             df = pd.merge(df, _pv, on='date', how='left')
+            _cols_after = list(df.columns)
+            print(f'[DBG-INST] [*] 步驟: merge 完成')
+            print(f'[DBG-INST] [#] merge 前欄位: {_cols_before}')
+            print(f'[DBG-INST] [#] merge 後欄位: {_cols_after}')
             print(f'[FM-Raw] {stock_id}: ✅ {len(_j["data"])} 筆 → {len(_pv)} 日')
         else:
             print(f'[FM-Raw] {stock_id}: status={_j.get("status")} msg={_j.get("msg","")}')
     except Exception as _e:
+        print(f'[DBG-INST] ❌ 例外: {type(_e).__name__}: {str(_e)[:300]}')
         print(f'[FM-Raw] {stock_id}: ❌ {_e}')
     return df
 
@@ -458,11 +482,18 @@ class StockDataLoader:
                 df[f'MA{period}'] = df['close'].rolling(window=period).mean()
 
             # ========== 4. 三大法人 ==========
+            print(f'[DBG-INST] ═══ 三大法人 {stock_id} 開始 ═══')
+            print(f'[DBG-INST] [*] 步驟: SDK dl={type(_self.dl).__name__ if _self.dl else "None"}')
             try:
                 df_inst = _self.dl.taiwan_stock_institutional_investors(
                     stock_id=stock_id,
                     start_date=start_str
                 )
+                print(f'[DBG-INST] [*] 步驟: SDK 呼叫完成')
+                print(f'[DBG-INST] [?] 型態: {type(df_inst).__name__}')
+                print(f'[DBG-INST] [#] 長度: rows={len(df_inst)}  cols={list(df_inst.columns) if hasattr(df_inst,"columns") else "N/A"}')
+                if not df_inst.empty:
+                    print(f'[DBG-INST] [>] 預覽: name值={list(df_inst["name"].unique()[:5]) if "name" in df_inst.columns else "無name欄"}')
 
                 if not df_inst.empty:
                     df_pivot = _normalize_inst_pivot(df_inst)
@@ -470,22 +501,30 @@ class StockDataLoader:
                     df = pd.merge(df, df_pivot, on='date', how='left')
                 else:
                     # FinMind SDK 無資料 → FinMind Raw API → T86 → TPEx
+                    print(f'[DBG-INST] SDK 空資料，進入 FinMind Raw API fallback')
                     df = _fetch_finmind_inst_raw(stock_id, df, start_str)
+                    print(f'[DBG-INST] FinMind Raw 後欄位: {list(df.columns)}')
                     if '外資' not in df.columns:
+                        print(f'[DBG-INST] 外資欄缺失，進入 T86 fallback')
                         df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
+                        print(f'[DBG-INST] 外資欄缺失，進入 TPEx fallback')
                         df = _fetch_tpex_inst_fallback(stock_id, df)
+                    print(f'[DBG-INST] 最終欄位: {list(df.columns)}')
 
             except Exception as e:
+                print(f'[DBG-INST] ❌ SDK 例外: {type(e).__name__}: {str(e)[:300]}')
                 print(f"法人數據錯誤: {e}")
                 try:
                     df = _fetch_finmind_inst_raw(stock_id, df, start_str)
+                    print(f'[DBG-INST] 例外後 FinMind Raw 欄位: {list(df.columns)}')
                     if '外資' not in df.columns:
                         df = _fetch_twse_inst_fallback(stock_id, df)
                     if '外資' not in df.columns:
                         df = _fetch_tpex_inst_fallback(stock_id, df)
-                except Exception:
-                    pass
+                    print(f'[DBG-INST] 例外後最終欄位: {list(df.columns)}')
+                except Exception as _e2:
+                    print(f'[DBG-INST] ❌ fallback 例外: {type(_e2).__name__}: {str(_e2)[:200]}')
 
             # ========== 5. 融資融券 ==========
             try:
@@ -801,10 +840,12 @@ class StockDataLoader:
             start_str = start_date.strftime('%Y-%m-%d')
 
             # 先試 FinMind REST API
+            print(f'[DBG-GP] ═══ get_quarterly_data({stock_id}) 開始 ═══')
             df_fin = None
             try:
                 import os as _os_q; import requests as _rq_q
                 _tok_q = _os_q.environ.get('FINMIND_TOKEN', '')
+                print(f'[DBG-GP] [*] 步驟: FinMind REST API  token={bool(_tok_q)}')
                 # 免費版：TaiwanStockFinancialStatement（無s）；付費版：有s；兩個都試
                 _df_q_tmp = None
                 for _ds_q in ['TaiwanStockFinancialStatement', 'TaiwanStockFinancialStatements']:
@@ -813,16 +854,26 @@ class StockDataLoader:
                             params={'dataset': _ds_q, 'data_id': stock_id, 'start_date': start_str},
                             headers={'Authorization': f'Bearer {_tok_q}'} if _tok_q else {},
                             timeout=25)
+                        print(f'[DBG-GP] [?] HTTP={_resp_q.status_code}  dataset={_ds_q}')
                         _jd_q = _resp_q.json()
                         print(f'[季財報REST/{_ds_q}] {stock_id} status={_jd_q.get("status")}, rows={len(_jd_q.get("data",[]))}')
+                        if _jd_q.get('data'):
+                            _types = list(set(r.get('type','') for r in _jd_q['data'][:30]))
+                            print(f'[DBG-GP] [>] type值集合: {_types[:10]}')
                         if _jd_q.get('status') == 200 and _jd_q.get('data'):
                             _df_q_tmp = pd.DataFrame(_jd_q['data'])
+                            print(f'[DBG-GP] [#] df_fin 欄位: {list(_df_q_tmp.columns)}')
+                            print(f'[DBG-GP] [>] 第一筆: {repr(_df_q_tmp.iloc[0].to_dict())[:300]}')
                             break
                     except Exception as _eq2:
+                        print(f'[DBG-GP] ❌ {_ds_q}: {type(_eq2).__name__}: {str(_eq2)[:200]}')
                         print(f'[季財報REST/{_ds_q}] {_eq2}')
                 if _df_q_tmp is not None and not _df_q_tmp.empty:
                     df_fin = _df_q_tmp
-            except Exception as _eq: print(f'[季財報REST] {_eq}')
+                    print(f'[DBG-GP] ✅ df_fin 來自 FinMind REST: {len(df_fin)} 筆')
+            except Exception as _eq:
+                print(f'[DBG-GP] ❌ 外層例外: {type(_eq).__name__}: {str(_eq)[:200]}')
+                print(f'[季財報REST] {_eq}')
 
             # 備援: FinMind Library
             if df_fin is None or df_fin.empty:
@@ -1069,6 +1120,7 @@ class StockDataLoader:
                     print("⚠️ 金融股：找不到稅後淨利欄位，稅後純益率留空")
 
             # 一般公司：照舊計算毛利率
+            print(f'[DBG-GP] [*] 步驟: 搜尋毛利欄位  df_pivot.columns={list(df_pivot.columns)[:20]}')
             gp_col = None
             for col in df_pivot.columns:
                 c = str(col)
@@ -1076,6 +1128,7 @@ class StockDataLoader:
                     gp_col = col
                     break
 
+            print(f'[DBG-GP] [>] gp_col={gp_col}')
             if gp_col is not None:
                 print(f"✓ 毛利欄位: {gp_col}")
                 gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')

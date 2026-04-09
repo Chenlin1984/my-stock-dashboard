@@ -437,6 +437,7 @@ def twse_volume(yyyymm):
                 except: pass
         return result
 
+    print(f"[DBG-VOL] ═══ twse_volume({yyyymm}) 開始 ═══")
     for _url in [
         "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK",
         "https://www.twse.com.tw/zh/afterTrading/FMTQIK",
@@ -448,23 +449,42 @@ def twse_volume(yyyymm):
                 _p = {"date": yyyymm + "01"}
             else:
                 _p = {"response": "json", "date": yyyymm + "01"}
+            print(f"[DBG-VOL] [*] 步驟: GET {_url} params={_p}")
             r = requests.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
+            print(f"[DBG-VOL] [?] 型態: {type(r).__name__}  HTTP={r.status_code}")
+            print(f"[DBG-VOL] [#] 長度: content={len(r.content) if hasattr(r.content,'__len__') else 'N/A'}")
+            print(f"[DBG-VOL] [>] 預覽: {repr(r.text[:200])}")
             j = r.json()
+            print(f"[DBG-VOL] [*] 步驟: r.json() 解析完成")
+            print(f"[DBG-VOL] [?] 型態: {type(j).__name__}")
+            print(f"[DBG-VOL] [#] 長度: {len(j) if hasattr(j,'__len__') else 'N/A'}")
+            if isinstance(j, dict):
+                print(f"[DBG-VOL] [>] 預覽: stat={j.get('stat')} data_len={len(j.get('data',[]))} keys={list(j.keys())[:5]}")
+            else:
+                print(f"[DBG-VOL] [>] 預覽: {repr(j)[:200]}")
             # OpenAPI 回傳 list 格式（欄位名稱大小寫相容）
             if isinstance(j, list):
                 def _tv(item):
                     for k in ['TradeValue', 'tradeValue', 'trade_value', 'TradeAmount']:
                         if k in item and item[k]: return item[k]
                     return ''
+                print(f"[DBG-VOL] [*] 步驟: OpenAPI list 轉換，第一筆 keys={list(j[0].keys()) if j else '空'}")
                 j = {"stat": "OK", "data": [[
                     item.get("Date", item.get("date", "")),
                     item.get("TradeVolume", item.get("tradeVolume", "")),
                     _tv(item), "", "", ""] for item in j]}
+                print(f"[DBG-VOL] [#] 轉換後 data 長度: {len(j.get('data',[]))}")
+                if j.get('data'):
+                    print(f"[DBG-VOL] [>] 第一筆 data row: {repr(j['data'][0])[:200]}")
             result = _parse_fmtqik(j)
+            print(f"[DBG-VOL] [*] 步驟: _parse_fmtqik 完成")
+            print(f"[DBG-VOL] [#] 長度: result={len(result)}")
+            print(f"[DBG-VOL] [>] 預覽: {repr(dict(list(result.items())[:3]))}")
             if result:
                 print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
                 return result
         except Exception as _e:
+            print(f"[DBG-VOL] ❌ URL={_url} 例外: {type(_e).__name__}: {str(_e)[:300]}")
             print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
     print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
     # ── 備援：yfinance ^TWII Volume
@@ -476,11 +496,19 @@ def twse_volume(yyyymm):
         _yr, _mo = int(yyyymm[:4]), int(yyyymm[4:6])
         _s = f"{_yr}-{_mo:02d}-01"
         _e = f"{_yr if _mo < 12 else _yr+1}-{_mo+1 if _mo < 12 else 1:02d}-01"
+        print(f"[DBG-VOL] [*] 步驟: yfinance 方法A Ticker.history(start={_s}, end={_e})")
         # 方法 A: yf.Ticker.history（更穩定）
         _res_yf = {}
         try:
             _tk_twii = _yf_v.Ticker("^TWII")
             _hist = _tk_twii.history(start=_s, end=_e)
+            print(f"[DBG-VOL] [?] 型態: {type(_hist).__name__}")
+            print(f"[DBG-VOL] [#] 長度: rows={len(_hist)} cols={list(_hist.columns) if hasattr(_hist,'columns') else 'N/A'}")
+            if not _hist.empty and "Volume" in _hist.columns:
+                _sample_vol = _hist["Volume"].dropna().head(3).tolist()
+                print(f"[DBG-VOL] [>] 預覽 Volume 前3值: {_sample_vol}  → /1e8 = {[round(v/1e8,2) for v in _sample_vol]}")
+            else:
+                print(f"[DBG-VOL] [>] 預覽: empty={_hist.empty}  'Volume' in cols={('Volume' in _hist.columns) if hasattr(_hist,'columns') else 'N/A'}")
             if not _hist.empty and "Volume" in _hist.columns:
                 for _idx, _row in _hist.iterrows():
                     _dk = _idx.strftime("%Y%m%d") if hasattr(_idx, 'strftime') else str(_idx)[:10].replace('-','')
@@ -490,26 +518,39 @@ def twse_volume(yyyymm):
                         if 5 < _v < 20000:
                             _res_yf[_dk] = _v
                     except: pass
-        except Exception: pass
+        except Exception as _yfe_a:
+            print(f"[DBG-VOL] ❌ 方法A 例外: {type(_yfe_a).__name__}: {str(_yfe_a)[:200]}")
+        print(f"[DBG-VOL] [#] 方法A 結果: {len(_res_yf)} 天")
         # 方法 B: yf.download（備援）
         if not _res_yf:
-            _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False)
-            if isinstance(_tw.columns, _pd_yf_vol.MultiIndex):
-                _lv = 0 if 'Volume' in _tw.columns.get_level_values(0) else 1
-                _tw.columns = _tw.columns.get_level_values(_lv)
-            if not _tw.empty and "Volume" in _tw.columns:
-                for _idx, _row in _tw.iterrows():
-                    _dk = _idx.strftime("%Y%m%d")
-                    try:
-                        _raw = float(_row["Volume"])
-                        _v = round(_raw / 1e8, 1)
-                        if 5 < _v < 20000:
-                            _res_yf[_dk] = _v
-                    except: pass
+            print(f"[DBG-VOL] [*] 步驟: yfinance 方法B download(^TWII)")
+            try:
+                _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False)
+                print(f"[DBG-VOL] [?] 型態: {type(_tw).__name__}  MultiIndex={isinstance(_tw.columns, _pd_yf_vol.MultiIndex)}")
+                print(f"[DBG-VOL] [#] 長度: rows={len(_tw)}")
+                print(f"[DBG-VOL] [>] 預覽 columns: {repr(_tw.columns.tolist())[:200]}")
+                if isinstance(_tw.columns, _pd_yf_vol.MultiIndex):
+                    _lv = 0 if 'Volume' in _tw.columns.get_level_values(0) else 1
+                    _tw.columns = _tw.columns.get_level_values(_lv)
+                if not _tw.empty and "Volume" in _tw.columns:
+                    _sample_vol2 = _tw["Volume"].dropna().head(3).tolist()
+                    print(f"[DBG-VOL] [>] Volume 前3值: {_sample_vol2}  → /1e8 = {[round(v/1e8,2) for v in _sample_vol2]}")
+                    for _idx, _row in _tw.iterrows():
+                        _dk = _idx.strftime("%Y%m%d")
+                        try:
+                            _raw = float(_row["Volume"])
+                            _v = round(_raw / 1e8, 1)
+                            if 5 < _v < 20000:
+                                _res_yf[_dk] = _v
+                        except: pass
+            except Exception as _yfe_b:
+                print(f"[DBG-VOL] ❌ 方法B 例外: {type(_yfe_b).__name__}: {str(_yfe_b)[:200]}")
         if _res_yf:
             print(f"[VOL] yfinance ^TWII {yyyymm}: {len(_res_yf)} 天")
             return _res_yf
+        print(f"[DBG-VOL] ⚠️ yfinance 兩種方法均無資料")
     except Exception as _yfe:
+        print(f"[DBG-VOL] ❌ yfinance 外層例外: {type(_yfe).__name__}: {str(_yfe)[:200]}")
         print(f"[VOL] yfinance ^TWII {yyyymm}: {_yfe}")
 
     print(f"[VOL] {yyyymm} 所有備援均失敗，成交量無資料")
