@@ -191,7 +191,7 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
     else:
         fig.add_annotation(
             text='⏰ 外資籌碼待更新（FinMind 收盤後更新）',
-            xref='x3 domain', yref='y3 domain',
+            xref='paper', yref='y3 domain',
             x=0.5, y=0.5, showarrow=False,
             font=dict(size=11, color='#484f58'), align='center'
         )
@@ -210,7 +210,7 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
     else:
         fig.add_annotation(
             text='⏰ 投信籌碼待更新（FinMind 收盤後更新）',
-            xref='x4 domain', yref='y4 domain',
+            xref='paper', yref='y4 domain',
             x=0.5, y=0.5, showarrow=False,
             font=dict(size=11, color='#484f58'), align='center'
         )
@@ -233,7 +233,7 @@ def plot_combined_chart(df, stock_id, stock_name, show_ma_dict, k_line_type="一
     else:
         fig.add_annotation(
             text='⏰ 主力籌碼待更新',
-            xref='x5 domain', yref='y5 domain',
+            xref='paper', yref='y5 domain',
             x=0.5, y=0.5, showarrow=False,
             font=dict(size=11, color='#484f58'), align='center'
         )
