@@ -108,7 +108,7 @@ def _get_tpex_day(ds: str) -> dict:
         r = _req_dl.get(
             'https://www.tpex.org.tw/web/stock/3insti/daily_report/3itrade_hedge_result.php',
             params={'l': 'zh-tw', 'se': 'EW', 't': 'D', 'd': roc_date, 'o': 'json'},
-            headers=HDR, timeout=5)
+            headers=HDR, timeout=5, verify=False)
         j = r.json()
         rows_data = j.get('aaData', [])
         if not rows_data:
@@ -241,7 +241,7 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
     print(f'[DBG-INST] ═══ _fetch_finmind_inst_raw({stock_id}) ═══')
     print(f'[DBG-INST] [*] 步驟: token存在={bool(_token)}  start_date={start_str}  end_date={_end_str}')
     try:
-        _params = {'dataset': 'TaiwanStockInstitutionalInvestors',
+        _params = {'dataset': 'TaiwanStockInstitutionalInvestorsBuySell',
                    'data_id': stock_id, 'start_date': start_str, 'end_date': _end_str}
         if _token:
             _params['token'] = _token
@@ -572,6 +572,8 @@ class StockDataLoader:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
             # ========== 7. 最終輸出 ==========
+            # 過濾掉收盤價為0或NaN的列（避免快取到無效資料）
+            df = df[pd.to_numeric(df['close'], errors='coerce').fillna(0) > 0].copy()
             df = df.sort_values('date').tail(days).reset_index(drop=True)
 
             # 除錯
