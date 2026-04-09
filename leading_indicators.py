@@ -20,6 +20,11 @@ import os, re, time
 import streamlit as st
 import pandas as pd
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# TWSE SSL 憑證在 Python 3.14 驗證失敗（Missing Subject Key Identifier）→ 關閉驗證
+_TWSE_S = requests.Session()
+_TWSE_S.verify = False
 from bs4 import BeautifulSoup
 from io import StringIO
 from datetime import datetime, timedelta, date
@@ -450,7 +455,7 @@ def twse_volume(yyyymm):
             else:
                 _p = {"response": "json", "date": yyyymm + "01"}
             print(f"[DBG-VOL] [*] 步驟: GET {_url} params={_p}")
-            r = requests.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
+            r = _TWSE_S.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
             print(f"[DBG-VOL] [?] 型態: {type(r).__name__}  HTTP={r.status_code}")
             print(f"[DBG-VOL] [#] 長度: content={len(r.content) if hasattr(r.content,'__len__') else 'N/A'}")
             print(f"[DBG-VOL] [>] 預覽: {repr(r.text[:200])}")
@@ -564,9 +569,9 @@ def twse_volume_daily(ymd8):
     ymd8: YYYYMMDD (e.g., '20260320')
     """
     try:
-        r = requests.get("https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
-                         params={"response":"json","date":ymd8},
-                         headers=TWSE_HDR, timeout=12)
+        r = _TWSE_S.get("https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+                        params={"response":"json","date":ymd8},
+                        headers=TWSE_HDR, timeout=12)
         d = r.json()
         if d.get("stat") != "OK": return None
         tables = d.get("tables", [])
@@ -589,9 +594,9 @@ def twse_volume_daily(ymd8):
 @_safe_cache(ttl=1800, show_spinner=False)
 def twse_institutional_day(date_ymd):
     try:
-        r = requests.get("https://www.twse.com.tw/fund/BFI82U",
-                         params={"response":"json","dayDate":date_ymd},
-                         headers=TWSE_HDR, timeout=15)
+        r = _TWSE_S.get("https://www.twse.com.tw/fund/BFI82U",
+                        params={"response":"json","dayDate":date_ymd},
+                        headers=TWSE_HDR, timeout=15)
         d = r.json()
         if d.get("stat") != "OK": return {}
         result = {}; self_diff = None; hedge_diff = None

@@ -5,6 +5,8 @@ daily_checklist.py v4 — 完全無需Token版
 其他: yfinance
 """
 import requests, pandas as pd, datetime, os, time
+import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+_TWSE_CK = requests.Session(); _TWSE_CK.verify = False  # TWSE SSL fix (Python 3.14)
 import streamlit as st
 import plotly.graph_objects as go
 
@@ -59,7 +61,7 @@ def fetch_institutional(date_str=None):
             _bfi_j = None
             for _bfi_url in _bfi_urls:
                 try:
-                    _bfi_r = requests.get(_bfi_url, params={"response":"json","dayDate":ds},
+                    _bfi_r = _TWSE_CK.get(_bfi_url, params={"response":"json","dayDate":ds},
                                           headers=HDR, timeout=10)
                     _bfi_j = _bfi_r.json()
                     if _bfi_j.get("stat") == "OK" and _bfi_j.get("data"):
@@ -115,7 +117,7 @@ def fetch_institutional(date_str=None):
 
     # ── 備援1: TWSE OpenAPI /v1/fund/BFI82U（新版，無需 Cookie）
     try:
-        _r_oa = requests.get(
+        _r_oa = _TWSE_CK.get(
             'https://openapi.twse.com.tw/v1/fund/BFI82U',
             headers={'Accept':'application/json','User-Agent':'Mozilla/5.0'}, timeout=10)
         if _r_oa.status_code == 200:
@@ -204,7 +206,7 @@ def fetch_margin_balance(date_str=None):
         ds = _d.strftime('%Y%m%d')
         for _sel in ['MS', 'ALL']:
             try:
-                r = requests.get(
+                r = _TWSE_CK.get(
                     'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
                     params={'date': ds, 'selectType': _sel, 'response': 'json'},
                     headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
@@ -465,9 +467,8 @@ def fetch_adl(days=60, token=None):
         抓取單日 TWSE MI_INDEX 的上漲/下跌家數
         回傳 (ymd, up, down) 或 None（休市/失敗）
         """
-        import requests as _req2
         try:
-            _r = _req2.get(
+            _r = _TWSE_CK.get(
                 'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX',
                 params={'response': 'json', 'date': date_ymd},
                 headers={'User-Agent': 'Mozilla/5.0'},

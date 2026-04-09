@@ -7,13 +7,19 @@ import yfinance as yf
 import pandas as pd
 import datetime
 try:
-    from FinMind.data import DataLoader        # [Fixed] try/except 避免 Cloud 因版本問題崩潰
-except ImportError as _e:
-    DataLoader = None
-    import warnings
-    warnings.warn(f"FinMind 未安裝或版本不相容，FinMind 功能將停用：{_e}")
+    from FinMind.data import DataLoader        # finmind < 1.x
+except ImportError:
+    try:
+        from finmind.data import DataLoader    # finmind >= 1.x (小寫)
+    except ImportError as _e:
+        DataLoader = None
+        import warnings
+        warnings.warn(f"FinMind DataLoader 無法載入（raw HTTP API 仍可用）：{_e}")
 import streamlit as st
 import requests as _req_dl
+import urllib3 as _urllib3_dl
+_urllib3_dl.disable_warnings(_urllib3_dl.exceptions.InsecureRequestWarning)
+_TWSE_DL = _req_dl.Session(); _TWSE_DL.verify = False  # TWSE SSL fix (Python 3.14)
 from stock_names import get_stock_name
 
 
@@ -27,9 +33,9 @@ def _get_t86_day(ds: str) -> dict:
         return _T86_DAY_CACHE[ds]
     HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     try:
-        r = _req_dl.get('https://www.twse.com.tw/fund/T86',
-                        params={'response': 'json', 'date': ds, 'selectType': 'ALL'},
-                        headers=HDR, timeout=5)
+        r = _TWSE_DL.get('https://www.twse.com.tw/fund/T86',
+                         params={'response': 'json', 'date': ds, 'selectType': 'ALL'},
+                         headers=HDR, timeout=5)
         j = r.json()
         if j.get('stat') != 'OK' or not j.get('data'):
             _T86_DAY_CACHE[ds] = {}
