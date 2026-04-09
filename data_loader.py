@@ -199,22 +199,24 @@ def _normalize_inst_pivot(df_raw: pd.DataFrame) -> pd.DataFrame:
         if c != 'date':
             pv[c] = pv[c] / 1000
     # 重命名：支援英文（Foreign_Investor）與中文（外陸資…）
+    # 注意：外資自營商 屬外資陣營，應歸入「外資」而非「自營商」
     rn = {}
     for c in pv.columns:
         cs = str(c); cl = cs.lower()
         cb = _re_ni.split(r'[（(買賣]', cs)[0].strip()
-        if ('外' in cb and '資' in cb and '自' not in cb) or cs in ('外資', '外陸資', '外資及陸資'):
-            rn[c] = '外資'
+        if ('外' in cs and '資' in cs) or cs in ('外資', '外陸資', '外資及陸資'):
+            rn[c] = '外資'          # 外陸資(不含外資自營商) + 外資自營商 → 均歸外資
         elif '投信' in cb:
             rn[c] = '投信'
-        elif '自營' in cb:
+        elif '自營' in cb and '外資' not in cs:  # 純國內自營商
             rn[c] = '自營商'
-        elif 'foreign' in cl and 'dealer' not in cl:
-            rn[c] = '外資'
+        elif 'foreign' in cl:
+            rn[c] = '外資'          # 英文名稱（含 dealer）
         elif 'investment' in cl or 'trust' in cl:
             rn[c] = '投信'
         elif 'dealer' in cl:
             rn[c] = '自營商'
+    print(f'[INST-RENAME] 欄位對應: {rn}')
     pv.rename(columns=rn, inplace=True)
     # 重複欄合併（pandas 3.0 相容）
     if pv.columns.duplicated().any():

@@ -3986,33 +3986,69 @@ padding:12px 16px;margin:8px 0;">
             _fig_riv = go.Figure()
             _rdates  = df2['date'] if 'date' in df2.columns else list(range(len(df2)))
             _rclose  = df2['close']
-            _p7r = round(avg_div2 / 0.07, 2)
-            _p5r = round(avg_div2 / 0.05, 2)
-            _p3r = round(avg_div2 / 0.03, 2)
+
+            # 建立每年股利查表（yearly2 含逐年資料）
+            _yr_div_map = {}
+            if yearly2:
+                for _yr in yearly2:
+                    try: _yr_div_map[int(_yr['year'])] = float(_yr.get('cash', 0) or 0)
+                    except: pass
+            # 取最近已知年份股利；若無逐年資料則全用 avg_div2
+            _last_known_yr  = max(_yr_div_map) if _yr_div_map else None
+            _rdates_dt      = pd.to_datetime(_rdates)
+
+            def _get_div(yr):
+                if yr in _yr_div_map: return _yr_div_map[yr]
+                if _last_known_yr:    return _yr_div_map[_last_known_yr]
+                return avg_div2
+
+            _div_series = _rdates_dt.dt.year.map(_get_div).fillna(avg_div2)
+            _band7 = (_div_series / 0.07).round(2)
+            _band5 = (_div_series / 0.05).round(2)
+            _band3 = (_div_series / 0.03).round(2)
+
+            # 目前年份股利（用最新）
+            _cur_div = _get_div(_rdates_dt.iloc[-1].year)
+            _p7r = round(_cur_div / 0.07, 0)
+            _p5r = round(_cur_div / 0.05, 0)
+            _p3r = round(_cur_div / 0.03, 0)
+
+            # 股價線
             _fig_riv.add_trace(go.Scatter(x=_rdates, y=_rclose, name='收盤價',
                 line=dict(color='#e6edf3', width=2.5),
                 hovertemplate='%{x|%Y-%m-%d}<br>%{y:.2f}<extra></extra>'))
-            for _pv, _lbl, _col in [(_p7r,'7%便宜','#3fb950'),(_p5r,'5%合理','#d29922'),(_p3r,'3%昂貴','#f85149')]:
-                _fig_riv.add_hline(y=_pv, line_dash='dot', line_color=_col, opacity=0.9,
-                    annotation_text=f'{_lbl} {_pv:.0f}', annotation_position='right',
-                    annotation=dict(font=dict(size=10,color=_col)))
-            _fig_riv.add_hrect(y0=0,    y1=_p7r, fillcolor='rgba(63,185,80,0.07)',  line_width=0)
-            _fig_riv.add_hrect(y0=_p7r, y1=_p5r, fillcolor='rgba(210,153,34,0.07)', line_width=0)
-            _fig_riv.add_hrect(y0=_p5r, y1=_p3r, fillcolor='rgba(248,81,73,0.05)',  line_width=0)
-            # 鎖定 X 軸範圍，防止 add_hline annotation_position='right' 將 X 軸延伸至未來
+            # 動態河流帶
+            for _bseries, _lbl, _col in [(_band7,'7%便宜','#3fb950'),(_band5,'5%合理','#d29922'),(_band3,'3%昂貴','#f85149')]:
+                _fig_riv.add_trace(go.Scatter(
+                    x=_rdates, y=_bseries, name=_lbl,
+                    line=dict(color=_col, width=1.5, dash='dot'),
+                    hovertemplate=f'{_lbl}: %{{y:.0f}}<extra></extra>'))
+
+            # 色帶
+            _fig_riv.add_hrect(y0=0,    y1=float(_band7.iloc[-1]), fillcolor='rgba(63,185,80,0.07)',  line_width=0)
+            _fig_riv.add_hrect(y0=float(_band7.iloc[-1]), y1=float(_band5.iloc[-1]), fillcolor='rgba(210,153,34,0.07)', line_width=0)
+            _fig_riv.add_hrect(y0=float(_band5.iloc[-1]), y1=float(_band3.iloc[-1]), fillcolor='rgba(248,81,73,0.05)',  line_width=0)
+
+            # Y 軸：包含當前股價與所有河流帶，最低從 0 或 band7*0.7
+            _all_vals = list(_rclose) + list(_band3)
+            _ymax = max(_all_vals) * 1.05
+            _ymin = max(0, float(_band7.min()) * 0.7)
+
             _xmin = _rdates.iloc[0]  if hasattr(_rdates, 'iloc') else _rdates[0]
             _xmax = _rdates.iloc[-1] if hasattr(_rdates, 'iloc') else _rdates[-1]
             _fig_riv.update_layout(
-                title=dict(text=f'📊 {sid2} {name2} 殖利率河流圖（年均股利 {avg_div2:.2f}元）',
+                title=dict(text=f'📊 {sid2} {name2} 殖利率河流圖（近年股利 {_cur_div:.2f}元）',
                            font=dict(color='#8b949e',size=12)),
                 height=300, plot_bgcolor='#0e1117', paper_bgcolor='#0e1117',
-                font=dict(color='white',size=11), margin=dict(l=10,r=90,t=40,b=10),
+                font=dict(color='white',size=11), margin=dict(l=10,r=10,t=40,b=10),
                 xaxis=dict(range=[_xmin, _xmax], gridcolor='#21262d'),
-                yaxis=dict(gridcolor='#21262d'),
-                hovermode='x unified', showlegend=False)
+                yaxis=dict(range=[_ymin, _ymax], gridcolor='#21262d'),
+                hovermode='x unified', showlegend=True,
+                legend=dict(orientation='h', y=1.08, x=0, font=dict(size=10)))
             st.plotly_chart(_fig_riv, use_container_width=True, config={'displayModeBar':False})
-            _cur_zone = '🟢 便宜區' if (df2['close'].iloc[-1] if not df2.empty else 0) < _p7r else ('🟡 合理區' if (df2['close'].iloc[-1] if not df2.empty else 0) < _p5r else '🔴 昂貴區')
-            st.caption(f'目前位於 {_cur_zone}  |  便宜{_p7r:.0f} / 合理{_p5r:.0f} / 昂貴{_p3r:.0f}')
+            _cur_price_riv = float(_rclose.iloc[-1]) if not _rclose.empty else 0
+            _cur_zone = '🟢 便宜區' if _cur_price_riv < _p7r else ('🟡 合理區' if _cur_price_riv < _p5r else ('🔴 昂貴區' if _cur_price_riv < _p3r else '⛔ 超昂貴'))
+            st.caption(f'目前位於 {_cur_zone}（現價 {_cur_price_riv:.0f} / 便宜≤{_p7r:.0f} / 合理≤{_p5r:.0f} / 昂貴≤{_p3r:.0f}）　近年股利 {_cur_div:.2f}元')
 
         # ══ C. 領先指標 ════════════════════════════════════════
         st.markdown('---')
