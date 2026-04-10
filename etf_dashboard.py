@@ -189,20 +189,30 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
     except Exception as _e1:
         print(f'[ETF NAV] FinMind {code}: {_e1}')
 
-    # ── 2. TWSE OpenAPI（僅當日最新淨值）──────────────────────────
+    # ── 2. TWSE OpenAPI — 直讀同日 NAV + 市價 + 折溢價率(%) ──────────────
     try:
         _r2 = _rq_etfnav.get(
             'https://openapi.twse.com.tw/v1/ETF/TaiwanStockPremiumDiscountRatio',
             headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}, timeout=10)
         for _row in _r2.json():
             if str(_row.get('證券代號', '')).strip() == code:
-                _nav2  = float(str(_row.get('單位淨值', _row.get('淨值', 0))).replace(',', '') or 0)
-                _price2= float(str(_row.get('收盤價', 0)).replace(',', '') or 0)
-                if _nav2 > 0 and _price2 > 0:
+                _nav2   = float(str(_row.get('單位淨值', _row.get('淨值', 0))).replace(',', '') or 0)
+                _price2 = float(str(_row.get('收盤價', 0)).replace(',', '') or 0)
+                # 直讀折溢價率欄位（TWSE 已用同日 NAV/市價計算，最精確）
+                _prem_key = next((k for k in _row if '折溢價' in str(k)), None)
+                _prem2 = None
+                if _prem_key:
+                    try: _prem2 = float(str(_row[_prem_key]).replace('%', '').replace(',', '') or 0)
+                    except: pass
+                if _prem2 is None and _nav2 > 0 and _price2 > 0:
                     _prem2 = round((_price2 - _nav2) / _nav2 * 100, 2)
-                    print(f'[ETF NAV] {code} TWSE-OpenAPI: price={_price2} nav={_nav2}')
+                if _nav2 > 0 and _price2 > 0:
+                    print(f'[ETF NAV] {code} TWSE: nav={_nav2} price={_price2} prem={_prem2}%')
                     return _pd_etfnav.DataFrame([{
-                        'date': _dt.date.today(), 'nav': _nav2
+                        'date': _dt.date.today(),
+                        'nav': _nav2,
+                        'price': _price2,
+                        'premium_pct': _prem2   # 同日計算，最精確
                     }])
     except Exception as _e2:
         print(f'[ETF NAV] TWSE-OpenAPI {code}: {_e2}')
@@ -212,22 +222,45 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
 
 def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> dict:
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
-    資料來源：1. FinMind/TWSE ETF NAV  2. yfinance navPrice  3. regularMarketNAV
+    核心原則：NAV 與市價必須來自同一日，避免跨來源日期錯位。
+    資料來源：1. TWSE OpenAPI 直讀（同日 NAV+市價+折溢價率）
+              2. FinMind NAV + df 中同日市價
+              3. yfinance info navPrice
     """
     import pandas as _pd_prem
     try:
-        # 優先從 fetch_etf_nav_history 取最新淨值
         if ticker:
             _nav_hist = fetch_etf_nav_history(ticker, days=5)
             if not _nav_hist.empty and 'nav' in _nav_hist.columns:
-                _latest_nav = float(_nav_hist['nav'].dropna().iloc[-1])
-                if _latest_nav > 0:
-                    price = float(df['Close'].iloc[-1]) if not df.empty else None
-                    if price:
-                        prem = round((price - _latest_nav) / _latest_nav * 100, 2)
-                        return {'nav': _latest_nav, 'price': price,
-                                'premium_pct': prem, 'warning': prem > 1.0}
-        # 備援：yfinance info
+                _last = _nav_hist.iloc[-1]
+                _latest_nav = float(_last['nav'])
+
+                # ── 路徑A：TWSE 已含同日折溢價率，直接使用 ──
+                if 'premium_pct' in _nav_hist.columns:
+                    _prem_val = _last.get('premium_pct')
+                    _price_val = _last.get('price', None)
+                    if _prem_val is not None and not _pd_prem.isna(_prem_val):
+                        _pv = float(_prem_val)
+                        _pr = float(_price_val) if _price_val else (_latest_nav * (1 + _pv / 100))
+                        return {'nav': _latest_nav, 'price': round(_pr, 4),
+                                'premium_pct': _pv, 'warning': _pv > 1.0}
+
+                # ── 路徑B：FinMind NAV — 找 df 中同日（±1天內）市價 ──
+                if _latest_nav > 0 and not df.empty and 'Close' in df.columns:
+                    _nav_date = _pd_prem.Timestamp(_last['date'])
+                    _price = None
+                    for _delta in [0, -1, 1, -2, 2]:
+                        _target = _nav_date + _pd_prem.Timedelta(days=_delta)
+                        if _target in df.index:
+                            _price = float(df.loc[_target, 'Close'])
+                            break
+                    if _price is None:
+                        _price = float(df['Close'].iloc[-1])  # 最後備援
+                    _prem = round((_price - _latest_nav) / _latest_nav * 100, 2)
+                    return {'nav': _latest_nav, 'price': _price,
+                            'premium_pct': _prem, 'warning': _prem > 1.0}
+
+        # ── 備援：yfinance info ──
         nav   = info.get('navPrice') or info.get('regularMarketNAV')
         price = float(df['Close'].iloc[-1]) if not df.empty else None
         if nav and price:
