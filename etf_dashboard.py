@@ -184,8 +184,13 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
             # fields: date, stock_id, nav
             _df['date'] = _pd_etfnav.to_datetime(_df['date']).dt.date
             _df['nav']  = _pd_etfnav.to_numeric(_df['nav'], errors='coerce')
-            print(f'[ETF NAV] {code} FinMind: {len(_df)} 筆')
-            return _df[['date', 'nav']].sort_values('date')
+            _df = _df.sort_values('date')
+            _latest_d   = _df['date'].iloc[-1]
+            _days_stale = (_dt.date.today() - _latest_d).days
+            print(f'[ETF NAV] {code} FinMind: {len(_df)} 筆, 最新={_latest_d}, 距今={_days_stale}d')
+            if _days_stale <= 7:           # 7天內視為新鮮，直接回傳
+                return _df[['date', 'nav']]
+            print(f'[ETF NAV] FinMind {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
     except Exception as _e1:
         print(f'[ETF NAV] FinMind {code}: {_e1}')
 

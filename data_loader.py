@@ -1091,30 +1091,41 @@ class StockDataLoader:
 
             # 一般公司：照舊計算毛利率（金融股已在上方 if is_finance 區塊處理，此處略過）
             if not is_finance:
-                gp_col = None
-                for col in df_pivot.columns:
-                    c = str(col)
-                    if any(k in c for k in ['毛利', '營業毛利']) or re.search(r"gross\s*profit", c, re.I):
-                        gp_col = col
-                        break
+                # 優先：直接毛利率(%)欄位（部分資料源直接給百分比）
+                _gm_pct_col = next((col for col in df_pivot.columns if '毛利率' in str(col)), None)
+                if _gm_pct_col is not None:
+                    _gm_vals = pd.to_numeric(df_pivot[_gm_pct_col], errors='coerce')
+                    if _gm_vals.notna().any():
+                        df_quarterly['毛利率'] = _gm_vals.values
+                        print(f'[毛利率] 直接欄位 {_gm_pct_col}: ✅')
+                    else:
+                        _gm_pct_col = None  # 欄位全NaN，繼續用下面的計算
 
-                if gp_col is not None:
-                    gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')
-                    df_quarterly['毛利率'] = (gp / df_quarterly['營收'] * 100).round(2)
-                else:
-                    cost_col = None
+                if _gm_pct_col is None:
+                    gp_col = None
                     for col in df_pivot.columns:
                         c = str(col)
-                        if any(k in c for k in ['營業成本', '成本合計']) or re.search(r"cost\s+of\s+revenue|cost\s+of\s+goods", c, re.I):
-                            cost_col = col
+                        if any(k in c for k in ['毛利', '營業毛利']) or re.search(r"gross\s*profit", c, re.I):
+                            gp_col = col
                             break
 
-                    if cost_col is not None:
-                        cost = pd.to_numeric(df_pivot[cost_col], errors='coerce')
-                        df_quarterly['毛利率'] = ((df_quarterly['營收'] - cost) / df_quarterly['營收'] * 100).round(2)
+                    if gp_col is not None:
+                        gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')
+                        df_quarterly['毛利率'] = (gp / df_quarterly['營收'] * 100).round(2)
                     else:
-                        df_quarterly['毛利率'] = float('nan')
-                        print("⚠️ 無法找到毛利/成本欄位，毛利率將顯示空值")
+                        cost_col = None
+                        for col in df_pivot.columns:
+                            c = str(col)
+                            if any(k in c for k in ['營業成本', '成本合計']) or re.search(r"cost\s+of\s+revenue|cost\s+of\s+goods", c, re.I):
+                                cost_col = col
+                                break
+
+                        if cost_col is not None:
+                            cost = pd.to_numeric(df_pivot[cost_col], errors='coerce')
+                            df_quarterly['毛利率'] = ((df_quarterly['營收'] - cost) / df_quarterly['營收'] * 100).round(2)
+                        else:
+                            df_quarterly['毛利率'] = float('nan')
+                            print(f"⚠️ 無法找到毛利/成本欄位，可用欄位: {[str(c) for c in df_pivot.columns[:15]]}")
 
             # ===== 5b) EPS：每股盈餘 =====
             eps_col = None
@@ -1133,12 +1144,18 @@ class StockDataLoader:
             if not is_finance and df_quarterly['毛利率'].isna().all():
                 try:
                     import requests as _rq_gi_gp
-                    _gi_hdr_gp = {'User-Agent': 'Mozilla/5.0',
-                                  'Accept': 'text/html,application/xhtml+xml',
-                                  'Referer': 'https://goodinfo.tw/tw/index.asp'}
+                    _gi_hdr_gp = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                  'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+                                  'Referer': 'https://goodinfo.tw/tw/index.asp',
+                                  'Connection': 'keep-alive'}
                     _gi_url_gp = (f'https://goodinfo.tw/tw/StockFinDetail.asp'
                                   f'?RPT_CAT=IS_M_QUAR&STOCK_ID={stock_id}')
-                    _gi_r_gp = _rq_gi_gp.get(_gi_url_gp, headers=_gi_hdr_gp, timeout=25)
+                    # 先建立 session 取得 cookie，再抓資料
+                    _gi_sess_gp = _rq_gi_gp.Session()
+                    _gi_sess_gp.get('https://goodinfo.tw/tw/index.asp',
+                                    headers=_gi_hdr_gp, timeout=10)
+                    _gi_r_gp = _gi_sess_gp.get(_gi_url_gp, headers=_gi_hdr_gp, timeout=25)
                     _gi_r_gp.encoding = 'utf-8'
                     if _gi_r_gp.status_code == 200 and len(_gi_r_gp.text) > 500:
                         _gi_tbls_gp = pd.read_html(_gi_r_gp.text, encoding='utf-8')
@@ -1189,21 +1206,28 @@ class StockDataLoader:
                         if _qfin is not None and not _qfin.empty:
                             break
                     if _qfin is not None and not _qfin.empty:
-                        # 取 GrossProfit 與 TotalRevenue
+                        # 取 GrossProfit 與 Revenue（多種欄位名相容）
                         _gp_row = next((r for r in _qfin.index if 'Gross' in str(r) and 'Profit' in str(r)), None)
+                        if _gp_row is None:
+                            _gp_row = next((r for r in _qfin.index if 'GrossProfit' in str(r).replace(' ', '')), None)
                         _rv_row = next((r for r in _qfin.index if 'Total' in str(r) and 'Revenue' in str(r)), None)
+                        if _rv_row is None:   # 備援：OperatingRevenue / 任意 Revenue
+                            _rv_row = next((r for r in _qfin.index if 'Revenue' in str(r)), None)
+                        print(f'[yfinance 毛利率] {stock_id}: gp={_gp_row}, rv={_rv_row}, cols={list(_qfin.index)[:6]}')
                         if _gp_row and _rv_row:
                             _yf_updated = 0
                             for _col in _qfin.columns:
                                 try:
-                                    _yr_q = _col.year; _mo_q = _col.month
+                                    _ts = pd.Timestamp(_col)
+                                    _yr_q = _ts.year; _mo_q = _ts.month
                                     _q_q  = ((_mo_q - 1) // 3) + 1
                                     _lbl  = f"{_yr_q}Q{_q_q}"
                                     _mk   = df_quarterly.index[df_quarterly['季度標籤'] == _lbl]
                                     if len(_mk) and pd.isna(df_quarterly.loc[_mk[0], '毛利率']):
                                         _gp_v = float(_qfin.loc[_gp_row, _col])
                                         _rv_v = float(_qfin.loc[_rv_row, _col])
-                                        if _rv_v and abs(_rv_v) > 0:
+                                        if (not pd.isna(_gp_v) and not pd.isna(_rv_v)
+                                                and abs(_rv_v) > 0):
                                             df_quarterly.loc[_mk[0], '毛利率'] = round(_gp_v / _rv_v * 100, 2)
                                             _yf_updated += 1
                                 except Exception: pass
