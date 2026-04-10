@@ -433,6 +433,79 @@ def calc_fundamental_score(revenue_df=None, yoy_months: int = 3) -> float:
         return 50.0
 
 
+# ── 獲利品質得分 (SQ) ────────────────────────────────────────
+def calc_quality_score(quarterly_df=None) -> dict:
+    """
+    獲利品質得分 (SQ) = 毛利趨勢 × 營收趨勢的交叉評分（0~100）
+    SQ = WGM(40%) × SGM_Level + WTrend(60%) × Sraw_norm
+
+    Sraw 交叉分表：
+      ↑GM + ↑Rev = +2.0（最佳：毛利擴張同時營收成長）
+      →GM + ↑Rev = +1.5（穩健：毛利持穩但營收成長）
+      ↓GM + ↑Rev =  0.0（警示：毛利縮水但量能支撐）
+      ↑GM + ↓Rev = +0.5（謹慎：毛利改善但量能萎縮）
+      ↓GM + ↓Rev = -2.0（最差：量利雙降）
+
+    SGM_Level（毛利率絕對值評分）：>50% → 100，<10% → 40，線性內插。
+
+    回傳 dict: sq(0-100 or None), sq_label, gm_trend(↑/↓/→), rev_trend(↑/↓), gm_level(%)
+    """
+    _empty = {'sq': None, 'sq_label': '-', 'gm_trend': '-', 'rev_trend': '-', 'gm_level': None}
+    if quarterly_df is None or not hasattr(quarterly_df, 'empty') or quarterly_df.empty:
+        return _empty
+    try:
+        import pandas as _pd_sq
+        if '毛利率' not in quarterly_df.columns or '營收' not in quarterly_df.columns:
+            return _empty
+
+        gm_vals  = _pd_sq.to_numeric(quarterly_df['毛利率'], errors='coerce').dropna()
+        rev_vals = _pd_sq.to_numeric(quarterly_df['營收'],   errors='coerce').dropna()
+
+        if len(gm_vals) < 2 or len(rev_vals) < 2:
+            return _empty
+
+        # 毛利率趨勢：近2季平均 vs 前2季平均（差距>1個百分點才算顯著）
+        gm_recent = gm_vals.iloc[-2:].mean()
+        gm_prev   = gm_vals.iloc[-4:-2].mean() if len(gm_vals) >= 4 else gm_vals.iloc[:-2].mean()
+        gm_diff   = gm_recent - gm_prev
+        if   gm_diff >  1.0: gm_trend = '↑'
+        elif gm_diff < -1.0: gm_trend = '↓'
+        else:                gm_trend = '→'   # 持穩
+
+        # 營收趨勢：近2季平均 vs 前2季平均（需成長>2%才算↑）
+        rev_recent = rev_vals.iloc[-2:].mean()
+        rev_prev   = rev_vals.iloc[-4:-2].mean() if len(rev_vals) >= 4 else rev_vals.iloc[:-2].mean()
+        rev_trend  = '↑' if rev_prev > 0 and rev_recent > rev_prev * 1.02 else '↓'
+
+        # 交叉評分 Sraw
+        if   gm_trend == '↑' and rev_trend == '↑': sraw = 2.0
+        elif gm_trend == '→' and rev_trend == '↑': sraw = 1.5
+        elif gm_trend == '↓' and rev_trend == '↑': sraw = 0.0
+        elif gm_trend == '↑' and rev_trend == '↓': sraw = 0.5
+        else:                                       sraw = -2.0   # ↓GM + ↓Rev
+
+        # SGM_Level：毛利率絕對值評分（40~100）
+        gm_level = float(gm_vals.iloc[-1])
+        if   gm_level >= 50: sgm = 100.0
+        elif gm_level <= 10: sgm = 40.0
+        else:                sgm = 40.0 + (gm_level - 10) / 40.0 * 60.0
+
+        # SQ 合成：Sraw 正規化至 0~100
+        sraw_norm = (sraw + 2.0) / 4.0 * 100.0
+        sq = round(0.4 * sgm + 0.6 * sraw_norm, 1)
+
+        if   sq >= 75: sq_label = '優質'
+        elif sq >= 55: sq_label = '穩健'
+        elif sq >= 40: sq_label = '普通'
+        else:          sq_label = '弱'
+
+        return {'sq': sq, 'sq_label': sq_label,
+                'gm_trend': gm_trend, 'rev_trend': rev_trend,
+                'gm_level': round(gm_level, 1)}
+    except Exception:
+        return _empty
+
+
 # ── ATR 動態停損計算 ────────────────────────────────────────
 def calc_atr_stop(df, entry_price: float, multiplier: float = 1.5) -> dict:
     """

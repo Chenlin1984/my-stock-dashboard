@@ -173,29 +173,38 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
     _df_stale = None   # path 4: stale FinMind fallback
     _days_stale = 999
 
-    # ── 1. FinMind TaiwanETFNetAssetValue ──────────────────────────
-    try:
-        _p = {'dataset': 'TaiwanETFNetAssetValue', 'data_id': code, 'start_date': start}
-        if token: _p['token'] = token
-        _r = _rq_etfnav.get('https://api.finmindtrade.com/api/v4/data', params=_p,
-                              headers={'Authorization': f'Bearer {token}'} if token else {},
-                              timeout=15)
-        _j = _r.json()
-        if _j.get('status') == 200 and _j.get('data'):
-            _df = _pd_etfnav.DataFrame(_j['data'])
-            # fields: date, stock_id, nav
-            _df['date'] = _pd_etfnav.to_datetime(_df['date']).dt.date
-            _df['nav']  = _pd_etfnav.to_numeric(_df['nav'], errors='coerce')
-            _df = _df.sort_values('date')
-            _latest_d   = _df['date'].iloc[-1]
-            _days_stale = (_dt.date.today() - _latest_d).days
-            _df_stale   = _df[['date', 'nav']]   # 保留，供 path 4 備援
-            print(f'[ETF NAV] {code} FinMind: {len(_df)} 筆, 最新={_latest_d}, 距今={_days_stale}d')
-            if _days_stale <= 7:           # 7天內視為新鮮，直接回傳
-                return _df_stale
-            print(f'[ETF NAV] FinMind {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
-    except Exception as _e1:
-        print(f'[ETF NAV] FinMind {code}: {_e1}')
+    # ── 1. FinMind ETF NAV（試兩個 dataset 名稱 + 多種欄位名稱）───────────
+    for _ds1 in ['TaiwanETFNetAssetValue', 'TaiwanStockETFNAV']:
+        try:
+            _p = {'dataset': _ds1, 'data_id': code, 'start_date': start}
+            if token: _p['token'] = token
+            _r = _rq_etfnav.get('https://api.finmindtrade.com/api/v4/data', params=_p,
+                                  headers={'Authorization': f'Bearer {token}'} if token else {},
+                                  timeout=15)
+            _j = _r.json()
+            if _j.get('status') == 200 and _j.get('data'):
+                _df = _pd_etfnav.DataFrame(_j['data'])
+                # 自動偵測 NAV 欄位名稱（FinMind 兩個版本欄位名不同）
+                _nav_field = next((f for f in ['nav', 'base_unit_net_value', 'NavPrice', 'netAssetValue']
+                                   if f in _df.columns), None)
+                if _nav_field is None:
+                    print(f'[ETF NAV] {code} {_ds1}: 找不到 NAV 欄位，現有={list(_df.columns)}')
+                    continue
+                _df['date'] = _pd_etfnav.to_datetime(_df['date']).dt.date
+                _df['nav']  = _pd_etfnav.to_numeric(_df[_nav_field], errors='coerce')
+                _df = _df[_df['nav'].notna() & (_df['nav'] > 0)].sort_values('date')
+                if _df.empty:
+                    continue
+                _latest_d   = _df['date'].iloc[-1]
+                _days_stale = (_dt.date.today() - _latest_d).days
+                _df_stale   = _df[['date', 'nav']]   # 保留，供 path 4 備援
+                print(f'[ETF NAV] {code} {_ds1}(field={_nav_field}): {len(_df)} 筆, 最新={_latest_d}, 距今={_days_stale}d')
+                if _days_stale <= 7:           # 7天內視為新鮮，直接回傳
+                    return _df_stale
+                print(f'[ETF NAV] {_ds1} {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
+                break   # 找到資料就不再嘗試第二個 dataset
+        except Exception as _e1:
+            print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
     # ── 2. TWSE OpenAPI — 直讀同日 NAV + 市價 + 折溢價率(%) ──────────────
     # 端點A：TaiwanStockPremiumDiscountRatio（含折溢價%）
