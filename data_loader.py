@@ -880,18 +880,26 @@ class StockDataLoader:
                                 continue
                             for _, _row_q in _tb_q.iterrows():
                                 _lbl_q = str(_row_q.iloc[0])
-                                # 營收列
+                                # 決定 origin_name（營收 or 毛利）
                                 if any(k in _lbl_q for k in ['營業收入','收入合計','Revenue']):
-                                    for _ci_q, _col_q in enumerate(_cols_q[1:], 1):
-                                        _qm = re.search(r'(\d{3,4})Q([1-4])', str(_col_q))
-                                        if not _qm: continue
-                                        _yr_q = int(_qm.group(1)); _qt_q = int(_qm.group(2))
-                                        if _yr_q < 1000: _yr_q += 1911  # ROC
-                                        _v_q = float(str(_row_q.iloc[_ci_q]).replace(',','').replace('--','').replace('N/A','')) if _ci_q < len(_row_q) else float('nan')
-                                        if not pd.isna(_v_q):
-                                            _rows_q.append({'date': f'{_yr_q}-{_qt_q*3:02d}-01',
-                                                             'type': f'Q{_qt_q}', 'value': _v_q * 1e6,
-                                                             'origin_name': '營業收入合計', 'stock_id': stock_id})
+                                    _oname_q = '營業收入合計'
+                                elif any(k in _lbl_q for k in ['毛利','銷貨毛利']) and '毛利率' not in _lbl_q:
+                                    _oname_q = '毛利'
+                                else:
+                                    continue
+                                for _ci_q, _col_q in enumerate(_cols_q[1:], 1):
+                                    _qm = re.search(r'(\d{3,4})Q([1-4])', str(_col_q))
+                                    if not _qm: continue
+                                    _yr_q = int(_qm.group(1)); _qt_q = int(_qm.group(2))
+                                    if _yr_q < 1000: _yr_q += 1911  # ROC
+                                    try:
+                                        _v_q = float(str(_row_q.iloc[_ci_q]).replace(',','').replace('--','').replace('N/A',''))
+                                    except:
+                                        _v_q = float('nan')
+                                    if not pd.isna(_v_q):
+                                        _rows_q.append({'date': f'{_yr_q}-{_qt_q*3:02d}-01',
+                                                         'type': f'Q{_qt_q}', 'value': _v_q * 1e6,
+                                                         'origin_name': _oname_q, 'stock_id': stock_id})
                         if _rows_q:
                             df_fin = pd.DataFrame(_rows_q)
                             print(f"[Goodinfo QTR] {stock_id}: ✅ {len(df_fin)}筆")
@@ -910,20 +918,24 @@ class StockDataLoader:
                             break
                     if _qf_q is not None and not _qf_q.empty:
                         _rows_yf = []
+                        # 找出 Revenue 和 Gross Profit 的 index label
+                        _rev_row = next((idx for idx in _qf_q.index if any(k in str(idx) for k in ['Revenue','Total Revenue','revenue'])), None)
+                        _gp_row  = next((idx for idx in _qf_q.index if 'Gross Profit' in str(idx) or 'GrossProfit' in str(idx)), None)
                         for _col_q in _qf_q.columns:
                             _dt_q = pd.Timestamp(_col_q)
                             _qt_num = ((_dt_q.month - 1) // 3) + 1
-                            _rev_row = None
-                            for _idx_q in _qf_q.index:
-                                if any(k in str(_idx_q) for k in ['Revenue','Total Revenue','revenue']):
-                                    _rev_row = _idx_q; break
                             _rev_val = float(_qf_q.loc[_rev_row, _col_q]) if _rev_row is not None else float('nan')
+                            _gp_val  = float(_qf_q.loc[_gp_row,  _col_q]) if _gp_row  is not None else float('nan')
                             _rows_yf.append({'date': _dt_q.strftime('%Y-%m-%d'),
                                               'type': f'Q{_qt_num}', 'value': _rev_val,
                                               'origin_name': '營業收入合計', 'stock_id': stock_id})
+                            if not pd.isna(_gp_val):
+                                _rows_yf.append({'date': _dt_q.strftime('%Y-%m-%d'),
+                                                  'type': f'Q{_qt_num}', 'value': _gp_val,
+                                                  'origin_name': '毛利', 'stock_id': stock_id})
                         if _rows_yf:
                             df_fin = pd.DataFrame(_rows_yf)
-                            print(f"[yfinance QTR] {stock_id}: ✅ {len(df_fin)}筆")
+                            print(f"[yfinance QTR] {stock_id}: ✅ {len(df_fin)}筆 (含毛利:{_gp_row is not None})")
                 except Exception as _eYF_q:
                     print(f"[yfinance QTR] {stock_id}: {_eYF_q}")
 
@@ -1126,6 +1138,31 @@ class StockDataLoader:
                         else:
                             df_quarterly['毛利率'] = float('nan')
                             print(f"⚠️ 無法找到毛利/成本欄位，可用欄位: {[str(c) for c in df_pivot.columns[:15]]}")
+                            # ── Fix C: 補充 yfinance 毛利率 ──────────────────────
+                            try:
+                                import yfinance as _yf_gps
+                                for _sfx_g in ('.TW', '.TWO'):
+                                    _tk_g = _yf_gps.Ticker(f'{stock_id}{_sfx_g}')
+                                    _qi_g = (getattr(_tk_g, 'quarterly_income_stmt', None)
+                                             or getattr(_tk_g, 'quarterly_financials', None))
+                                    if _qi_g is not None and not _qi_g.empty:
+                                        _gp_r = next((i for i in _qi_g.index if 'Gross Profit' in str(i)), None)
+                                        _rv_r = next((i for i in _qi_g.index if 'Total Revenue' in str(i) or str(i)=='Revenue'), None)
+                                        if _gp_r and _rv_r:
+                                            for _qc in _qi_g.columns:
+                                                _qts = f"{_qc.year}Q{((_qc.month-1)//3)+1}"
+                                                _mk = df_quarterly['季度標籤'] == _qts
+                                                if _mk.any():
+                                                    _gv = float(_qi_g.loc[_gp_r, _qc])
+                                                    _rv = float(_qi_g.loc[_rv_r, _qc])
+                                                    if _rv > 0 and not pd.isna(_gv):
+                                                        df_quarterly.loc[_mk, '毛利率'] = round(_gv / _rv * 100, 2)
+                                            _non_nan = df_quarterly['毛利率'].notna().sum()
+                                            print(f'[毛利率] yfinance補充 {stock_id}{_sfx_g}: 非NaN={_non_nan}')
+                                            if _non_nan > 0:
+                                                break
+                            except Exception as _egp:
+                                print(f'[毛利率] yfinance補充失敗: {_egp}')
 
             # ===== 5b) EPS：每股盈餘 =====
             eps_col = None

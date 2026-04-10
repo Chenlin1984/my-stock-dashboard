@@ -444,23 +444,11 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
         specs=[[{"secondary_y": True}]]
     )
 
-    # ✅ 除錯：檢查原始營收數據
-
     # 轉換單位：除以1000取整數（支持負數）
     revenue_display = (df_quarterly['營收'] / 1000).round(0).astype('Int64')
 
-    # ✅ 確保負數正確轉換（Int64 可能有問題，改用 float）
+    # 確保負數正確轉換（Int64 可能有問題，改用 float）
     revenue_values = revenue_display.astype(float).tolist()
-
-    print(f"  數值: {revenue_values}")
-
-    # ★★★ 檢查哪些是負數
-    negative_indices = [i for i, v in enumerate(revenue_values) if v < 0]
-    if negative_indices:
-        for idx in negative_indices:
-            print(f"    {df_quarterly['季度標籤'].iloc[idx]}: {revenue_values[idx]:,.0f} 千元")
-
-    print("=" * 50)
 
     # 正數營收用綠色，負數用紅色
     colors = ['#da3633' if val < 0 else '#2ea043' for val in revenue_values]
@@ -489,8 +477,11 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
             break
 
     # ========== 毛利率曲線圖 ==========
-    # 過濾掉 NaN 值
-    df_gp = df_quarterly[df_quarterly['毛利率'].notna()].copy()
+    # 安全過濾（避免欄位不存在時 KeyError）
+    if '毛利率' in df_quarterly.columns:
+        df_gp = df_quarterly[df_quarterly['毛利率'].notna()].copy()
+    else:
+        df_gp = pd.DataFrame()
 
     gp_available = (not df_gp.empty)
 
