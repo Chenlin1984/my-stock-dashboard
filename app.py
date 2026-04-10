@@ -438,7 +438,7 @@ def fetch_revenue(sid):
         return None, str(e)
 
 @st.cache_data(ttl=1800)
-def fetch_quarterly(sid):
+def fetch_quarterly(sid, _ver=3):   # _ver 改變即清除舊快取
     try:
         loader = _get_loader()
         result = loader.get_quarterly_data(sid)
@@ -4811,7 +4811,8 @@ with tab3_compare:
                     _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
                     if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
                 if _gc3:
-                    _gs3 = pd.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
+                    # 取最後一個非NaN值（避免最新季度尚未公布時取到NaN）
+                    _gs3 = pd.to_numeric(_qtr3[_gc3], errors='coerce').dropna()
                     if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
             _fund_map[_sid3] = {
                 '近4季EPS': f'{_eps3:.2f}' if _eps3 is not None else '-',
