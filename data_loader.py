@@ -238,46 +238,34 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
     import os
     _token = os.environ.get('FINMIND_TOKEN', '')
     _end_str = datetime.date.today().strftime('%Y-%m-%d')
-    print(f'[DBG-INST] ═══ _fetch_finmind_inst_raw({stock_id}) ═══')
-    print(f'[DBG-INST] [*] 步驟: token存在={bool(_token)}  start_date={start_str}  end_date={_end_str}')
     try:
         _params = {'dataset': 'TaiwanStockInstitutionalInvestorsBuySell',
                    'data_id': stock_id, 'start_date': start_str, 'end_date': _end_str}
         if _token:
             _params['token'] = _token
-        print(f'[DBG-INST] [*] 步驟: GET api.finmindtrade.com  params={_params}')
         _r = _req_dl.get(
             'https://api.finmindtrade.com/api/v4/data',
             params=_params,
             headers={'Authorization': f'Bearer {_token}'} if _token else {},
             timeout=20)
-        print(f'[DBG-INST] [?] 型態: {type(_r).__name__}  HTTP={_r.status_code}')
-        print(f'[DBG-INST] [>] 預覽: {repr(_r.text[:300])}')
         _j = _r.json()
-        print(f'[DBG-INST] [>] 預覽: status={_j.get("status")} msg={repr(_j.get("msg",""))[:100]} data_rows={len(_j.get("data",[]))}')
         if _j.get('data'):
             _first = _j['data'][0]
-            print(f'[DBG-INST] [>] 第一筆 data: {repr(_first)[:200]}')
             _names = list(set(r.get('name','') for r in _j['data'][:20]))
-            print(f'[DBG-INST] [>] name 值集合: {_names}')
         if _j.get('status') == 200 and _j.get('data'):
             _pv = _normalize_inst_pivot(pd.DataFrame(_j['data']))
-            print(f'[DBG-INST] [#] pivot cols={list(_pv.columns)}  rows={len(_pv)}')
             # 確保兩側 date 型別一致再 merge
             _pv['date'] = pd.to_datetime(_pv['date']).dt.date
             df['date']  = pd.to_datetime(df['date']).dt.date
             _df_dates   = set(df['date'])
             _pv_dates   = set(_pv['date'])
             _overlap    = len(_df_dates & _pv_dates)
-            print(f'[DBG-INST] [#] df日期範圍={min(_df_dates)}~{max(_df_dates)}  pv日期範圍={min(_pv_dates)}~{max(_pv_dates)}  重疊={_overlap}日')
             df = pd.merge(df, _pv, on='date', how='left')
             _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
-            print(f'[DBG-INST] [#] merge後外資非零行數: {_nz}/{len(df)}')
             print(f'[FM-Raw] {stock_id}: ✅ {len(_j["data"])} 筆 → {len(_pv)} 日  外資非零={_nz}')
         else:
             print(f'[FM-Raw] {stock_id}: status={_j.get("status")} msg={_j.get("msg","")}')
     except Exception as _e:
-        print(f'[DBG-INST] ❌ 例外: {type(_e).__name__}: {str(_e)[:300]}')
         print(f'[FM-Raw] {stock_id}: ❌ {_e}')
     return df
 
@@ -489,7 +477,6 @@ class StockDataLoader:
                 df[f'MA{period}'] = df['close'].rolling(window=period).mean()
 
             # ========== 4. 三大法人 ==========
-            print(f'[DBG-INST] ═══ 三大法人 {stock_id} 開始  dl={type(_self.dl).__name__ if _self.dl else "None(→RawAPI)"} ═══')
             if _self.dl is not None:
                 try:
                     df_inst = _self.dl.taiwan_stock_institutional_investors(
@@ -500,21 +487,17 @@ class StockDataLoader:
                                hasattr(df_inst, 'empty') and
                                not df_inst.empty)
                     if _sdk_ok:
-                        print(f'[DBG-INST] SDK ✅ rows={len(df_inst)}')
                         df_pivot = _normalize_inst_pivot(df_inst)
                         df_pivot['date'] = pd.to_datetime(df_pivot['date']).dt.date
                         df['date']       = pd.to_datetime(df['date']).dt.date
                         _overlap = len(set(df['date']) & set(df_pivot['date']))
-                        print(f'[DBG-INST] pivot cols={list(df_pivot.columns)}  重疊={_overlap}日')
                         df = pd.merge(df, df_pivot, on='date', how='left')
                         _nz = (df.get('外資', pd.Series(dtype=float)) != 0).sum()
                         print(f'[籌碼] {stock_id}: SDK ✅ 外資非零={_nz}', flush=True)
                         _sdk_used = True
                     else:
-                        print(f'[DBG-INST] SDK 空/None資料')
                         _sdk_used = False
                 except Exception as e:
-                    print(f'[DBG-INST] ❌ SDK 例外: {type(e).__name__}: {str(e)[:200]}')
                     _sdk_used = False
             else:
                 _sdk_used = False
@@ -526,7 +509,6 @@ class StockDataLoader:
                     df = _fetch_twse_inst_fallback(stock_id, df)
                 if '外資' not in df.columns:
                     df = _fetch_tpex_inst_fallback(stock_id, df)
-                print(f'[DBG-INST] RawAPI後: {[c for c in df.columns if c in ["外資","投信","自營商","主力合計"]]}')
 
             # ========== 5. 融資融券 ==========
             try:
@@ -844,12 +826,10 @@ class StockDataLoader:
             start_str = start_date.strftime('%Y-%m-%d')
 
             # 先試 FinMind REST API
-            print(f'[DBG-GP] ═══ get_quarterly_data({stock_id}) 開始 ═══')
             df_fin = None
             try:
                 import os as _os_q; import requests as _rq_q
                 _tok_q = _os_q.environ.get('FINMIND_TOKEN', '')
-                print(f'[DBG-GP] [*] 步驟: FinMind REST API  token={bool(_tok_q)}')
                 # 免費版：TaiwanStockFinancialStatement（無s）；付費版：有s；兩個都試
                 _df_q_tmp = None
                 for _ds_q in ['TaiwanStockFinancialStatement', 'TaiwanStockFinancialStatements']:
@@ -860,25 +840,18 @@ class StockDataLoader:
                             params=_pq,
                             headers={'Authorization': f'Bearer {_tok_q}'} if _tok_q else {},
                             timeout=25)
-                        print(f'[DBG-GP] [?] HTTP={_resp_q.status_code}  dataset={_ds_q}')
                         _jd_q = _resp_q.json()
                         print(f'[季財報REST/{_ds_q}] {stock_id} status={_jd_q.get("status")}, rows={len(_jd_q.get("data",[]))}')
                         if _jd_q.get('data'):
                             _types = list(set(r.get('type','') for r in _jd_q['data'][:30]))
-                            print(f'[DBG-GP] [>] type值集合: {_types[:10]}')
                         if _jd_q.get('status') == 200 and _jd_q.get('data'):
                             _df_q_tmp = pd.DataFrame(_jd_q['data'])
-                            print(f'[DBG-GP] [#] df_fin 欄位: {list(_df_q_tmp.columns)}')
-                            print(f'[DBG-GP] [>] 第一筆: {repr(_df_q_tmp.iloc[0].to_dict())[:300]}')
                             break
                     except Exception as _eq2:
-                        print(f'[DBG-GP] ❌ {_ds_q}: {type(_eq2).__name__}: {str(_eq2)[:200]}')
                         print(f'[季財報REST/{_ds_q}] {_eq2}')
                 if _df_q_tmp is not None and not _df_q_tmp.empty:
                     df_fin = _df_q_tmp
-                    print(f'[DBG-GP] ✅ df_fin 來自 FinMind REST: {len(df_fin)} 筆')
             except Exception as _eq:
-                print(f'[DBG-GP] ❌ 外層例外: {type(_eq).__name__}: {str(_eq)[:200]}')
                 print(f'[季財報REST] {_eq}')
 
             # 備援: FinMind Library
@@ -1005,7 +978,6 @@ class StockDataLoader:
 
 
             # ===== 除錯資訊（保留，用來判斷 API 欄位格式）=====
-            print(f"\n=== 季度財報除錯資訊 ({stock_id}) ===")
             print(f"欄位: {df_fin.columns.tolist()}")
             print(f"總筆數: {len(df_fin)}")
 
@@ -1016,7 +988,6 @@ class StockDataLoader:
             if 'type' in df_work.columns:
                 df_work['type'] = df_work['type'].astype(str)
                 type_uniques = sorted(df_work['type'].dropna().unique().tolist())
-                print(f"type 唯一值(前 20): {type_uniques[:20]}")
 
                 # 常見季度型態：Q1/Q2/Q3/Q4、1Q/2Q...、季報、Quarter、季
                 q_mask = df_work['type'].str.contains(r"(?:^Q[1-4]$|^[1-4]Q$|季|季報|quarter)", case=False, na=False)
@@ -1025,9 +996,7 @@ class StockDataLoader:
                 # 若過濾後反而全空，代表 type 不是這種格式（例如根本沒有區分），就退回用全量資料
                 if not df_q.empty:
                     df_work = df_q
-                    print(f"✓ 以 type 規則辨識季度後筆數: {len(df_work)}")
-                else:
-                    print("⚠️ type 欄位未能辨識季度格式，改用全量資料繼續嘗試（避免誤殺）")
+                # else: type欄位格式不符，繼續使用全量資料
 
             # ===== 2) Pivot：date x 科目 =====
             need_cols = {'date', 'origin_name', 'value'}
@@ -1071,7 +1040,6 @@ class StockDataLoader:
 
             if revenue_candidates:
                 rev_col = revenue_candidates[0]
-                print(f"✓ 營收欄位(一般): {rev_col}")
                 df_quarterly['營收'] = pd.to_numeric(df_pivot[rev_col], errors='coerce')
             else:
                 # 找不到一般營收欄位：很可能是金融股/金控
@@ -1079,11 +1047,9 @@ class StockDataLoader:
                 # 先用財報中的代理欄位墊底（避免空值），後續會用「月營收加總」覆蓋季度營收
                 if finance_candidates:
                     rev_col = finance_candidates[0]
-                    print(f"✓ 營收欄位(金融代理): {rev_col}")
                     df_quarterly['營收'] = pd.to_numeric(df_pivot[rev_col], errors='coerce')
                 else:
                     df_quarterly['營收'] = pd.NA
-                    print("⚠️ 財報找不到一般營收欄位，改用月營收加總計算季度營收")
 
             # 金融股：季度營收一律以「月營收 3 個月加總」為準（對齊看盤軟體的季營收）
             if is_finance:
@@ -1102,7 +1068,7 @@ class StockDataLoader:
                     df_quarterly['營收'] = pd.to_numeric(df_quarterly['營收_月加總'], errors='coerce').fillna(pd.to_numeric(df_quarterly['營收'], errors='coerce'))
                     df_quarterly = df_quarterly.drop(columns=['營收_月加總'])
                 else:
-                    print(f"⚠️ 月營收加總失敗: {_merr}")
+                    pass  # 月營收加總失敗，繼續用財報原始值
 
             # 預設指標名稱
             df_quarterly['毛利率名稱'] = '毛利率'
@@ -1119,15 +1085,12 @@ class StockDataLoader:
                     net_income = pd.to_numeric(df_pivot[net_col], errors='coerce')
                     df_quarterly['毛利率'] = (net_income / pd.to_numeric(df_quarterly['營收'], errors='coerce') * 100).round(2)
                     df_quarterly['毛利率名稱'] = '稅後純益率'
-                    print(f"✓ 金融股：以稅後純益率取代毛利率（欄位: {net_col}）")
                 else:
                     df_quarterly['毛利率'] = float('nan')
                     df_quarterly['毛利率名稱'] = '稅後純益率'
-                    print("⚠️ 金融股：找不到稅後淨利欄位，稅後純益率留空")
 
             # 一般公司：照舊計算毛利率（金融股已在上方 if is_finance 區塊處理，此處略過）
             if not is_finance:
-                print(f'[DBG-GP] [*] 步驟: 搜尋毛利欄位  df_pivot.columns={list(df_pivot.columns)[:20]}')
                 gp_col = None
                 for col in df_pivot.columns:
                     c = str(col)
@@ -1135,9 +1098,7 @@ class StockDataLoader:
                         gp_col = col
                         break
 
-                print(f'[DBG-GP] [>] gp_col={gp_col}')
                 if gp_col is not None:
-                    print(f"✓ 毛利欄位: {gp_col}")
                     gp = pd.to_numeric(df_pivot[gp_col], errors='coerce')
                     df_quarterly['毛利率'] = (gp / df_quarterly['營收'] * 100).round(2)
                 else:
@@ -1149,7 +1110,6 @@ class StockDataLoader:
                             break
 
                     if cost_col is not None:
-                        print(f"✓ 成本欄位: {cost_col}")
                         cost = pd.to_numeric(df_pivot[cost_col], errors='coerce')
                         df_quarterly['毛利率'] = ((df_quarterly['營收'] - cost) / df_quarterly['營收'] * 100).round(2)
                     else:
@@ -1164,11 +1124,9 @@ class StockDataLoader:
                     eps_col = col
                     break
             if eps_col is not None:
-                print(f"✓ EPS 欄位: {eps_col}")
                 df_quarterly['EPS'] = pd.to_numeric(df_pivot[eps_col], errors='coerce')
             else:
                 df_quarterly['EPS'] = float('nan')
-                print("⚠️ 無法找到 EPS 欄位")
 
             # ===== 5c) 毛利率備援：Goodinfo 季損益 =====
             # FinMind 無毛利/成本欄位（毛利率全 NaN）時，改從 Goodinfo 直接抓取季度毛利率
