@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `5edd47e` — ETF折溢價根治：NAV-only回傳 + Path B tz-agnostic比對
+- **最新 commit**: `45a9a82` — ETF NAV路徑3(yfinance) + 成交量FMTQIK月份驗證
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -34,6 +34,7 @@
 | `3d5a953` | **季營收圖顏色修正**: 正數→綠/負數→紅 + chart_plotter 清 debug print |
 | `5781a13` | **ETF折溢價再修**: TWSE verify=False + Path B日期比對用normalize() |
 | `15de029` | **ETF+毛利率雙修**: FinMind NAV>7天跳TWSE + 毛利率直接欄位/Goodinfo Session/yfinance欄位名寬鬆 |
+| `45a9a82` | **ETF NAV路徑3 + 成交量月份驗證**: yfinance navPrice備援(TWSE空body) + FMTQIK返回非本月資料時改用yfinance ^TWII整月備援，修復成交量5天問題 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
