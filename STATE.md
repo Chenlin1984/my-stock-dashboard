@@ -32,6 +32,7 @@
 | `8738956` | **ETF折溢價率錯誤**: TWSE直讀折溢價率(%)欄位 + FinMind路徑改同日市價匹配 |
 | `cdb8e31` | **清理 debug print**: data_loader.py 移除43行 DBG-INST/GP verbose print |
 | `3d5a953` | **季營收圖顏色修正**: 正數→綠/負數→紅 + chart_plotter 清 debug print |
+| `5781a13` | **ETF折溢價再修**: TWSE verify=False + Path B日期比對用normalize() |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
