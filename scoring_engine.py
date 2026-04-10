@@ -506,6 +506,192 @@ def calc_quality_score(quarterly_df=None) -> dict:
         return _empty
 
 
+# ── 前瞻成長動能分數 (FGMS) ────────────────────────────────
+def calc_forward_momentum_score(quarterly_df=None, bs_cf_df=None,
+                                 is_finance: bool = False) -> dict:
+    """
+    前瞻成長動能分數 (Forward Growth Momentum Score, FGMS) = 0~100
+
+    公式與權重：
+      合約負債動能    40%  — CL Ratio QoQ 成長速度
+      存貨營收背離率  30%  — Revenue YoY% - Inventory Days YoY%（服務業/無存貨跳過）
+      三率趨勢        20%  — 毛利率+營業利益率+淨利率同步方向
+      資本支出強度    10%  — CapEx YoY 成長（對未來產能的信心）
+
+    邊界處理：
+      - CL Ratio 爆炸值：clip至 [0, 5]
+      - 服務業/無存貨：inventory 維度跳過，權重移至三率
+      - 合約負債全空：權重移至三率+資本支出
+      - 去年同期負數的 YoY：clip至 [-200%, +300%]
+      - 資本支出 YoY 暴增（一次性購地）：cap at +100%
+
+    回傳 dict: fgms(0-100 or None), fgms_label, 分項 dict
+    """
+    import numpy as np
+    _empty = {'fgms': None, 'fgms_label': '-',
+              'cl_momentum': None, 'inv_divergence': None,
+              'three_rate': None, 'capex_intensity': None}
+
+    try:
+        # ── 共用函數 ────────────────────────────────────────
+        def _safe_yoy(series, periods=4):
+            """YoY% = (now - prev_year) / |prev_year| × 100, 處理負基期 & NaN"""
+            if len(series) <= periods: return float('nan')
+            now  = series.iloc[-1]
+            prev = series.iloc[-1 - periods]
+            if pd.isna(now) or pd.isna(prev) or prev == 0: return float('nan')
+            raw = (now - prev) / abs(prev) * 100
+            return float(np.clip(raw, -200, 300))
+
+        def _qoq_pct(series):
+            """QoQ% 最近一季 vs 前一季"""
+            clean = pd.to_numeric(series, errors='coerce').dropna()
+            if len(clean) < 2: return float('nan')
+            prev = clean.iloc[-2]; now = clean.iloc[-1]
+            if prev == 0: return float('nan')
+            raw = (now - prev) / abs(prev) * 100
+            return float(np.clip(raw, -200, 300))
+
+        # ══════════════════════════════════════════════════════
+        # 維度 1 — 合約負債動能（40%）
+        # ══════════════════════════════════════════════════════
+        cl_score = None
+        if bs_cf_df is not None and not bs_cf_df.empty and '合約負債' in bs_cf_df.columns:
+            cl_series = pd.to_numeric(bs_cf_df['合約負債'], errors='coerce').dropna()
+            if len(cl_series) >= 4 and quarterly_df is not None:
+                rev_series = pd.to_numeric(quarterly_df['營收'], errors='coerce').dropna().tail(4)
+                rev_avg = rev_series.mean() if len(rev_series) >= 2 else float('nan')
+                if rev_avg > 0:
+                    # CL Ratio = 最新合約負債 / 近4季平均營收
+                    cl_latest = cl_series.iloc[-1]
+                    cl_ratio  = float(np.clip(cl_latest / rev_avg, 0, 5))
+                    cl_qoq    = _qoq_pct(cl_series)   # QoQ 加速？
+                    # 評分：CL Ratio 深度 + QoQ 動能雙軌
+                    if   cl_ratio > 0.5 and not pd.isna(cl_qoq) and cl_qoq > 10: cl_score = 100
+                    elif cl_ratio > 0.5 or (not pd.isna(cl_qoq) and cl_qoq > 10): cl_score = 75
+                    elif cl_ratio > 0.2:  cl_score = 55
+                    elif cl_ratio > 0.05: cl_score = 40
+                    elif not pd.isna(cl_qoq) and cl_qoq < -10: cl_score = 20
+                    else:                 cl_score = 35
+                else:
+                    cl_score = None  # rev_avg 無效
+
+        # ══════════════════════════════════════════════════════
+        # 維度 2 — 存貨營收背離率（30%）
+        # ══════════════════════════════════════════════════════
+        inv_score = None
+        has_inventory = False
+        if bs_cf_df is not None and not bs_cf_df.empty and '存貨' in bs_cf_df.columns:
+            inv_series = pd.to_numeric(bs_cf_df['存貨'], errors='coerce').dropna()
+            has_inventory = len(inv_series) >= 2 and inv_series.iloc[-1] > 0
+        if has_inventory and quarterly_df is not None and '營收' in quarterly_df.columns:
+            rev_qs = pd.to_numeric(quarterly_df['營收'], errors='coerce').dropna()
+            rev_yoy = _safe_yoy(rev_qs, periods=4)
+            # 存貨天數 YoY = (inv_days_now - inv_days_prev) / |inv_days_prev| × 100
+            # inv_days = 存貨 / (近4季總營收 / 365)
+            def _inv_days(df_q, df_extra):
+                if len(inv_series) < 2: return float('nan')
+                _rev_ttm = pd.to_numeric(df_q['營收'], errors='coerce').dropna().tail(4).sum()
+                _inv = pd.to_numeric(df_extra['存貨'], errors='coerce').dropna().iloc[-1]
+                if _rev_ttm <= 0: return float('nan')
+                return _inv / (_rev_ttm / 365)
+            inv_days_now  = _inv_days(quarterly_df, bs_cf_df)
+            # 一年前版本（bs_cf_df 最前4筆 vs 最後4筆）
+            _bs_prev = bs_cf_df.iloc[:-4] if len(bs_cf_df) > 4 else bs_cf_df.head(1)
+            _qtr_prev = quarterly_df.iloc[:-4] if len(quarterly_df) > 4 else quarterly_df.head(2)
+            inv_days_prev = _inv_days(_qtr_prev, _bs_prev) if not _qtr_prev.empty else float('nan')
+            if not pd.isna(inv_days_prev) and inv_days_prev != 0:
+                inv_days_yoy = float(np.clip((inv_days_now - inv_days_prev) / abs(inv_days_prev) * 100, -200, 300))
+            else:
+                inv_days_yoy = float('nan')
+            if not pd.isna(rev_yoy) and not pd.isna(inv_days_yoy):
+                divergence = rev_yoy - inv_days_yoy   # 正值 = 好（賣得快）
+                if   divergence > 15:  inv_score = 100
+                elif divergence > 5:   inv_score = 75
+                elif divergence >= -5: inv_score = 50
+                elif divergence >= -15:inv_score = 30
+                else:                  inv_score = 10
+            elif not pd.isna(rev_yoy):
+                inv_score = 65 if rev_yoy > 10 else (50 if rev_yoy > 0 else 30)
+
+        # ══════════════════════════════════════════════════════
+        # 維度 3 — 三率趨勢（20%）
+        # ══════════════════════════════════════════════════════
+        three_rate_score = None
+        if quarterly_df is not None and not quarterly_df.empty:
+            _rates_up = 0; _rates_total = 0
+            for _rcol in ['毛利率', '營業利益率', '淨利率']:
+                if _rcol in quarterly_df.columns:
+                    _rs = pd.to_numeric(quarterly_df[_rcol], errors='coerce').dropna()
+                    if len(_rs) >= 2:
+                        _rates_total += 1
+                        _recent = _rs.iloc[-2:].mean()
+                        _prev   = _rs.iloc[-4:-2].mean() if len(_rs) >= 4 else _rs.iloc[:-2].mean()
+                        if _recent > _prev + 0.5: _rates_up += 1
+                        elif _recent < _prev - 0.5: _rates_up -= 1  # 惡化
+            if _rates_total > 0:
+                _ratio = _rates_up / _rates_total   # -1 ~ +1
+                three_rate_score = round(50 + _ratio * 50, 1)   # 0 ~ 100
+
+        # ══════════════════════════════════════════════════════
+        # 維度 4 — 資本支出強度（10%）
+        # ══════════════════════════════════════════════════════
+        capex_score = None
+        if bs_cf_df is not None and not bs_cf_df.empty and '資本支出' in bs_cf_df.columns:
+            cx_series = pd.to_numeric(bs_cf_df['資本支出'], errors='coerce').dropna()
+            if len(cx_series) >= 4:
+                cx_now   = cx_series.tail(4).sum()
+                cx_prev  = cx_series.iloc[-8:-4].sum() if len(cx_series) >= 8 else cx_series.head(4).sum()
+                if cx_prev > 0:
+                    cx_yoy = float(np.clip((cx_now - cx_prev) / cx_prev * 100, -100, 100))
+                    if   cx_yoy > 20:  capex_score = 100
+                    elif cx_yoy > 0:   capex_score = 70
+                    elif cx_yoy > -20: capex_score = 45
+                    else:              capex_score = 20
+
+        # ══════════════════════════════════════════════════════
+        # 動態加權（缺少維度時重新分配）
+        # ══════════════════════════════════════════════════════
+        _w = {'cl': 0.40, 'inv': 0.30, 'three': 0.20, 'capex': 0.10}
+        _scores = {'cl': cl_score, 'inv': inv_score, 'three': three_rate_score, 'capex': capex_score}
+
+        # 無合約負債（服務業/金融）→ 把 CL 40% 移到三率
+        if _scores['cl'] is None:
+            _w['three'] += _w['cl']; _w['cl'] = 0
+        # 無存貨（服務業）→ 把 INV 30% 均分給三率+資本支出
+        if _scores['inv'] is None or not has_inventory:
+            _w['three'] += _w['inv'] * 0.7
+            _w['capex'] += _w['inv'] * 0.3
+            _w['inv'] = 0
+        # 無資本支出 → 移到三率
+        if _scores['capex'] is None:
+            _w['three'] += _w['capex']; _w['capex'] = 0
+
+        total_w = sum(w for k, w in _w.items() if _scores[k] is not None)
+        if total_w <= 0:
+            return _empty
+
+        fgms = sum(_w[k] * _scores[k] for k in _w if _scores[k] is not None and _w[k] > 0) / total_w
+        fgms = round(fgms, 1)
+
+        if   fgms >= 75: fgms_label = '前景亮麗'
+        elif fgms >= 60: fgms_label = '動能向上'
+        elif fgms >= 45: fgms_label = '持平觀察'
+        elif fgms >= 30: fgms_label = '動能減弱'
+        else:            fgms_label = '前景偏弱'
+
+        return {
+            'fgms': fgms, 'fgms_label': fgms_label,
+            'cl_momentum': round(cl_score, 1) if cl_score is not None else None,
+            'inv_divergence': round(inv_score, 1) if inv_score is not None else None,
+            'three_rate': round(three_rate_score, 1) if three_rate_score is not None else None,
+            'capex_intensity': round(capex_score, 1) if capex_score is not None else None,
+        }
+    except Exception as _ef:
+        print(f'[FGMS] 計算失敗: {_ef}')
+        return _empty
+
+
 # ── ATR 動態停損計算 ────────────────────────────────────────
 def calc_atr_stop(df, entry_price: float, multiplier: float = 1.5) -> dict:
     """
