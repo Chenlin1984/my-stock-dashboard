@@ -438,7 +438,7 @@ def fetch_revenue(sid):
         return None, str(e)
 
 @st.cache_data(ttl=1800)
-def fetch_quarterly(sid):
+def fetch_quarterly(sid, _ver=3):   # _ver 改變即清除舊快取
     try:
         loader = _get_loader()
         result = loader.get_quarterly_data(sid)
@@ -4253,9 +4253,9 @@ padding:12px 16px;margin:8px 0;">
                     st.caption('月營收資料不足，無法判斷趨勢')
             else:
                 st.caption('⚠️ 月營收資料缺失（請確認 FinMind Token）')
-            # 毛利率結論
+            # 毛利率結論 + 獲利品質得分 (SQ)
             if qtr2 is not None and not qtr2.empty:
-                _gp_col = next((c for c in qtr2.columns if '毛利率' in str(c)), None)
+                _gp_col = '毛利率' if '毛利率' in qtr2.columns else None  # 精確比對，避免命中'毛利率名稱'
                 if _gp_col:
                     import pandas as _pd_gp
                     _gp_series = _pd_gp.to_numeric(qtr2[_gp_col].tail(4), errors='coerce').dropna()
@@ -4272,6 +4272,23 @@ padding:12px 16px;margin:8px 0;">
                             f'<span style="font-size:13px;font-weight:700;color:{_gp_c};">{_gp_msg}</span>'
                             f'</div>', unsafe_allow_html=True
                         )
+                # 獲利品質得分 (SQ)
+                try:
+                    from scoring_engine import calc_quality_score as _cqs
+                    _sq_res = _cqs(qtr2)
+                    if _sq_res.get('sq') is not None:
+                        _sq_v = _sq_res['sq']; _sq_lbl = _sq_res['sq_label']
+                        _sq_gm = _sq_res['gm_trend']; _sq_rv = _sq_res['rev_trend']
+                        _sq_c  = '#3fb950' if _sq_v >= 75 else ('#d29922' if _sq_v >= 55 else '#f85149')
+                        st.markdown(
+                            f'<div style="background:#0d1117;border-left:3px solid {_sq_c};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
+                            f'<span style="font-size:11px;color:#8b949e;">🎓 獲利品質 SQ</span>　'
+                            f'<span style="font-size:13px;font-weight:700;color:{_sq_c};">SQ {_sq_v:.0f}分 · {_sq_lbl}</span>'
+                            f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">毛利{_sq_gm} 營收{_sq_rv}</span>'
+                            f'</div>', unsafe_allow_html=True
+                        )
+                except Exception:
+                    pass
 
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
@@ -4806,17 +4823,27 @@ with tab3_compare:
             _eps3 = _gp3 = None
             if _qtr3 is not None and not _qtr3.empty:
                 _ec3 = next((c for c in _qtr3.columns if 'EPS' in str(c).upper() or '每股盈餘' in str(c)), None)
-                _gc3 = next((c for c in _qtr3.columns if '毛利率' in str(c)), None)
+                _gc3 = '毛利率' if '毛利率' in _qtr3.columns else None  # 精確比對，避免命中'毛利率名稱'
                 if _ec3:
                     _es3 = pd.to_numeric(_qtr3[_ec3].tail(4), errors='coerce').dropna()
                     if len(_es3) >= 1: _eps3 = round(float(_es3.sum()), 2)
                 if _gc3:
-                    _gs3 = pd.to_numeric(_qtr3[_gc3].tail(1), errors='coerce').dropna()
+                    # 取最後一個非NaN值（避免最新季度尚未公布時取到NaN）
+                    _gs3 = pd.to_numeric(_qtr3[_gc3], errors='coerce').dropna()
                     if len(_gs3) >= 1: _gp3 = round(float(_gs3.iloc[-1]), 1)
+            # 獲利品質得分 (SQ)
+            _sq3 = None
+            try:
+                from scoring_engine import calc_quality_score as _cqs3
+                _sq_r3 = _cqs3(_qtr3)
+                if _sq_r3.get('sq') is not None:
+                    _sq3 = f"{_sq_r3['sq']:.0f}({_sq_r3['sq_label']})"
+            except Exception: pass
             _fund_map[_sid3] = {
                 '近4季EPS': f'{_eps3:.2f}' if _eps3 is not None else '-',
                 '毛利率%':  f'{_gp3:.1f}'  if _gp3  is not None else '-',
                 '殖利率%':  f'{_avg3:.1f}' if _avg3  is not None else '-',
+                'SQ評分':   _sq3 if _sq3 is not None else '-',
             }
 
         # ── ⑤ 最終綜合建議卡 ──────────────────────────────────
@@ -4928,6 +4955,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                         '總分': _r.get('total', 0),
                         '近4季EPS': _fd.get('近4季EPS', '-'),
                         '毛利率%':  _fd.get('毛利率%',  '-'),
+                        'SQ評分':   _fd.get('SQ評分',   '-'),
                         '殖利率%':  _fd.get('殖利率%',  '-'),
                         '評級': _r.get('grade', '-'),
                     })
@@ -4937,6 +4965,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                                  '總分':     st.column_config.ProgressColumn('總分', min_value=0, max_value=100, format='%.1f'),
                                  '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
                                  '毛利率%':  st.column_config.TextColumn('毛利率%'),
+                                 'SQ評分':   st.column_config.TextColumn('SQ品質分'),
                                  '殖利率%':  st.column_config.TextColumn('殖利率%'),
                              })
             else:
