@@ -445,7 +445,7 @@ def twse_volume(yyyymm):
                 except: pass
         return result
 
-    print(f"[DBG-VOL] ═══ twse_volume({yyyymm}) 開始 ═══")
+    print(f"[VOL] twse_volume({yyyymm}) 開始")
     for _url in [
         "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK",
         "https://www.twse.com.tw/zh/afterTrading/FMTQIK",
@@ -457,43 +457,24 @@ def twse_volume(yyyymm):
                 _p = {"date": yyyymm + "01"}
             else:
                 _p = {"response": "json", "date": yyyymm + "01"}
-            print(f"[DBG-VOL] [*] 步驟: GET {_url} params={_p}")
             r = _TWSE_S.get(_url, params=_p, headers=TWSE_HDR, timeout=15)
-            print(f"[DBG-VOL] [?] 型態: {type(r).__name__}  HTTP={r.status_code}")
-            print(f"[DBG-VOL] [#] 長度: content={len(r.content) if hasattr(r.content,'__len__') else 'N/A'}")
-            print(f"[DBG-VOL] [>] 預覽: {repr(r.text[:200])}")
             j = r.json()
-            print(f"[DBG-VOL] [*] 步驟: r.json() 解析完成")
-            print(f"[DBG-VOL] [?] 型態: {type(j).__name__}")
-            print(f"[DBG-VOL] [#] 長度: {len(j) if hasattr(j,'__len__') else 'N/A'}")
-            if isinstance(j, dict):
-                print(f"[DBG-VOL] [>] 預覽: stat={j.get('stat')} data_len={len(j.get('data',[]))} keys={list(j.keys())[:5]}")
-            else:
-                print(f"[DBG-VOL] [>] 預覽: {repr(j)[:200]}")
             # OpenAPI 回傳 list 格式（欄位名稱大小寫相容）
             if isinstance(j, list):
                 def _tv(item):
                     for k in ['TradeValue', 'tradeValue', 'trade_value', 'TradeAmount']:
                         if k in item and item[k]: return item[k]
                     return ''
-                print(f"[DBG-VOL] [*] 步驟: OpenAPI list 轉換，第一筆 keys={list(j[0].keys()) if j else '空'}")
                 j = {"stat": "OK", "data": [[
                     item.get("Date", item.get("date", "")),
                     item.get("TradeVolume", item.get("tradeVolume", "")),
                     _tv(item), "", "", ""] for item in j]}
-                print(f"[DBG-VOL] [#] 轉換後 data 長度: {len(j.get('data',[]))}")
-                if j.get('data'):
-                    print(f"[DBG-VOL] [>] 第一筆 data row: {repr(j['data'][0])[:200]}")
             result = _parse_fmtqik(j)
-            print(f"[DBG-VOL] [*] 步驟: _parse_fmtqik 完成")
-            print(f"[DBG-VOL] [#] 長度: result={len(result)}")
-            print(f"[DBG-VOL] [>] 預覽: {repr(dict(list(result.items())[:3]))}")
             if result:
                 print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
                 return result
         except Exception as _e:
-            print(f"[DBG-VOL] ❌ URL={_url} 例外: {type(_e).__name__}: {str(_e)[:300]}")
-            print(f"[VOL] FMTQIK {yyyymm} {_url}: {_e}")
+            print(f"[VOL] FMTQIK {yyyymm} {_url.split('/')[-1]}: {type(_e).__name__}")
     print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
     # ── 備援：yfinance ^TWII Volume
     # ^TWII Volume 在 Yahoo Finance 為全市場成交股數
