@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `15de029` — ETF過舊NAV跳TWSE + 毛利率三層修正
+- **最新 commit**: `5edd47e` — ETF折溢價根治：NAV-only回傳 + Path B tz-agnostic比對
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
