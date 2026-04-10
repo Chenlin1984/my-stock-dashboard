@@ -47,7 +47,6 @@ def _get_revenue_range(revenue_series, pad_ratio=0.15):
             pad = span * pad_ratio
             rmin = vmin - pad
             rmax = vmax + pad
-            print(f"  有負數！計算範圍: [{rmin:,.0f}, {rmax:,.0f}]")
         else:
             # 全是正數：從0開始
             rmin = 0
@@ -446,12 +445,6 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
     )
 
     # ✅ 除錯：檢查原始營收數據
-    print(f"\n=== 季營收圖表除錯 ({stock_id}) ===")
-    print(f"原始營收數據（千元）:")
-    print(df_quarterly[['季度標籤', '營收']].to_string(index=False))
-    print(f"營收最小值: {df_quarterly['營收'].min():,.0f} 千元")
-    print(f"營收最大值: {df_quarterly['營收'].max():,.0f} 千元")
-    print(f"有負數: {(df_quarterly['營收'] < 0).any()}")
 
     # 轉換單位：除以1000取整數（支持負數）
     revenue_display = (df_quarterly['營收'] / 1000).round(0).astype('Int64')
@@ -459,24 +452,18 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
     # ✅ 確保負數正確轉換（Int64 可能有問題，改用 float）
     revenue_values = revenue_display.astype(float).tolist()
 
-    print(f"\n轉換後顯示值:")
-    print(f"  季度: {df_quarterly['季度標籤'].tolist()}")
     print(f"  數值: {revenue_values}")
-    print(f"  顯示值最小: {min(revenue_values):,.0f}")
-    print(f"  顯示值最大: {max(revenue_values):,.0f}")
-    print(f"  Y值數據類型: {type(revenue_values[0])}")
 
     # ★★★ 檢查哪些是負數
     negative_indices = [i for i, v in enumerate(revenue_values) if v < 0]
     if negative_indices:
-        print(f"\n⚠️ 發現負數營收:")
         for idx in negative_indices:
             print(f"    {df_quarterly['季度標籤'].iloc[idx]}: {revenue_values[idx]:,.0f} 千元")
 
     print("=" * 50)
 
-    # ✅ 負數營收用紅色標示，正數用藍色
-    colors = ['#2ea043' if val < 0 else '#da3633' for val in revenue_values]
+    # 正數營收用綠色，負數用紅色
+    colors = ['#da3633' if val < 0 else '#2ea043' for val in revenue_values]
 
     # 金融股：若毛利率欄位不存在或全是空值，標題不顯示「與毛利率」，並加小字備註
     has_gm = ('毛利率' in df_quarterly.columns) and (pd.to_numeric(df_quarterly.get('毛利率'), errors='coerce').notna().any())
@@ -497,14 +484,8 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
     # ★★★ 強制設置 base=0（確保負數柱子向下延伸）
     fig.update_traces(base=0, selector=dict(name='季營收'))
 
-    # ✅ 驗證 trace 設置
-    print(f"\n季營收柱狀圖驗證:")
     for trace in fig.data:
         if trace.name == '季營收':
-            print(f"  trace.type: {trace.type}")
-            print(f"  trace.base: {trace.base}")
-            print(f"  trace.y (前3個): {trace.y[:3] if len(trace.y) > 3 else trace.y}")
-            print(f"  trace.y (負數): {[y for y in trace.y if y < 0]}")
             break
 
     # ========== 毛利率曲線圖 ==========
@@ -575,7 +556,6 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
     if y_range:
         update_dict['range'] = y_range
         update_dict['autorange'] = False  # 禁止自動範圍
-        print(f"\n設定 Y 軸範圍: {y_range}")
     else:
         # 如果沒有計算出範圍，允許自動調整但確保包含0
         update_dict['rangemode'] = 'tozero'
