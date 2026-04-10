@@ -4020,30 +4020,36 @@ padding:12px 16px;margin:8px 0;">
                 _div_df_riv['avg_div'] = _div_df_riv['avg_div'].where(
                     _div_df_riv['avg_div'] > 0, other=pd.NA)
 
-                # ── 3. merge_asof 將每個交易日對齊到最新已知平均股利 ──
-                _rdates_s = pd.to_datetime(
-                    df2['date'] if 'date' in df2.columns else pd.RangeIndex(len(df2)))
-                _price_df_riv = pd.DataFrame({
-                    'date':  _rdates_s,
-                    'close': pd.to_numeric(df2['close'], errors='coerce').values
-                }).sort_values('date')
+                # ── 3. 建立「年份→平均股利」查表，並對每個交易日做前向填充 ──
+                # 使用年份整數做 key，避免 merge_asof 的 dtype 問題
+                _div_year_map = {}
+                for _, _dr in _div_df_riv.dropna(subset=['avg_div']).iterrows():
+                    try:
+                        _yr_key = int(pd.Timestamp(_dr['date']).year)
+                        _div_year_map[_yr_key] = float(_dr['avg_div'])
+                    except: pass
 
-                _merged_riv = pd.merge_asof(
-                    _price_df_riv,
-                    _div_df_riv[['date', 'avg_div']].dropna(),
-                    on='date', direction='backward'
-                )
-                # 若部分日期比最早配息記錄還早，向前填充
-                _merged_riv['avg_div'] = _merged_riv['avg_div'].bfill().ffill()
+                _rdates_s  = pd.to_datetime(
+                    df2['date'] if 'date' in df2.columns else pd.RangeIndex(len(df2)))
+                _rclose_riv = pd.to_numeric(df2['close'], errors='coerce').reset_index(drop=True)
+                _rdates_riv = _rdates_s.reset_index(drop=True)
+
+                # 每個交易日找「<=該年」的最近已知平均股利（前向填充）
+                _sorted_yrs = sorted(_div_year_map.keys())
+                def _lookup_avg_div(ts):
+                    yr = ts.year
+                    avail = [y for y in _sorted_yrs if y <= yr]
+                    if avail:   return _div_year_map[max(avail)]
+                    if _sorted_yrs: return _div_year_map[min(_sorted_yrs)]  # 早於最早記錄
+                    return float(avg_div2) if avg_div2 else 0
+                _avg_div_series = _rdates_s.map(_lookup_avg_div)
 
                 # ── 4. 計算河流帶：P = 平均股利 / 殖利率 ──
-                _band7_riv = (_merged_riv['avg_div'] / 0.07).round(2)
-                _band5_riv = (_merged_riv['avg_div'] / 0.05).round(2)
-                _band3_riv = (_merged_riv['avg_div'] / 0.03).round(2)
-                _rdates_riv = _merged_riv['date']
-                _rclose_riv = _merged_riv['close']
+                _band7_riv = (_avg_div_series / 0.07).round(2).reset_index(drop=True)
+                _band5_riv = (_avg_div_series / 0.05).round(2).reset_index(drop=True)
+                _band3_riv = (_avg_div_series / 0.03).round(2).reset_index(drop=True)
 
-                _cur_div_riv = float(_merged_riv['avg_div'].dropna().iloc[-1]) if not _merged_riv['avg_div'].dropna().empty else 0
+                _cur_div_riv = float(_avg_div_series.dropna().iloc[-1]) if not _avg_div_series.dropna().empty else 0
                 _p7r = round(_cur_div_riv / 0.07, 0) if _cur_div_riv > 0 else 0
                 _p5r = round(_cur_div_riv / 0.05, 0) if _cur_div_riv > 0 else 0
                 _p3r = round(_cur_div_riv / 0.03, 0) if _cur_div_riv > 0 else 0
