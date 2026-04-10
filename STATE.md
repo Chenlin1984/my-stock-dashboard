@@ -3,8 +3,8 @@
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
-- **分支**: claude/analyze-test-coverage-070Kf（待 merge → main）
-- **最新 commit**: `92f52e2` — 毛利率根治：Goodinfo/yfinance fallback補充Gross Profit + FinMind無毛利yfinance補充
+- **分支**: main（最新）
+- **最新 commit**: `e7995db` — 毛利率快取破解(_ver=3) + tail(1)→dropna().iloc[-1] NaN修正
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -37,6 +37,7 @@
 | `45a9a82` | **ETF NAV路徑3 + 成交量月份驗證**: yfinance navPrice備援(TWSE空body) + FMTQIK返回非本月資料時改用yfinance ^TWII整月備援，修復成交量5天問題 |
 | `cbd9aa6` | **三項修復**: app.py rev2結論欄名YoY%→yoy / ETF NAV path4過舊FinMind備援 / scoring_engine list明確防護 |
 | `92f52e2` | **毛利率根治**: Goodinfo/yfinance fallback補充Gross Profit抓取 + FinMind無毛利時自動yfinance補充 + chart_plotter KeyError防護 |
+| `e7995db` | **毛利率快取破解**: fetch_quarterly _ver=3清除舊None快取 + 排行tab tail(1)→dropna().iloc[-1]避免最新季NaN |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -54,8 +55,8 @@
 - [x] debug print 全部清除：data_loader / chart_plotter ✅
 - [x] 孫慶龍結論月營收：欄位名稱 YoY%→yoy 修正，動態結論正常顯示 ✅
 - [x] ETF NAV N/A：path4 過舊FinMind備援已上線，不再顯示空白 ✅
-- [x] 毛利率曲線：三路徑補充Gross Profit(Goodinfo/yfinance fallback/FinMind補充) ✅
-- [ ] 毛利率：待 Cloud 部署 claude/analyze-test-coverage-070Kf 後確認曲線顯示
+- [x] 毛利率曲線：三路徑補充Gross Profit + 快取破解(_ver=3) + tail(1)NaN修正 ✅
+- [ ] 毛利率：待 Cloud 重新部署後確認排行欄位與個股曲線顯示
 
 ## 🐞 長期已知限制
 - TWSE 直接 API 被 Streamlit Cloud IP 封鎖（`頁面無法執行`）→ 全部依賴 FinMind/openapi 備援
