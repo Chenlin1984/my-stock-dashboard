@@ -243,6 +243,19 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
         except Exception as _e2:
             print(f'[ETF NAV] TWSE {_ep2.split("/")[-1]} {code}: {_e2}')
 
+    # ── 3. yfinance ETF info.navPrice ──────────────────────────────────────
+    try:
+        import yfinance as _yf3
+        for _sfx3 in ('.TW', '.TWO'):
+            _tk3 = _yf3.Ticker(f'{code}{_sfx3}')
+            _info3 = _tk3.info
+            _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
+            if _nav3 and float(_nav3) > 0:
+                print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
+                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
+    except Exception as _e3:
+        print(f'[ETF NAV] yfinance {code}: {_e3}')
+
     return _pd_etfnav.DataFrame()
 
 
