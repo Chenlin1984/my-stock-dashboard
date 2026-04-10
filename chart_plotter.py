@@ -439,12 +439,15 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
     """
     季營收柱狀圖 + 季毛利率曲線圖（雙Y軸）
     """
+    # 診斷
+    print(f"[plot_qtr] {stock_id} cols={df_quarterly.columns.tolist()} rows={len(df_quarterly)}")
+    print(f"[plot_qtr] 毛利率={'存在' if '毛利率' in df_quarterly.columns else '不存在'}, "
+          f"非NaN={df_quarterly['毛利率'].notna().sum() if '毛利率' in df_quarterly.columns else 0}")
+
     fig = make_subplots(
         rows=1, cols=1,
         specs=[[{"secondary_y": True}]]
     )
-
-    # ✅ 除錯：檢查原始營收數據
 
     # 轉換單位：除以1000取整數（支持負數）
     revenue_display = (df_quarterly['營收'] / 1000).round(0).astype('Int64')
@@ -489,8 +492,11 @@ def plot_quarterly_chart(df_quarterly, stock_id, stock_name):
             break
 
     # ========== 毛利率曲線圖 ==========
-    # 過濾掉 NaN 值
-    df_gp = df_quarterly[df_quarterly['毛利率'].notna()].copy()
+    # 安全過濾（避免欄位不存在時 KeyError）
+    if '毛利率' in df_quarterly.columns:
+        df_gp = df_quarterly[df_quarterly['毛利率'].notna()].copy()
+    else:
+        df_gp = pd.DataFrame()
 
     gp_available = (not df_gp.empty)
 
