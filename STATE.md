@@ -36,6 +36,7 @@
 | `15de029` | **ETF+毛利率雙修**: FinMind NAV>7天跳TWSE + 毛利率直接欄位/Goodinfo Session/yfinance欄位名寬鬆 |
 | `45a9a82` | **ETF NAV路徑3 + 成交量月份驗證**: yfinance navPrice備援(TWSE空body) + FMTQIK返回非本月資料時改用yfinance ^TWII整月備援，修復成交量5天問題 |
 | `cbd9aa6` | **三項修復**: app.py rev2結論欄名YoY%→yoy / ETF NAV path4過舊FinMind備援 / scoring_engine list明確防護 |
+| `HEAD` | **毛利率根治**: Goodinfo/yfinance fallback補充Gross Profit抓取 + FinMind無毛利時自動yfinance補充 + chart_plotter KeyError防護 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗

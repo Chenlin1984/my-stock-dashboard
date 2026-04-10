@@ -3289,13 +3289,6 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
             rev2 = st.session_state[f'_last_rev_{sid2}']; _rev2_cached = True
         if (qtr2 is None or qtr2.empty) and st.session_state.get(f'_last_qtr_{sid2}') is not None:
             qtr2 = st.session_state[f'_last_qtr_{sid2}']; _qtr2_cached = True
-        # ── 診斷：qtr2 狀態 ──
-        _q2_t = type(qtr2).__name__
-        _q2_empty = qtr2 is None or (hasattr(qtr2, 'empty') and qtr2.empty)
-        _q2_cols = qtr2.columns.tolist() if hasattr(qtr2, 'columns') else []
-        _gp_vals = qtr2['毛利率'].dropna().tolist() if ('毛利率' in _q2_cols) else '欄位不存在'
-        print(f"[*] qtr2 [?] 型態:{_q2_t} 空:{_q2_empty} [>] 欄位:{_q2_cols}")
-        print(f"[*] qtr2 毛利率值:{_gp_vals}")
 
         # ══ 即時價格 + 趨勢儀表板 ════════════════════════════════
         if df2 is not None and not df2.empty and len(df2) >= 20:
