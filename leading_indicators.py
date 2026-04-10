@@ -471,39 +471,32 @@ def twse_volume(yyyymm):
                     _tv(item), "", "", ""] for item in j]}
             result = _parse_fmtqik(j)
             if result:
-                print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
-                return result
+                in_month = sum(1 for dk in result if dk.startswith(yyyymm))
+                if in_month > 0:
+                    print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天 ({_url.split('/')[2]})")
+                    return result
+                # OpenAPI returns most-recent days regardless of month param — wrong month
+                print(f"[VOL] FMTQIK {yyyymm}: {len(result)} 天但非本月，改用備援")
         except Exception as _e:
             print(f"[VOL] FMTQIK {yyyymm} {_url.split('/')[-1]}: {type(_e).__name__}")
-    print(f"[VOL] FMTQIK {yyyymm} 全部失敗，改用 yfinance ^TWII 備援")
-    # ── 備援：yfinance ^TWII Volume
-    # ^TWII Volume 在 Yahoo Finance 為全市場成交股數
-    # 成交股數：約 3-8×10^9  → /1e8 = 30-80  (閾值已降至 5)
+    print(f"[VOL] FMTQIK {yyyymm} 改用 yfinance ^TWII 備援")
+    # ── 備援：yfinance ^TWII Volume（整月）
     try:
         import yfinance as _yf_v
         import pandas as _pd_yf_vol
         _yr, _mo = int(yyyymm[:4]), int(yyyymm[4:6])
         _s = f"{_yr}-{_mo:02d}-01"
         _e = f"{_yr if _mo < 12 else _yr+1}-{_mo+1 if _mo < 12 else 1:02d}-01"
-        print(f"[DBG-VOL] [*] 步驟: yfinance 方法A Ticker.history(start={_s}, end={_e})")
-        # 方法 A: yf.Ticker.history（更穩定）
         _res_yf = {}
+        # 方法 A: yf.Ticker.history
         try:
             _tk_twii = _yf_v.Ticker("^TWII")
             _hist = _tk_twii.history(start=_s, end=_e)
-            print(f"[DBG-VOL] [?] 型態: {type(_hist).__name__}")
-            print(f"[DBG-VOL] [#] 長度: rows={len(_hist)} cols={list(_hist.columns) if hasattr(_hist,'columns') else 'N/A'}")
-            if not _hist.empty and "Volume" in _hist.columns:
-                _sample_vol = _hist["Volume"].dropna().head(3).tolist()
-                print(f"[DBG-VOL] [>] 預覽 Volume 前3值: {_sample_vol}  → /1e8 = {[round(v/1e8,2) for v in _sample_vol]}")
-            else:
-                print(f"[DBG-VOL] [>] 預覽: empty={_hist.empty}  'Volume' in cols={('Volume' in _hist.columns) if hasattr(_hist,'columns') else 'N/A'}")
             if not _hist.empty and "Volume" in _hist.columns:
                 for _idx, _row in _hist.iterrows():
                     _dk = _idx.strftime("%Y%m%d") if hasattr(_idx, 'strftime') else str(_idx)[:10].replace('-','')
                     try:
                         _raw = float(_row["Volume"])
-                        # ^TWII yfinance volume 單位不穩定；嘗試多種換算
                         for _div in [1e8, 1e4, 1e3]:
                             _v = round(_raw / _div, 1)
                             if 5 < _v < 20000:
@@ -511,22 +504,15 @@ def twse_volume(yyyymm):
                                 break
                     except: pass
         except Exception as _yfe_a:
-            print(f"[DBG-VOL] ❌ 方法A 例外: {type(_yfe_a).__name__}: {str(_yfe_a)[:200]}")
-        print(f"[DBG-VOL] [#] 方法A 結果: {len(_res_yf)} 天")
+            print(f"[VOL] yfinance 方法A {yyyymm}: {type(_yfe_a).__name__}")
         # 方法 B: yf.download（備援）
         if not _res_yf:
-            print(f"[DBG-VOL] [*] 步驟: yfinance 方法B download(^TWII)")
             try:
                 _tw = _yf_v.download("^TWII", start=_s, end=_e, progress=False)
-                print(f"[DBG-VOL] [?] 型態: {type(_tw).__name__}  MultiIndex={isinstance(_tw.columns, _pd_yf_vol.MultiIndex)}")
-                print(f"[DBG-VOL] [#] 長度: rows={len(_tw)}")
-                print(f"[DBG-VOL] [>] 預覽 columns: {repr(_tw.columns.tolist())[:200]}")
                 if isinstance(_tw.columns, _pd_yf_vol.MultiIndex):
                     _lv = 0 if 'Volume' in _tw.columns.get_level_values(0) else 1
                     _tw.columns = _tw.columns.get_level_values(_lv)
                 if not _tw.empty and "Volume" in _tw.columns:
-                    _sample_vol2 = _tw["Volume"].dropna().head(3).tolist()
-                    print(f"[DBG-VOL] [>] Volume 前3值: {_sample_vol2}  → /1e8 = {[round(v/1e8,2) for v in _sample_vol2]}")
                     for _idx, _row in _tw.iterrows():
                         _dk = _idx.strftime("%Y%m%d")
                         try:
@@ -538,14 +524,12 @@ def twse_volume(yyyymm):
                                     break
                         except: pass
             except Exception as _yfe_b:
-                print(f"[DBG-VOL] ❌ 方法B 例外: {type(_yfe_b).__name__}: {str(_yfe_b)[:200]}")
+                print(f"[VOL] yfinance 方法B {yyyymm}: {type(_yfe_b).__name__}")
         if _res_yf:
             print(f"[VOL] yfinance ^TWII {yyyymm}: {len(_res_yf)} 天")
             return _res_yf
-        print(f"[DBG-VOL] ⚠️ yfinance 兩種方法均無資料")
     except Exception as _yfe:
-        print(f"[DBG-VOL] ❌ yfinance 外層例外: {type(_yfe).__name__}: {str(_yfe)[:200]}")
-        print(f"[VOL] yfinance ^TWII {yyyymm}: {_yfe}")
+        print(f"[VOL] yfinance ^TWII {yyyymm}: {type(_yfe).__name__}")
 
     print(f"[VOL] {yyyymm} 所有備援均失敗，成交量無資料")
     return {}
