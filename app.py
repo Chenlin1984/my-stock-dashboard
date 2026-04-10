@@ -449,6 +449,19 @@ def fetch_quarterly(sid, _ver=3):   # _ver 改變即清除舊快取
         print(f"[fetch_quarterly] {e}")
         return None, str(e)
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_quarterly_extra(sid):
+    """取得近 12 季資產負債表 + 現金流量時序（合約負債、存貨、資本支出），用於前瞻動能分數"""
+    try:
+        loader = _get_loader()
+        result = loader.get_quarterly_bs_cf(sid)
+        if result is None: return None, 'BS/CF：內部回傳None'
+        if isinstance(result, tuple): return result
+        return result, None
+    except Exception as e:
+        print(f"[fetch_quarterly_extra] {e}")
+        return None, str(e)
+
 # ════════════════════════════════════════════════════════════════
 # 技術指標計算
 # ════════════════════════════════════════════════════════════════
@@ -3244,8 +3257,9 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
         df2, name2, err2 = fetch_price_data(sid2, t2_days)
         avg_div2, yearly2, div_src2 = fetch_dividend_data(sid2)
         cl2, cx2, _capex2, _cl_src2, _cx_src2, _, _fin_errs2 = fetch_financials(sid2, industry='')
-        rev2, _  = fetch_revenue(sid2)
-        qtr2, _  = fetch_quarterly(sid2)
+        rev2, _      = fetch_revenue(sid2)
+        qtr2, _      = fetch_quarterly(sid2)
+        qtr_extra2, _ = fetch_quarterly_extra(sid2)   # BS+CF時序（合約負債/存貨/資本支出）
         rsi2     = calc_rsi(df2)
         ibs2     = calc_ibs(df2)
         vr2      = calc_volume_ratio(df2)
@@ -3259,7 +3273,7 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
         st.session_state['t2_data'] = {
             'sid':sid2,'name':_name2_resolved,'df':df2,'err':err2,
             'avg_div':avg_div2,'yearly':yearly2,'div_src':div_src2,
-            'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,
+            'cl':cl2,'cx':cx2,'rev':rev2,'qtr':qtr2,'qtr_extra':qtr_extra2,
             'cl_src': _cl_src2,'cx_src': _cx_src2,'fin_errs': _fin_errs2,
             'rsi':rsi2,'ibs':ibs2,'vr':vr2,'k':k2,'d':d2,'bb':bb2,'vcp':vcp2,
             'health':health2,'details':details2,'price':cur_price2,
@@ -3282,7 +3296,7 @@ K線+均線(FinMind) · 三大法人籌碼 · 融資融券 · 357股利評價 ·
         vcp2=t2d['vcp']; avg_div2=t2d['avg_div']
         yearly2=t2d['yearly']; cl2=t2d['cl']; cx2=t2d['cx']
         _cl_src2=t2d.get('cl_src',''); _cx_src2=t2d.get('cx_src',''); _fin_errs2=t2d.get('fin_errs',[])
-        rev2=t2d['rev']; qtr2=t2d['qtr']
+        rev2=t2d['rev']; qtr2=t2d['qtr']; qtr_extra2=t2d.get('qtr_extra')
         # Fallback 到快取（若本次抓取失敗）
         _rev2_cached = False; _qtr2_cached = False
         if (rev2 is None or rev2.empty) and st.session_state.get(f'_last_rev_{sid2}') is not None:
@@ -4289,6 +4303,30 @@ padding:12px 16px;margin:8px 0;">
                         )
                 except Exception:
                     pass
+                # 前瞻成長動能分數 (FGMS)
+                try:
+                    from scoring_engine import calc_forward_momentum_score as _cfgms
+                    _is_fin2 = bool(qtr2.get('是否金融股', pd.Series([False])).iloc[0]) if qtr2 is not None and '是否金融股' in qtr2.columns else False
+                    _fgms_r = _cfgms(qtr2, qtr_extra2, is_finance=_is_fin2)
+                    if _fgms_r.get('fgms') is not None:
+                        _fv = _fgms_r['fgms']; _fl = _fgms_r['fgms_label']
+                        _fc = '#3fb950' if _fv >= 60 else ('#d29922' if _fv >= 45 else '#f85149')
+                        # 子維度摘要
+                        _fd_parts = []
+                        if _fgms_r['cl_momentum']   is not None: _fd_parts.append(f"合約負債:{_fgms_r['cl_momentum']:.0f}")
+                        if _fgms_r['inv_divergence'] is not None: _fd_parts.append(f"存貨背離:{_fgms_r['inv_divergence']:.0f}")
+                        if _fgms_r['three_rate']     is not None: _fd_parts.append(f"三率:{_fgms_r['three_rate']:.0f}")
+                        if _fgms_r['capex_intensity'] is not None: _fd_parts.append(f"資本支出:{_fgms_r['capex_intensity']:.0f}")
+                        _fd_str = '  '.join(_fd_parts)
+                        st.markdown(
+                            f'<div style="background:#0d1117;border-left:3px solid {_fc};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
+                            f'<span style="font-size:11px;color:#8b949e;">🔭 前瞻動能 FGMS</span>　'
+                            f'<span style="font-size:13px;font-weight:700;color:{_fc};">FGMS {_fv:.0f}分 · {_fl}</span>'
+                            f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">{_fd_str}</span>'
+                            f'</div>', unsafe_allow_html=True
+                        )
+                except Exception:
+                    pass
 
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
@@ -4839,11 +4877,24 @@ with tab3_compare:
                 if _sq_r3.get('sq') is not None:
                     _sq3 = f"{_sq_r3['sq']:.0f}({_sq_r3['sq_label']})"
             except Exception: pass
+            # 前瞻動能 FGMS
+            _fgms3 = None
+            try:
+                _qex3 = None
+                try: _qex3, _ = fetch_quarterly_extra(_sid3)
+                except Exception: pass
+                from scoring_engine import calc_forward_momentum_score as _cfgms3
+                _is_fin3 = bool(_qtr3['是否金融股'].iloc[0]) if _qtr3 is not None and '是否金融股' in _qtr3.columns else False
+                _fg_r3 = _cfgms3(_qtr3, _qex3, is_finance=_is_fin3)
+                if _fg_r3.get('fgms') is not None:
+                    _fgms3 = f"{_fg_r3['fgms']:.0f}({_fg_r3['fgms_label']})"
+            except Exception: pass
             _fund_map[_sid3] = {
                 '近4季EPS': f'{_eps3:.2f}' if _eps3 is not None else '-',
                 '毛利率%':  f'{_gp3:.1f}'  if _gp3  is not None else '-',
                 '殖利率%':  f'{_avg3:.1f}' if _avg3  is not None else '-',
-                'SQ評分':   _sq3 if _sq3 is not None else '-',
+                'SQ評分':   _sq3   if _sq3   is not None else '-',
+                'FGMS':     _fgms3 if _fgms3 is not None else '-',
             }
 
         # ── ⑤ 最終綜合建議卡 ──────────────────────────────────
@@ -4956,6 +5007,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                         '近4季EPS': _fd.get('近4季EPS', '-'),
                         '毛利率%':  _fd.get('毛利率%',  '-'),
                         'SQ評分':   _fd.get('SQ評分',   '-'),
+                        'FGMS前瞻': _fd.get('FGMS',     '-'),
                         '殖利率%':  _fd.get('殖利率%',  '-'),
                         '評級': _r.get('grade', '-'),
                     })
@@ -4966,6 +5018,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                                  '近4季EPS': st.column_config.TextColumn('近4Q EPS'),
                                  '毛利率%':  st.column_config.TextColumn('毛利率%'),
                                  'SQ評分':   st.column_config.TextColumn('SQ品質分'),
+                                 'FGMS前瞻': st.column_config.TextColumn('FGMS前瞻'),
                                  '殖利率%':  st.column_config.TextColumn('殖利率%'),
                              })
             else:

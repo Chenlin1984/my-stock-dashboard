@@ -1273,6 +1273,43 @@ class StockDataLoader:
                 except Exception as _e_yf_gp:
                     print(f'[yfinance 毛利率] {stock_id}: {_e_yf_gp}')
 
+            # ===== 5e) 三率：營業利益率 + 淨利率（從同一份 income statement pivot 提取）=====
+            if not is_finance:
+                # 營業利益 (Operating Income)
+                _oi_col = None
+                for col in df_pivot.columns:
+                    c = str(col)
+                    if any(k in c for k in ['營業利益', '業務利益', '營業損益']) or \
+                       re.search(r"operating.*(income|profit|loss)", c, re.I):
+                        _oi_col = col; break
+                if _oi_col is not None:
+                    _oi = pd.to_numeric(df_pivot[_oi_col], errors='coerce')
+                    _rev_denom = pd.to_numeric(df_quarterly['營收'], errors='coerce').replace(0, float('nan'))
+                    df_quarterly['營業利益率'] = (_oi.values / _rev_denom.values * 100).round(2)
+                    print(f'[三率] {stock_id}: 營業利益率={_oi_col}')
+                else:
+                    df_quarterly['營業利益率'] = float('nan')
+
+                # 稅後純益 / 本期淨利 (Net Income)
+                _ni_col = None
+                for col in df_pivot.columns:
+                    c = str(col)
+                    if any(k in c for k in ['稅後純益', '本期淨利', '本期損益', '稅後淨利',
+                                             '淨利（淨損）', '淨損益', '繼續營業單位本期淨利']) or \
+                       re.search(r"net.*(income|profit|loss)|profit.*after.*tax", c, re.I):
+                        _ni_col = col; break
+                if _ni_col is not None:
+                    _ni = pd.to_numeric(df_pivot[_ni_col], errors='coerce')
+                    _rev_denom = pd.to_numeric(df_quarterly['營收'], errors='coerce').replace(0, float('nan'))
+                    df_quarterly['淨利率'] = (_ni.values / _rev_denom.values * 100).round(2)
+                    print(f'[三率] {stock_id}: 淨利率={_ni_col}')
+                else:
+                    df_quarterly['淨利率'] = float('nan')
+            else:
+                # 金融股：不計算三率（毛利率名稱已改為稅後純益率）
+                df_quarterly['營業利益率'] = float('nan')
+                df_quarterly['淨利率']     = float('nan')
+
             # ===== 6) 清洗與排序 =====
             df_quarterly = df_quarterly.dropna(subset=['營收']).copy()
             # ✅ 金融股：允許負數營收（投資損失等）；一般公司：過濾負數
@@ -1298,4 +1335,93 @@ class StockDataLoader:
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return None, f"載入錯誤: {str(e)}"""
+            return None, f"載入錯誤: {str(e)}"
+
+    def get_quarterly_bs_cf(_self, stock_id):
+        """
+        取得近 12 季的「資產負債表 + 現金流量」時序資料，用於前瞻動能計算。
+        回傳欄位：季度標籤, 合約負債, 存貨, 資本支出（皆為原始金額，單位：千元或元）
+        資料來源：FinMind TaiwanStockBalanceSheet + TaiwanStockCashFlowsStatement
+        """
+        try:
+            import os as _os_bscf, requests as _rq_bscf, datetime as _dt_bscf
+            import re as _re_bscf
+            _tok = _os_bscf.environ.get('FINMIND_TOKEN', '')
+            _start = (_dt_bscf.date.today() - _dt_bscf.timedelta(days=365 * 3)).strftime('%Y-%m-%d')
+            _hdrs = {'Authorization': f'Bearer {_tok}'} if _tok else {}
+
+            def _fm_fetch(dataset):
+                _p = {'dataset': dataset, 'data_id': stock_id, 'start_date': _start}
+                if _tok: _p['token'] = _tok
+                _r = _rq_bscf.get('https://api.finmindtrade.com/api/v4/data',
+                                    params=_p, headers=_hdrs, timeout=20)
+                _j = _r.json()
+                print(f'[BS/CF] {stock_id} {dataset}: status={_j.get("status")} rows={len(_j.get("data",[]))}')
+                return _j.get('data', []) if _j.get('status') == 200 else []
+
+            # ── Balance Sheet ────────────────────────────────────────
+            _bs_rows = _fm_fetch('TaiwanStockBalanceSheet')
+            _bs_map = {}   # {date → {type → value}}
+            for _row in _bs_rows:
+                _d = _row.get('date', '')
+                _bs_map.setdefault(_d, {})[_row.get('type', '')] = _row
+                _bs_map[_d][_row.get('origin_name', '')] = _row
+
+            # ── Cash Flow ────────────────────────────────────────────
+            _cf_rows = _fm_fetch('TaiwanStockCashFlowsStatement')
+            _cf_map = {}   # {date → {type → value}}
+            for _row in _cf_rows:
+                _d = _row.get('date', '')
+                _cf_map.setdefault(_d, {})[_row.get('type', '')] = _row
+                _cf_map[_d][_row.get('origin_name', '')] = _row
+
+            if not _bs_rows and not _cf_rows:
+                return None, f"{stock_id} BS+CF：FinMind 無資料"
+
+            # ── 彙整所有出現的季度日期 ──────────────────────────────
+            _all_dates = sorted(set(list(_bs_map.keys()) + list(_cf_map.keys())))
+
+            def _val(d_map, d, keys):
+                """從 d_map[d] 裡按優先順序取第一個非零值"""
+                slot = d_map.get(d, {})
+                for k in keys:
+                    r = slot.get(k)
+                    if r is not None:
+                        try:
+                            v = float(str(r.get('value', 0)).replace(',', '') or 0)
+                            if v != 0: return abs(v)
+                        except: pass
+                return float('nan')
+
+            _CL_KEYS = ['CurrentContractLiabilities', 'ContractLiabilities',
+                        '合約負債', '契約負債', '預收款項']
+            _INV_KEYS = ['Inventories', 'InventoriesNet', 'Inventories_Net',
+                         '存貨', '存貨淨額', '商品存貨']
+            _CX_KEYS  = ['AcquisitionOfPropertyPlantAndEquipment',
+                         'PropertyAndPlantAndEquipment',
+                         '取得不動產、廠房及設備', '購置不動產、廠房及設備', '資本支出']
+
+            _records = []
+            for _d in _all_dates:
+                try:
+                    _ts = pd.Timestamp(_d)
+                    _yr = _ts.year; _qt = ((_ts.month - 1) // 3) + 1
+                    _lbl = f'{_yr}Q{_qt}'
+                except: continue
+                _cl  = _val(_bs_map, _d, _CL_KEYS)
+                _inv = _val(_bs_map, _d, _INV_KEYS)
+                _cx  = _val(_cf_map, _d, _CX_KEYS)
+                _records.append({'季度標籤': _lbl, '合約負債': _cl, '存貨': _inv, '資本支出': _cx})
+
+            if not _records:
+                return None, f"{stock_id} BS+CF：日期解析失敗"
+
+            df_extra = pd.DataFrame(_records)
+            df_extra = df_extra.drop_duplicates(subset=['季度標籤'], keep='last')
+            df_extra = df_extra.sort_values('季度標籤').tail(12).reset_index(drop=True)
+            print(f'[BS/CF] {stock_id}: ✅ {len(df_extra)} 季 CL={df_extra["合約負債"].notna().sum()} INV={df_extra["存貨"].notna().sum()} CX={df_extra["資本支出"].notna().sum()}')
+            return df_extra, None
+
+        except Exception as _e_bscf:
+            import traceback; traceback.print_exc()
+            return None, f"BS+CF 載入錯誤: {_e_bscf}"

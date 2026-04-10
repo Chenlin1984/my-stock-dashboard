@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `(pending)` — 毛利率比較欄根治 + ETF折溢價FinMind欄位修正 + SQ獲利品質得分
+- **最新 commit**: `(next)` — 三率+FGMS前瞻動能分數（合約負債/存貨背離/三率/資本支出）
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -38,7 +38,8 @@
 | `cbd9aa6` | **三項修復**: app.py rev2結論欄名YoY%→yoy / ETF NAV path4過舊FinMind備援 / scoring_engine list明確防護 |
 | `92f52e2` | **毛利率根治**: Goodinfo/yfinance fallback補充Gross Profit抓取 + FinMind無毛利時自動yfinance補充 + chart_plotter KeyError防護 |
 | `e7995db` | **毛利率快取破解**: fetch_quarterly _ver=3清除舊None快取 + 排行tab tail(1)→dropna().iloc[-1]避免最新季NaN |
-| `(next)` | **毛利率比較欄根治**: `_gc3`/`_gp_col`子字串→精確比對('毛利率名稱'誤命中bug) + ETF折溢價FinMind欄位自動偵測 + SQ獲利品質得分 |
+| `25e95c5` | **毛利率比較欄根治**: `_gc3`/`_gp_col`子字串→精確比對('毛利率名稱'誤命中bug) + ETF折溢價FinMind欄位自動偵測 + SQ獲利品質得分 |
+| `(next)` | **三率+FGMS前瞻動能**: data_loader 新增 get_quarterly_bs_cf() + 三率(營業利益率/淨利率) + scoring_engine.calc_forward_momentum_score() 四維度加權 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -60,6 +61,8 @@
 - [x] 毛利率比較欄根治：`'毛利率' in str(c)` → `'毛利率' in df.columns`精確比對，根除'毛利率名稱'誤命中 ✅
 - [x] ETF折溢價：FinMind自動偵測 nav/base_unit_net_value 欄位 + 試兩個dataset名稱 ✅
 - [x] SQ獲利品質得分：scoring_engine.calc_quality_score + 個股/排行tab顯示 ✅
+- [ ] 三率(營業利益率/淨利率)：待 Cloud 驗證 FinMind origin_name 是否包含對應欄位
+- [ ] FGMS前瞻動能：待 Cloud 驗證 BS+CF API 回傳資料，確認合約負債/存貨/資本支出可抓到
 
 ## 🐞 長期已知限制
 - TWSE 直接 API 被 Streamlit Cloud IP 封鎖（`頁面無法執行`）→ 全部依賴 FinMind/openapi 備援
