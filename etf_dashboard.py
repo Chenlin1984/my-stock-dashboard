@@ -418,26 +418,38 @@ def _teacher_conclusion(teacher: str, indicator_val: str, conclusion: str,
 
 def _plot_etf_chart(df: pd.DataFrame, ticker: str,
                     benchmark: str, bench_df: pd.DataFrame) -> None:
-    """ETF 走勢圖 + MA50/MA200 + 標準化基準"""
-    fig  = go.Figure()
+    """ETF 走勢圖 + MA50/MA200 + 標準化基準（Y軸：漲幅%，以起始日為0%）"""
+    fig   = go.Figure()
     close = df['Close']
-    fig.add_trace(go.Scatter(x=df.index, y=close,
-                              name=ticker, line=dict(color='#58a6ff', width=2)))
-    fig.add_trace(go.Scatter(x=df.index, y=close.rolling(50).mean(),
-                              name='MA50', line=dict(color='#ffa657', width=1, dash='dot')))
-    fig.add_trace(go.Scatter(x=df.index, y=close.rolling(200).mean(),
-                              name='MA200', line=dict(color='#f85149', width=1, dash='dash')))
+    base  = float(close.iloc[0])   # 起始價，用來換算漲幅%
+
+    def _pct(s): return ((s / base) - 1) * 100   # → 相對起始點的漲幅%
+
+    _hover = '%{x|%Y-%m-%d}  %{y:.2f}%<extra></extra>'
+    fig.add_trace(go.Scatter(x=df.index, y=_pct(close).round(2),
+                              name=ticker, line=dict(color='#58a6ff', width=2),
+                              hovertemplate=_hover))
+    fig.add_trace(go.Scatter(x=df.index, y=_pct(close.rolling(50).mean()).round(2),
+                              name='MA50', line=dict(color='#ffa657', width=1, dash='dot'),
+                              hovertemplate=_hover))
+    fig.add_trace(go.Scatter(x=df.index, y=_pct(close.rolling(200).mean()).round(2),
+                              name='MA200', line=dict(color='#f85149', width=1, dash='dash'),
+                              hovertemplate=_hover))
     if not bench_df.empty:
-        bench_norm = (bench_df['Close'] / bench_df['Close'].iloc[0]
-                      * float(close.iloc[0])).reindex(df.index).ffill()
-        fig.add_trace(go.Scatter(x=df.index, y=bench_norm,
+        _bc   = bench_df['Close'].reindex(df.index).ffill().dropna()
+        _bc_b = float(_bc.iloc[0])
+        _bc_pct = ((_bc / _bc_b) - 1) * 100   # 基準也從0%起算
+        fig.add_trace(go.Scatter(x=_bc.index, y=_bc_pct.round(2),
                                   name=f'{benchmark}（基準）',
-                                  line=dict(color='#3fb950', width=1.2, dash='dash')))
+                                  line=dict(color='#3fb950', width=1.2, dash='dash'),
+                                  hovertemplate=_hover))
     fig.update_layout(
         template='plotly_dark', height=380,
         margin=dict(l=0, r=0, t=20, b=0),
         paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
         legend=dict(orientation='h', yanchor='bottom', y=1.01),
+        yaxis=dict(title='漲幅 (%)', ticksuffix='%', zeroline=True,
+                   zerolinecolor='#444', zerolinewidth=1),
     )
     st.plotly_chart(fig, use_container_width=True)
 
