@@ -30,6 +30,8 @@
 | `7b2cdc8` | **殖利率河流圖重寫**: 3年滾動均股利 + merge_asof動態對齊 + Y軸自動縮放 + 低股利info提示 |
 | `7e6ddd6` | **殖利率河流圖 MergeError**: merge_asof→年份查表，dtype錯位根治 |
 | `8738956` | **ETF折溢價率錯誤**: TWSE直讀折溢價率(%)欄位 + FinMind路徑改同日市價匹配 |
+| `cdb8e31` | **清理 debug print**: data_loader.py 移除43行 DBG-INST/GP verbose print |
+| `3d5a953` | **季營收圖顏色修正**: 正數→綠/負數→紅 + chart_plotter 清 debug print |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -44,8 +46,8 @@
 - [x] TPEx SSL：verify=False ✅
 - [x] scoring_engine list崩潰：hasattr防護 ✅
 - [x] 現價=0：快取驗證 + close≤0過濾 ✅
-- [ ] 毛利率圖表：資料應已正常，待 Cloud 驗證
-- [ ] debug print（DBG-VOL/INST/DBG-GP）：確認正常後可移除
+- [x] debug print 全部清除：data_loader / chart_plotter ✅
+- [ ] 毛利率圖表：季營收顏色已修正，待 Cloud 上線確認顯示
 
 ## 🐞 長期已知限制
 - TWSE 直接 API 被 Streamlit Cloud IP 封鎖（`頁面無法執行`）→ 全部依賴 FinMind/openapi 備援
