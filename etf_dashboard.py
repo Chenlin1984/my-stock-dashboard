@@ -193,7 +193,8 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
     try:
         _r2 = _rq_etfnav.get(
             'https://openapi.twse.com.tw/v1/ETF/TaiwanStockPremiumDiscountRatio',
-            headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'},
+            timeout=10, verify=False)   # verify=False：Python 3.14 SSL fix
         for _row in _r2.json():
             if str(_row.get('證券代號', '')).strip() == code:
                 _nav2   = float(str(_row.get('單位淨值', _row.get('淨值', 0))).replace(',', '') or 0)
@@ -245,20 +246,29 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                         return {'nav': _latest_nav, 'price': round(_pr, 4),
                                 'premium_pct': _pv, 'warning': _pv > 1.0}
 
-                # ── 路徑B：FinMind NAV — 找 df 中同日（±1天內）市價 ──
+                # ── 路徑B：FinMind NAV — 找 df 中同日（±3天）市價 ──
+                # 用 normalize() 將 DatetimeIndex 統一轉成午夜 Timestamp，再轉成 date 集合比對
                 if _latest_nav > 0 and not df.empty and 'Close' in df.columns:
-                    _nav_date = _pd_prem.Timestamp(_last['date'])
+                    _nav_date_ts = _pd_prem.Timestamp(_last['date'])
+                    _df_date_map = {
+                        ts.normalize(): ts for ts in df.index
+                    }  # normalize() → date 部分一致的 Timestamp
                     _price = None
-                    for _delta in [0, -1, 1, -2, 2]:
-                        _target = _nav_date + _pd_prem.Timedelta(days=_delta)
-                        if _target in df.index:
-                            _price = float(df.loc[_target, 'Close'])
+                    for _delta in [0, -1, 1, -2, 2, -3, 3]:
+                        _target_norm = (_nav_date_ts + _pd_prem.Timedelta(days=_delta)).normalize()
+                        if _target_norm in _df_date_map:
+                            _price = float(df.loc[_df_date_map[_target_norm], 'Close'])
                             break
+                    # 若找不到同日，用 NAV 日期前後最近的收盤（距離最小）
                     if _price is None:
-                        _price = float(df['Close'].iloc[-1])  # 最後備援
-                    _prem = round((_price - _latest_nav) / _latest_nav * 100, 2)
-                    return {'nav': _latest_nav, 'price': _price,
-                            'premium_pct': _prem, 'warning': _prem > 1.0}
+                        _diffs = abs(df.index - _nav_date_ts)
+                        _closest = _diffs.argmin()
+                        if _diffs[_closest].days <= 5:
+                            _price = float(df['Close'].iloc[_closest])
+                    if _price:
+                        _prem = round((_price - _latest_nav) / _latest_nav * 100, 2)
+                        return {'nav': _latest_nav, 'price': _price,
+                                'premium_pct': _prem, 'warning': _prem > 1.0}
 
         # ── 備援：yfinance info ──
         nav   = info.get('navPrice') or info.get('regularMarketNAV')
