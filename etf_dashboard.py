@@ -170,6 +170,8 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
     code = ticker.replace('.TW', '').replace('.TWO', '')
     token = os.environ.get('FINMIND_TOKEN', '')
     start = (_dt.date.today() - _dt.timedelta(days=days + 10)).strftime('%Y-%m-%d')
+    _df_stale = None   # path 4: stale FinMind fallback
+    _days_stale = 999
 
     # ── 1. FinMind TaiwanETFNetAssetValue ──────────────────────────
     try:
@@ -187,9 +189,10 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
             _df = _df.sort_values('date')
             _latest_d   = _df['date'].iloc[-1]
             _days_stale = (_dt.date.today() - _latest_d).days
+            _df_stale   = _df[['date', 'nav']]   # 保留，供 path 4 備援
             print(f'[ETF NAV] {code} FinMind: {len(_df)} 筆, 最新={_latest_d}, 距今={_days_stale}d')
             if _days_stale <= 7:           # 7天內視為新鮮，直接回傳
-                return _df[['date', 'nav']]
+                return _df_stale
             print(f'[ETF NAV] FinMind {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
     except Exception as _e1:
         print(f'[ETF NAV] FinMind {code}: {_e1}')
@@ -255,6 +258,11 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                 return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
     except Exception as _e3:
         print(f'[ETF NAV] yfinance {code}: {_e3}')
+
+    # ── 4. 過舊 FinMind 資料備援（比顯示 N/A 好）──────────────────────────
+    if _df_stale is not None and not _df_stale.empty:
+        print(f'[ETF NAV] {code} path4: 使用過舊FinMind資料({_days_stale}d)備援')
+        return _df_stale
 
     return _pd_etfnav.DataFrame()
 
