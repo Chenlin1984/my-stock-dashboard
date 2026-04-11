@@ -4307,7 +4307,9 @@ padding:12px 16px;margin:8px 0;">
                 try:
                     from scoring_engine import calc_forward_momentum_score as _cfgms
                     _is_fin2 = bool(qtr2.get('是否金融股', pd.Series([False])).iloc[0]) if qtr2 is not None and '是否金融股' in qtr2.columns else False
+                    print(f'[FGMS_UI] qtr2={qtr2 is not None and not qtr2.empty}, qtr_extra2={qtr_extra2 is not None and not qtr_extra2.empty}')
                     _fgms_r = _cfgms(qtr2, qtr_extra2, is_finance=_is_fin2)
+                    print(f'[FGMS_UI] fgms={_fgms_r.get("fgms")}, three_rate={_fgms_r.get("three_rate")}')
                     if _fgms_r.get('fgms') is not None:
                         _fv = _fgms_r['fgms']; _fl = _fgms_r['fgms_label']
                         _fc = '#3fb950' if _fv >= 60 else ('#d29922' if _fv >= 45 else '#f85149')
@@ -4341,8 +4343,9 @@ padding:12px 16px;margin:8px 0;">
                             f'{_rate_line}'
                             f'</div>', unsafe_allow_html=True
                         )
-                except Exception:
-                    pass
+                except Exception as _efgms2:
+                    import traceback as _tb2
+                    print(f'[FGMS_UI] 顯示錯誤: {_efgms2}'); _tb2.print_exc()
 
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
