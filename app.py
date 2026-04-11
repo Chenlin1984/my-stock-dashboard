@@ -1926,7 +1926,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _fm_tok_m1 = _get_fm_token()
                 _start_m1 = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
 
-                # ── 路徑 1：FinMind TaiwanMoneySupply（需 token，最準確）──
+                # ── 路徑 1：FinMind TaiwanMoneySupply（需 token）──
                 if _fm_tok_m1:
                     try:
                         _fm_r = _rq_m1.get(
@@ -1935,11 +1935,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     'token': _fm_tok_m1},
                             timeout=15)
                         _fm_j = _fm_r.json()
-                        print(f'[M1B/FM] status={_fm_j.get("status")} rows={len(_fm_j.get("data",[]))}')
-                        if _fm_j.get('status') == 200 and _fm_j.get('data'):
-                            _df_fm = _pd_m1.DataFrame(_fm_j['data'])
+                        _fm_data = _fm_j.get('data') or []
+                        print(f'[M1B/FM] status={_fm_j.get("status")} rows={len(_fm_data)} keys={list(_fm_j.keys())[:5]}')
+                        if _fm_data:
+                            _df_fm = _pd_m1.DataFrame(_fm_data)
                             print(f'[M1B/FM] 欄位={list(_df_fm.columns)[:10]}')
-                            # FinMind 格式：date, type, value（type=M1B or M2）
                             if 'type' in _df_fm.columns and 'value' in _df_fm.columns:
                                 _df_fm['value'] = _pd_m1.to_numeric(_df_fm['value'], errors='coerce')
                                 _m1b_s = _df_fm[_df_fm['type'].str.upper().str.contains('M1B', na=False)].sort_values('date')
@@ -1952,26 +1952,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _fm_m1_e:
                         print(f'[M1B/FM] ❌ {_fm_m1_e}')
 
-                # ── 路徑 2：CBC OpenData ms1.json（免費，官方來源）────────
-                try:
-                    _r_cbc = _rq_m1.get(
-                        'https://www.cbc.gov.tw/public/data/ms1.json',
-                        headers={'User-Agent':'Mozilla/5.0'}, timeout=15, verify=False)
-                    print(f'[M1B/CBC] status={_r_cbc.status_code}')
-                    if _r_cbc.status_code == 200:
+                # ── 路徑 2：CBC OpenData（多 URL 嘗試，官方來源）──────────
+                _cbc_urls = [
+                    'https://www.cbc.gov.tw/public/data/ms1.json',
+                    'https://www.cbc.gov.tw/public/Attachment/ms1.json',
+                    'https://openapi.cbc.gov.tw/v1/MoneySupply',
+                ]
+                for _cbc_url in _cbc_urls:
+                    try:
+                        _r_cbc = _rq_m1.get(
+                            _cbc_url, headers={'User-Agent':'Mozilla/5.0'},
+                            timeout=10, verify=False)
+                        print(f'[M1B/CBC] {_cbc_url.split("/")[-1]} → status={_r_cbc.status_code}')
+                        if _r_cbc.status_code != 200:
+                            continue
                         _cbc_raw = _r_cbc.json()
-                        # CBC 可能是 list 或 dict with 'data' key
                         _cbc_data = _cbc_raw if isinstance(_cbc_raw, list) else _cbc_raw.get('data', _cbc_raw)
-                        print(f'[M1B/CBC] type={type(_cbc_data)} len={len(_cbc_data) if hasattr(_cbc_data,"__len__") else "?"}')
+                        print(f'[M1B/CBC] type={type(_cbc_data).__name__} len={len(_cbc_data) if hasattr(_cbc_data,"__len__") else "?"}')
                         if isinstance(_cbc_data, list) and len(_cbc_data) >= 13:
                             _df_cbc = _pd_m1.DataFrame(_cbc_data)
                             print(f'[M1B/CBC] 欄位={list(_df_cbc.columns)[:10]}')
-                            # 寬鬆搜尋：M1B 欄、M2 欄（含各種中英文格式）
-                            _m1b_col = next((c for c in _df_cbc.columns
-                                             if 'M1B' in str(c).upper()), None)
+                            _m1b_col = next((c for c in _df_cbc.columns if 'M1B' in str(c).upper()), None)
                             _m2_col  = next((c for c in _df_cbc.columns
                                              if str(c).strip().upper() == 'M2'
-                                             or '供給額M2' in str(c) or 'M2' == str(c).strip().upper()), None)
+                                             or '供給額M2' in str(c)), None)
                             print(f'[M1B/CBC] m1b_col={_m1b_col} m2_col={_m2_col}')
                             if _m1b_col and _m2_col:
                                 _m1b_v = _pd_m1.to_numeric(_df_cbc[_m1b_col].astype(str).str.replace(',',''), errors='coerce').dropna()
@@ -1981,8 +1985,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _m2_yoy_c  = round((_m2_v.iloc[-1] /_m2_v.iloc[-13] -1)*100, 2)
                                     print(f'[M1B/CBC] ✅ M1B={_m1b_yoy_c:.2f}% M2={_m2_yoy_c:.2f}%')
                                     return {'m1b_yoy': _m1b_yoy_c, 'm2_yoy': _m2_yoy_c, 'source': 'CBC'}
-                except Exception as _cbc_e:
-                    print(f'[M1B/CBC] ❌ {_cbc_e}')
+                    except Exception as _cbc_e:
+                        print(f'[M1B/CBC] ❌ {_cbc_url.split("/")[-1]}: {_cbc_e}')
 
                 # ── 路徑 3（已移除）：大盤代理數值完全不代表 M1B/M2 ────
                 # 若所有真實來源都失敗，回傳 None（顯示「待更新」比顯示錯誤數字好）
@@ -1999,18 +2003,31 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         # 重新抓 2 年完整資料，確保 MA240 正確
                         try:
                             import yfinance as _yf_bias
+                            import pandas as _pd_bias
                             _twii_2y = _yf_bias.download('^TWII', period='2y',
                                                           progress=False, auto_adjust=True)
+                            # yfinance 1.x 可能返回 MultiIndex columns，需展平
+                            if _twii_2y is not None and isinstance(_twii_2y.columns, _pd_bias.MultiIndex):
+                                try:
+                                    _twii_2y.columns = _twii_2y.columns.get_level_values(0)
+                                    print(f'[Bias] MultiIndex → 展平欄位: {list(_twii_2y.columns)}')
+                                except Exception as _mi_e:
+                                    print(f'[Bias] MultiIndex 展平失敗: {_mi_e}')
                             if _twii_2y is not None and len(_twii_2y) >= 240:
                                 _twii = _twii_2y
                                 _cc_b = 'Close'
-                                print(f'[Bias] yfinance ^TWII 2y 抓到 {len(_twii_2y)} 天')
+                                print(f'[Bias] yfinance ^TWII 2y 抓到 {len(_twii_2y)} 天，欄位={list(_twii_2y.columns)[:4]}')
                             else:
                                 print(f'[Bias] yfinance 2y 資料不足 ({len(_twii_2y) if _twii_2y is not None else 0} 天)，使用現有 {_n_existing} 天')
                         except Exception as _yf_b_e:
                             print(f'[Bias] yfinance 2y 失敗: {_yf_b_e}')
                     if _twii is None or _twii.empty: return None
-                    if _cc_b not in _twii.columns: return None
+                    # 寬鬆欄位查找：Close / close / Adj Close
+                    if _cc_b not in _twii.columns:
+                        _cc_b = next((c for c in _twii.columns if str(c).lower() in ('close','adj close','adjclose')), None)
+                        if _cc_b is None:
+                            print(f'[Bias] 找不到 Close 欄，現有欄位={list(_twii.columns)[:6]}')
+                            return None
                     _cs = _twii[_cc_b].dropna()
                     _n  = len(_cs)
                     _lp = float(_cs.iloc[-1])
