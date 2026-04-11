@@ -158,7 +158,7 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
+def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.DataFrame":
     """ETF 歷史淨值及折溢價（最近 N 個交易日）
     資料來源優先順序：
       1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
@@ -182,8 +182,10 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                                   headers={'Authorization': f'Bearer {token}'} if token else {},
                                   timeout=15)
             _j = _r.json()
-            if _j.get('status') == 200 and _j.get('data'):
-                _df = _pd_etfnav.DataFrame(_j['data'])
+            _jstatus = _j.get('status')
+            _jdata   = _j.get('data')
+            if _jstatus == 200 and _jdata:
+                _df = _pd_etfnav.DataFrame(_jdata)
                 # 自動偵測 NAV 欄位名稱（FinMind 兩個版本欄位名不同）
                 _nav_field = next((f for f in ['nav', 'base_unit_net_value', 'NavPrice', 'netAssetValue']
                                    if f in _df.columns), None)
@@ -194,6 +196,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                 _df['nav']  = _pd_etfnav.to_numeric(_df[_nav_field], errors='coerce')
                 _df = _df[_df['nav'].notna() & (_df['nav'] > 0)].sort_values('date')
                 if _df.empty:
+                    print(f'[ETF NAV] {code} {_ds1}: 所有 nav 欄位為空/NaN，跳過')
                     continue
                 _latest_d   = _df['date'].iloc[-1]
                 _days_stale = (_dt.date.today() - _latest_d).days
@@ -203,6 +206,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                     return _df_stale
                 print(f'[ETF NAV] {_ds1} {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
                 break   # 找到資料就不再嘗試第二個 dataset
+            else:
+                _msg = str(_j.get('msg', ''))[:80]
+                print(f'[ETF NAV] FinMind {_ds1} {code}: status={_jstatus} data_len={len(_jdata) if _jdata else 0} msg={_msg}')
         except Exception as _e1:
             print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
@@ -255,18 +261,75 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
         except Exception as _e2:
             print(f'[ETF NAV] TWSE {_ep2.split("/")[-1]} {code}: {_e2}')
 
-    # ── 3. yfinance ETF info.navPrice ──────────────────────────────────────
+    # ── 3. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
     try:
-        import yfinance as _yf3
-        for _sfx3 in ('.TW', '.TWO'):
-            _tk3 = _yf3.Ticker(f'{code}{_sfx3}')
-            _info3 = _tk3.info
-            _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
-            if _nav3 and float(_nav3) > 0:
-                print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
-                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
-    except Exception as _e3:
-        print(f'[ETF NAV] yfinance {code}: {_e3}')
+        from bs4 import BeautifulSoup as _BS4
+        _hdrs_mdj = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
+            'Referer': 'https://www.moneydj.com/',
+        }
+        _url_mdj = f'https://www.moneydj.com/ETF/X/Basic/Basic0004.xdjhtm?etfid={code}'
+        # 優先用 curl_cffi 模擬 Chrome TLS 指紋，繞過反爬蟲；失敗再降級 requests
+        try:
+            from curl_cffi import requests as _cffi_req
+            _r_mdj = _cffi_req.get(_url_mdj, impersonate='chrome124', timeout=12)
+        except Exception:
+            _r_mdj = _rq_etfnav.get(_url_mdj, headers=_hdrs_mdj, timeout=12, verify=False)
+        if _r_mdj.status_code == 200:
+            _soup = _BS4(_r_mdj.text, 'lxml')
+            _nav_mdj = None
+            # 策略1：找含「淨值」的 th/td，取下一格數字
+            for _th in _soup.find_all(['th', 'td', 'span', 'div', 'dt']):
+                _t = _th.get_text(strip=True)
+                if ('淨值' in _t or 'NAV' in _t) and len(_t) < 20:
+                    _td = _th.find_next_sibling()
+                    if _td:
+                        try:
+                            _nav_mdj = float(_td.get_text(strip=True).replace(',', ''))
+                            if _nav_mdj > 0:
+                                break
+                        except Exception:
+                            pass
+            # 策略2：regex 直接掃 HTML
+            if not _nav_mdj:
+                import re as _re_mdj
+                _m = _re_mdj.search(r'(?:淨值|NAV)[^\d]{0,20}?(\d{1,5}\.\d{2,6})', _r_mdj.text)
+                if _m:
+                    try: _nav_mdj = float(_m.group(1))
+                    except Exception: pass
+            if _nav_mdj and _nav_mdj > 0:
+                print(f'[ETF NAV] MoneyDJ {code}: nav={_nav_mdj}')
+                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': _nav_mdj}])
+            else:
+                print(f'[ETF NAV] MoneyDJ {code}: HTTP {_r_mdj.status_code} 找不到淨值')
+        else:
+            print(f'[ETF NAV] MoneyDJ {code}: HTTP {_r_mdj.status_code}')
+    except Exception as _e_mdj:
+        print(f'[ETF NAV] MoneyDJ {code}: {_e_mdj}')
+
+    # ── 4. yfinance ETF info.navPrice（加限速 retry）──────────────────────
+    import time as _t3
+    for _sfx3 in ('.TW', '.TWO'):
+        for _retry3 in range(3):
+            try:
+                import yfinance as _yf3
+                _tk3 = _yf3.Ticker(f'{code}{_sfx3}')
+                _info3 = _tk3.info
+                _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
+                if _nav3 and float(_nav3) > 0:
+                    print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
+                    return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
+                break  # 沒資料，不 retry
+            except Exception as _e3:
+                _e3s = str(_e3)
+                if ('Too Many Requests' in _e3s or 'Rate' in _e3s) and _retry3 < 2:
+                    _t3.sleep(2 + _retry3 * 2)  # 2s, 4s
+                    print(f'[ETF NAV] yfinance {code}{_sfx3}: 限速 retry {_retry3+1}/3')
+                    continue
+                print(f'[ETF NAV] yfinance {code}{_sfx3}: {_e3}')
+                break
 
     # ── 4. 過舊 FinMind 資料備援（比顯示 N/A 好）──────────────────────────
     if _df_stale is not None and not _df_stale.empty:
@@ -280,16 +343,15 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
     核心原則：NAV 與市價必須來自同一日，避免跨來源日期錯位。
     資料來源：1. TWSE OpenAPI 直讀（同日 NAV+市價+折溢價率）
-              2. FinMind NAV + df 中同日市價
+              2. FinMind NAV history + df 同日 inner join（精確日期配對）
               3. yfinance info navPrice
     """
     import pandas as _pd_prem
     try:
         if ticker:
-            _nav_hist = fetch_etf_nav_history(ticker, days=5)
+            _nav_hist = fetch_etf_nav_history(ticker, days=10)
             if not _nav_hist.empty and 'nav' in _nav_hist.columns:
                 _last = _nav_hist.iloc[-1]
-                _latest_nav = float(_last['nav'])
 
                 # ── 路徑A：TWSE 已含同日折溢價率，直接使用 ──
                 if 'premium_pct' in _nav_hist.columns:
@@ -297,49 +359,33 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                     _price_val = _last.get('price', None)
                     if _prem_val is not None and not _pd_prem.isna(_prem_val):
                         _pv = float(_prem_val)
+                        _latest_nav = float(_last['nav'])
                         _pr = float(_price_val) if _price_val else (_latest_nav * (1 + _pv / 100))
+                        print(f'[折溢價-A] {ticker}: nav={_latest_nav} prem={_pv}% (TWSE直讀)')
                         return {'nav': _latest_nav, 'price': round(_pr, 4),
                                 'premium_pct': _pv, 'warning': _pv > 1.0}
 
-                # ── 路徑B：NAV-only（TWSE/FinMind） + df 中最近收盤配對 ──
-                # 用 .date() 做比對，避免 yfinance tz-aware vs naive Timestamp 類型衝突
-                if _latest_nav > 0 and not df.empty and 'Close' in df.columns:
-                    import datetime as _dt_prem
-                    _nav_d = _last['date']
-                    if hasattr(_nav_d, 'date'):
-                        _nav_d = _nav_d.date()   # Timestamp → date
-                    elif not isinstance(_nav_d, _dt_prem.date):
-                        _nav_d = _pd_prem.Timestamp(_nav_d).date()
-                    # 建立 {date: iloc位置} 映射（tz-agnostic）
-                    _df_date_idx = {ts.date() if hasattr(ts, 'date') else _pd_prem.Timestamp(ts).date(): i
-                                    for i, ts in enumerate(df.index)}
-                    _price = None
-                    for _delta in [0, -1, 1, -2, 2, -3, 3]:
-                        _target_d = _nav_d + _dt_prem.timedelta(days=_delta)
-                        if _target_d in _df_date_idx:
-                            _price = float(df['Close'].iloc[_df_date_idx[_target_d]])
-                            break
-                    # 最終備援：距離最近的交易日（5天內）
-                    if _price is None:
-                        _days_diffs = [(abs((_nav_d - d).days), i)
-                                       for d, i in _df_date_idx.items()]
-                        if _days_diffs:
-                            _min_diff, _min_i = min(_days_diffs)
-                            if _min_diff <= 5:
-                                _price = float(df['Close'].iloc[_min_i])
-                    if _price:
-                        _prem = round((_price - _latest_nav) / _latest_nav * 100, 2)
-                        return {'nav': _latest_nav, 'price': _price,
+                # ── 路徑B：FinMind NAV history + df Same-Date Inner Join ──
+                # 與「近30日淨值」表格相同的精確日期配對邏輯，杜絕日期錯位
+                if not df.empty and 'Close' in df.columns:
+                    _nav_df = _nav_hist[['date', 'nav']].copy()
+                    _nav_df['date'] = _pd_prem.to_datetime(_nav_df['date']).dt.normalize()
+                    _nav_df = _nav_df.set_index('date')
+                    _price_s = df[['Close']].copy()
+                    _price_s.index = _pd_prem.to_datetime(_price_s.index).normalize()
+                    _merged = _nav_df.join(_price_s, how='inner').dropna()
+                    if not _merged.empty:
+                        _row = _merged.iloc[-1]  # 最近一筆同日配對
+                        _nav_v = float(_row['nav'])
+                        _pr_v  = float(_row['Close'])
+                        _prem  = round((_pr_v - _nav_v) / _nav_v * 100, 2)
+                        print(f'[折溢價-B] {ticker}: date={_merged.index[-1].date()} nav={_nav_v} price={_pr_v} prem={_prem}%')
+                        return {'nav': _nav_v, 'price': _pr_v,
                                 'premium_pct': _prem, 'warning': _prem > 1.0}
 
-        # ── 備援：yfinance info ──
-        nav   = info.get('navPrice') or info.get('regularMarketNAV')
-        price = float(df['Close'].iloc[-1]) if not df.empty else None
-        if nav and price:
-            prem = round((price - nav) / nav * 100, 2)
-            return {'nav': nav, 'price': price, 'premium_pct': prem, 'warning': prem > 1.0}
-    except Exception:
-        pass
+        print(f'[折溢價] {ticker}: 所有路徑失敗，回傳 N/A')
+    except Exception as _ep:
+        import traceback as _tb_p; print(f'[折溢價] 錯誤: {_ep}'); _tb_p.print_exc()
     return {'nav': None, 'price': None, 'premium_pct': None, 'warning': False}
 
 
