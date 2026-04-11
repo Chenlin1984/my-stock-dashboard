@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `fa09590` — 新增基本面先行指標6大指標（模組一~四）
+- **最新 commit**: `6d92f72` — Edge Case防護：重大資產處分污染CapEx/存貨指標
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -49,6 +49,7 @@
 | `0acdf64` | **ETF NAV三修**: _ver→ver(Streamlit快取破解修正) + curl_cffi模擬Chrome繞反爬 + info備援補log |
 | `b808b9a` | **移除錯誤備援**: 刪除yfinance info.navPrice備援路徑，NAV抓不到顯N/A不顯錯誤數字 |
 | `fa09590` | **基本面先行指標6大指標**: calc_leading_indicators_detail() 模組一~四 + 個股頁D2區塊 |
+| `6d92f72` | **Edge Case防護**: 重大資產處分偵測（處分流入/CapEx>2×）→ I4/I5暫停懲罰改標⚠️事件驅動 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -77,6 +78,7 @@
 - [x] ETF折溢價錯誤數字：移除yfinance info備援，無法取得NAV時顯示N/A ✅
 - [x] ETF NAV MoneyDJ/curl_cffi：已部署，待Cloud log確認成功路徑
 - [x] 基本面先行指標D2區塊：I1~I6 6大指標計算+顯示 ✅
+- [x] Edge Case賣廠誤判：I4/I5重大資產處分偵測，暫停懲罰改標⚠️事件驅動 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
