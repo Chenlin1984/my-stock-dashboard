@@ -4347,6 +4347,64 @@ padding:12px 16px;margin:8px 0;">
                     import traceback as _tb2
                     print(f'[FGMS_UI] 顯示錯誤: {_efgms2}'); _tb2.print_exc()
 
+        # ══ D2. 基本面先行指標（6大指標）══════════════════════
+        st.markdown('---')
+        st.markdown('#### 🔬 D2. 基本面先行指標（6大指標）')
+        try:
+            from scoring_engine import calc_leading_indicators_detail as _cli_fn
+            _li_results = _cli_fn(rev_df=rev2, qtr_df=qtr2, bs_cf_df=qtr_extra2)
+            _li_green = sum(1 for _r in _li_results if _r['signal'] == '🟢')
+            _li_yellow = sum(1 for _r in _li_results if _r['signal'] == '🟡')
+            _li_red = sum(1 for _r in _li_results if _r['signal'] == '🔴')
+            _li_total_scored = _li_green + _li_yellow + _li_red
+            if _li_total_scored > 0:
+                _li_bar_c = '#3fb950' if _li_green >= _li_total_scored * 0.6 else (
+                             '#d29922' if _li_green >= _li_total_scored * 0.3 else '#f85149')
+                st.markdown(
+                    f'<div style="background:#0d1117;border-left:3px solid {_li_bar_c};'
+                    f'padding:6px 12px;border-radius:0 6px 6px 0;margin:4px 0 8px 0;">'
+                    f'<span style="font-size:11px;color:#8b949e;">📊 基本面先行指標總覽</span>　'
+                    f'<span style="font-size:13px;font-weight:700;color:{_li_bar_c};">'
+                    f'🟢×{_li_green}  🟡×{_li_yellow}  🔴×{_li_red}</span>'
+                    f'</div>', unsafe_allow_html=True
+                )
+            # 分模組顯示
+            _li_modules = {}
+            for _r in _li_results:
+                _li_modules.setdefault(_r['module'], []).append(_r)
+            _li_module_list = ['模組一', '模組二', '模組三', '模組四']
+            _li_module_labels = {
+                '模組一': '📈 模組一：高頻業績前瞻（月營收）',
+                '模組二': '🏗️ 模組二：資產負債前瞻（季頻）',
+                '模組三': '📦 模組三：存貨週期',
+                '模組四': '👔 模組四：籌碼深度前瞻',
+            }
+            _li_col1, _li_col2 = st.columns(2)
+            _li_cols = [_li_col1, _li_col2]
+            _li_col_idx = 0
+            for _mod in _li_module_list:
+                if _mod not in _li_modules:
+                    continue
+                with _li_cols[_li_col_idx % 2]:
+                    st.markdown(f'**{_li_module_labels.get(_mod, _mod)}**')
+                    for _ind in _li_modules[_mod]:
+                        _ic = ('#3fb950' if _ind['signal'] == '🟢' else
+                               '#d29922' if _ind['signal'] == '🟡' else
+                               '#f85149' if _ind['signal'] == '🔴' else '#8b949e')
+                        st.markdown(
+                            f'<div style="background:#0d1117;border-left:3px solid {_ic};'
+                            f'padding:6px 10px;border-radius:0 4px 4px 0;margin:3px 0;">'
+                            f'<div style="font-size:12px;font-weight:700;color:{_ic};">'
+                            f'{_ind["signal"]} {_ind["name"]}</div>'
+                            f'<div style="font-size:11px;color:#e6edf3;margin:1px 0;">{_ind["value"]}</div>'
+                            f'<div style="font-size:10px;color:#8b949e;">{_ind["detail"]}</div>'
+                            f'</div>', unsafe_allow_html=True
+                        )
+                _li_col_idx += 1
+        except Exception as _eli_err:
+            import traceback as _li_tb
+            print(f'[先行指標-D2] 顯示錯誤: {_eli_err}'); _li_tb.print_exc()
+
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🎯 E. VCP波幅收縮 + 布林通道')

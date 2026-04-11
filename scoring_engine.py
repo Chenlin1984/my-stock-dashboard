@@ -693,6 +693,223 @@ def calc_forward_momentum_score(quarterly_df=None, bs_cf_df=None,
         return _empty
 
 
+# ── 基本面先行指標細項（6 指標）────────────────────────────
+def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> list:
+    """
+    6 大基本面先行指標，每項回傳 dict：
+      id, module, name, signal (🟢/🟡/🔴/⚪), value (str), detail (str)
+
+    模組一：高頻業績前瞻（月營收衍生指標）
+      I1 — YoY連續3個月正成長且加速
+      I2 — 月營收 3M/12M MA 黃金交叉
+
+    模組二：資產負債表前瞻（季頻）
+      I3 — 合約負債 QoQ 成長率
+      I4 — 資本支出強度（CapEx/Revenue YoY）
+
+    模組三：存貨週期（季頻）
+      I5 — 存貨銷售比連續下降
+
+    模組四：籌碼深度前瞻
+      I6 — 董監持股（需外部資料，目前顯示 N/A）
+    """
+    import pandas as pd
+    import numpy as np
+
+    results = []
+
+    # ─────────────────────────────────────────────────
+    # 模組一 I1：月營收 YoY 連續 3 月正成長且加速
+    # ─────────────────────────────────────────────────
+    try:
+        if rev_df is not None and not rev_df.empty and 'yoy' in rev_df.columns:
+            _yoy = pd.to_numeric(rev_df['yoy'], errors='coerce').dropna()
+            if len(_yoy) >= 3:
+                _last3 = _yoy.iloc[-3:]
+                _all_pos  = (_last3 > 0).all()
+                _accel    = bool(_last3.iloc[-1] > _last3.iloc[-2] > _last3.iloc[-3])
+                _latest   = float(_last3.iloc[-1])
+                if _all_pos and _accel:
+                    _sig = '🟢'; _detail = f'連3月YoY均正成長且逐月加速，業績動能確立'
+                elif _all_pos:
+                    _sig = '🟡'; _detail = f'連3月YoY均正成長，但未完全加速（最新{_latest:+.1f}%）'
+                elif _latest > 0:
+                    _sig = '🟡'; _detail = f'最新月YoY {_latest:+.1f}%，但3個月並非全部正成長'
+                else:
+                    _sig = '🔴'; _detail = f'最新月YoY {_latest:+.1f}%，月營收年減中'
+                _val = f'近3月: {_last3.iloc[-3]:+.1f}% → {_last3.iloc[-2]:+.1f}% → {_last3.iloc[-1]:+.1f}%'
+            else:
+                _sig = '⚪'; _val = 'N/A'; _detail = '月營收資料不足（需≥3月）'
+        else:
+            _sig = '⚪'; _val = 'N/A'; _detail = '月營收尚未載入'
+    except Exception:
+        _sig = '⚪'; _val = 'N/A'; _detail = '計算錯誤'
+    results.append({'id': 'I1', 'module': '模組一', 'name': '月營收YoY加速',
+                     'signal': _sig, 'value': _val, 'detail': _detail})
+
+    # ─────────────────────────────────────────────────
+    # 模組一 I2：月營收 3M/12M MA 黃金交叉
+    # ─────────────────────────────────────────────────
+    try:
+        if rev_df is not None and not rev_df.empty and 'revenue' in rev_df.columns:
+            _rev = pd.to_numeric(rev_df['revenue'], errors='coerce').dropna()
+            if len(_rev) >= 12:
+                _ma3  = _rev.rolling(3).mean()
+                _ma12 = _rev.rolling(12).mean()
+                _cross_now  = float(_ma3.iloc[-1])
+                _cross_prev = float(_ma3.iloc[-2]) if len(_ma3) >= 2 else float('nan')
+                _ma12_now   = float(_ma12.iloc[-1])
+                _ma12_prev  = float(_ma12.iloc[-2]) if len(_ma12) >= 2 else float('nan')
+                _above = _cross_now > _ma12_now
+                _rising = _cross_now > _cross_prev if not np.isnan(_cross_prev) else False
+                _fresh_cross = (_above and
+                               not np.isnan(_ma12_prev) and
+                               float(_ma3.iloc[-2]) <= _ma12_prev)
+                if _fresh_cross:
+                    _sig = '🟢'; _detail = '3M均線剛剛上穿12M均線，黃金交叉形成！'
+                elif _above and _rising:
+                    _sig = '🟢'; _detail = '3M均線持續在12M均線之上且上行，動能維持'
+                elif _above:
+                    _sig = '🟡'; _detail = '3M均線在12M均線之上，但3M均線趨緩'
+                else:
+                    _sig = '🔴'; _detail = '3M均線低於12M均線，死亡交叉（月營收走弱）'
+                _diff_pct = (_cross_now - _ma12_now) / _ma12_now * 100 if _ma12_now else 0
+                _val = f'3M均 vs 12M均: {_diff_pct:+.1f}%'
+            else:
+                _sig = '⚪'; _val = 'N/A'; _detail = '月營收資料不足（需≥12月）'
+        else:
+            _sig = '⚪'; _val = 'N/A'; _detail = '月營收尚未載入'
+    except Exception:
+        _sig = '⚪'; _val = 'N/A'; _detail = '計算錯誤'
+    results.append({'id': 'I2', 'module': '模組一', 'name': '3M/12M均線交叉',
+                     'signal': _sig, 'value': _val, 'detail': _detail})
+
+    # ─────────────────────────────────────────────────
+    # 模組二 I3：合約負債 QoQ 成長率
+    # ─────────────────────────────────────────────────
+    try:
+        if bs_cf_df is not None and not bs_cf_df.empty and '合約負債' in bs_cf_df.columns:
+            _cl = pd.to_numeric(bs_cf_df['合約負債'], errors='coerce').dropna()
+            if len(_cl) >= 2:
+                _prev = float(_cl.iloc[-2]); _now = float(_cl.iloc[-1])
+                if _prev > 0:
+                    _qoq = (_now - _prev) / _prev * 100
+                    if _qoq > 20:
+                        _sig = '🟢'; _detail = f'合約負債單季爆增 {_qoq:+.1f}%，預收訂單大幅增加'
+                    elif _qoq > 5:
+                        _sig = '🟢'; _detail = f'合約負債穩健增加 {_qoq:+.1f}%，訂單能見度提升'
+                    elif _qoq > -5:
+                        _sig = '🟡'; _detail = f'合約負債持平（{_qoq:+.1f}%），訂單穩定'
+                    else:
+                        _sig = '🔴'; _detail = f'合約負債減少 {_qoq:+.1f}%，訂單能見度下降'
+                    _val = f'最新: {_now/1e8:.1f}億 QoQ {_qoq:+.1f}%'
+                elif _prev == 0 and _now > 0:
+                    _sig = '🟢'; _val = f'最新: {_now/1e8:.1f}億（新增合約負債）'; _detail = '合約負債由零轉正，訂單模式出現'
+                else:
+                    _sig = '⚪'; _val = 'N/A'; _detail = '合約負債為零（服務業/無預收款）'
+            elif len(_cl) == 1 and float(_cl.iloc[0]) > 0:
+                _sig = '🟡'; _val = f'{float(_cl.iloc[0])/1e8:.1f}億'; _detail = '合約負債有值，但季度資料不足計算變化'
+            else:
+                _sig = '⚪'; _val = 'N/A'; _detail = '無合約負債資料（服務業/金融股正常）'
+        else:
+            _sig = '⚪'; _val = 'N/A'; _detail = 'BS+CF資料尚未載入'
+    except Exception:
+        _sig = '⚪'; _val = 'N/A'; _detail = '計算錯誤'
+    results.append({'id': 'I3', 'module': '模組二', 'name': '合約負債QoQ',
+                     'signal': _sig, 'value': _val, 'detail': _detail})
+
+    # ─────────────────────────────────────────────────
+    # 模組二 I4：資本支出強度（CapEx / Revenue YoY 變化）
+    # ─────────────────────────────────────────────────
+    try:
+        if (bs_cf_df is not None and not bs_cf_df.empty and '資本支出' in bs_cf_df.columns
+                and qtr_df is not None and not qtr_df.empty and '營收' in qtr_df.columns):
+            _cx = pd.to_numeric(bs_cf_df['資本支出'], errors='coerce').dropna()
+            _rv = pd.to_numeric(qtr_df['營收'], errors='coerce').dropna()
+            if len(_cx) >= 4 and len(_rv) >= 4:
+                _cx_ttm  = float(_cx.tail(4).sum())
+                _cx_prev = float(_cx.iloc[-8:-4].sum()) if len(_cx) >= 8 else float(_cx.head(4).sum())
+                _rv_ttm  = float(_rv.tail(4).sum())
+                _rv_prev = float(_rv.iloc[-8:-4].sum()) if len(_rv) >= 8 else float(_rv.head(4).sum())
+                if _rv_ttm > 0 and _rv_prev > 0:
+                    _ratio_now  = _cx_ttm  / _rv_ttm
+                    _ratio_prev = _cx_prev / _rv_prev
+                    _ratio_chg  = (_ratio_now - _ratio_prev) / _ratio_prev * 100 if _ratio_prev > 0 else 0
+                    if _ratio_chg > 15:
+                        _sig = '🟢'; _detail = f'資本支出/營收比率YoY上升{_ratio_chg:.0f}%，積極擴產訊號'
+                    elif _ratio_chg > 0:
+                        _sig = '🟡'; _detail = f'資本支出/營收比率小幅提升{_ratio_chg:.0f}%，維持投入'
+                    elif _ratio_chg > -20:
+                        _sig = '🟡'; _detail = f'資本支出/營收比率小幅收縮{_ratio_chg:.0f}%，尚可'
+                    else:
+                        _sig = '🔴'; _detail = f'資本支出/營收比率大幅下滑{_ratio_chg:.0f}%，縮減投資'
+                    _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
+                else:
+                    _sig = '⚪'; _val = 'N/A'; _detail = '營收資料不足'
+            else:
+                _sig = '⚪'; _val = 'N/A'; _detail = '資本支出或營收季度資料不足（需≥4季）'
+        else:
+            _sig = '⚪'; _val = 'N/A'; _detail = '資本支出/季財報資料尚未載入'
+    except Exception:
+        _sig = '⚪'; _val = 'N/A'; _detail = '計算錯誤'
+    results.append({'id': 'I4', 'module': '模組二', 'name': 'CapEx強度',
+                     'signal': _sig, 'value': _val, 'detail': _detail})
+
+    # ─────────────────────────────────────────────────
+    # 模組三 I5：存貨銷售比連續下降
+    # ─────────────────────────────────────────────────
+    try:
+        if (bs_cf_df is not None and not bs_cf_df.empty and '存貨' in bs_cf_df.columns
+                and qtr_df is not None and not qtr_df.empty and '營收' in qtr_df.columns):
+            _inv = pd.to_numeric(bs_cf_df['存貨'], errors='coerce')
+            _rv  = pd.to_numeric(qtr_df['營收'],    errors='coerce')
+            # 計算最近 4 季的存貨/季營收比
+            _inv_clean = _inv.dropna()
+            _rv_clean  = _rv.dropna()
+            if len(_inv_clean) >= 3 and len(_rv_clean) >= 3:
+                _n = min(len(_inv_clean), len(_rv_clean), 4)
+                _inv_tail = _inv_clean.iloc[-_n:].values
+                _rv_tail  = _rv_clean.iloc[-_n:].values
+                # 只保留存貨>0的季度
+                _valid = [(_inv_tail[i], _rv_tail[i]) for i in range(_n)
+                          if _inv_tail[i] > 0 and _rv_tail[i] > 0]
+                if len(_valid) >= 2:
+                    _ratios = [iv / rv for iv, rv in _valid]
+                    _last_r = _ratios[-1]; _prev_r = _ratios[-2]
+                    _all_down = all(_ratios[i] <= _ratios[i-1] for i in range(1, len(_ratios)))
+                    _pct_chg  = (_last_r - _prev_r) / _prev_r * 100
+                    if _all_down and len(_ratios) >= 3:
+                        _sig = '🟢'; _detail = f'存貨/銷售比連續{len(_ratios)}季下降，去化速度加快'
+                    elif _pct_chg < -10:
+                        _sig = '🟢'; _detail = f'存貨/銷售比單季大降{_pct_chg:.0f}%，庫存快速去化'
+                    elif _pct_chg < 0:
+                        _sig = '🟡'; _detail = f'存貨/銷售比下降{_pct_chg:.0f}%，庫存略有改善'
+                    elif _pct_chg < 15:
+                        _sig = '🟡'; _detail = f'存貨/銷售比小幅上升{_pct_chg:.0f}%，尚在合理範圍'
+                    else:
+                        _sig = '🔴'; _detail = f'存貨/銷售比上升{_pct_chg:.0f}%，庫存積壓風險'
+                    _val = f'存貨率: {_last_r:.2f}x (QoQ {_pct_chg:+.0f}%)'
+                else:
+                    _sig = '⚪'; _val = 'N/A'; _detail = '存貨為零（服務業/金融股），跳過此項'
+            else:
+                _sig = '⚪'; _val = 'N/A'; _detail = '存貨或季財報季度資料不足（需≥3季）'
+        else:
+            _sig = '⚪'; _val = 'N/A'; _detail = '存貨/季財報資料尚未載入'
+    except Exception:
+        _sig = '⚪'; _val = 'N/A'; _detail = '計算錯誤'
+    results.append({'id': 'I5', 'module': '模組三', 'name': '存貨去化速度',
+                     'signal': _sig, 'value': _val, 'detail': _detail})
+
+    # ─────────────────────────────────────────────────
+    # 模組四 I6：董監持股連續增加（目前無免費資料源）
+    # ─────────────────────────────────────────────────
+    results.append({'id': 'I6', 'module': '模組四', 'name': '董監持股',
+                     'signal': '⚪', 'value': 'N/A',
+                     'detail': '需要付費資料源（FinMind 免費版無此資料）'})
+
+    return results
+
+
 # ── ATR 動態停損計算 ────────────────────────────────────────
 def calc_atr_stop(df, entry_price: float, multiplier: float = 1.5) -> dict:
     """
