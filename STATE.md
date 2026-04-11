@@ -55,6 +55,7 @@
 | `8295b53` | **M1B/M2+乖離率資料根治**: 乖離率改用2y TWII(MA240正確)；M1B加FM路徑+移除大盤代理誤導備援 |
 | `cd992de` | **宏爺/孫慶龍公式升級+ADL Bug修復**: SOX×DXY四象限/Yield三區間公式；ADL↑誤判空頭根治 |
 | `730481d` | **股匯四象限精準公式**: 股匯雙漲/股漲匯貶/股匯雙殺/股跌匯升 + 各象限持股%建議 |
+| `bede66d` | **Section三籌碼公式升級**: 宏爺外資門檻100億(大戶點火/觀望/大戶倒貨) + 孫慶龍融資2800/3400億(乾淨/警戒/泡沫尾端) |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -91,6 +92,7 @@
 - [x] ADL宏爺邏輯Bug：_twii_p5=0落入else空頭分支 → 改用tw_s優先源+None判斷 ✅
 - [x] 宏爺/孫慶龍公式升級：SOX×DXY四象限 + 10Y Yield三區間 ✅
 - [x] 台股大盤股匯四象限：TAIEX×FX四象限精準判斷 + 持股%建議 ✅
+- [x] Section三籌碼公式：宏爺外資100億門檻 + 孫慶龍融資2800/3400億門檻 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
