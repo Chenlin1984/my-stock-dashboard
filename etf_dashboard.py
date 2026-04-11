@@ -158,7 +158,7 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
+def fetch_etf_nav_history(ticker: str, days: int = 35, _ver: int = 3) -> "pd.DataFrame":
     """ETF 歷史淨值及折溢價（最近 N 個交易日）
     資料來源優先順序：
       1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
@@ -182,8 +182,10 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                                   headers={'Authorization': f'Bearer {token}'} if token else {},
                                   timeout=15)
             _j = _r.json()
-            if _j.get('status') == 200 and _j.get('data'):
-                _df = _pd_etfnav.DataFrame(_j['data'])
+            _jstatus = _j.get('status')
+            _jdata   = _j.get('data')
+            if _jstatus == 200 and _jdata:
+                _df = _pd_etfnav.DataFrame(_jdata)
                 # 自動偵測 NAV 欄位名稱（FinMind 兩個版本欄位名不同）
                 _nav_field = next((f for f in ['nav', 'base_unit_net_value', 'NavPrice', 'netAssetValue']
                                    if f in _df.columns), None)
@@ -194,6 +196,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                 _df['nav']  = _pd_etfnav.to_numeric(_df[_nav_field], errors='coerce')
                 _df = _df[_df['nav'].notna() & (_df['nav'] > 0)].sort_values('date')
                 if _df.empty:
+                    print(f'[ETF NAV] {code} {_ds1}: 所有 nav 欄位為空/NaN，跳過')
                     continue
                 _latest_d   = _df['date'].iloc[-1]
                 _days_stale = (_dt.date.today() - _latest_d).days
@@ -203,6 +206,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35) -> "pd.DataFrame":
                     return _df_stale
                 print(f'[ETF NAV] {_ds1} {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
                 break   # 找到資料就不再嘗試第二個 dataset
+            else:
+                _msg = str(_j.get('msg', ''))[:80]
+                print(f'[ETF NAV] FinMind {_ds1} {code}: status={_jstatus} data_len={len(_jdata) if _jdata else 0} msg={_msg}')
         except Exception as _e1:
             print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
