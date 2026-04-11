@@ -261,18 +261,70 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, _ver: int = 3) -> "pd.Dat
         except Exception as _e2:
             print(f'[ETF NAV] TWSE {_ep2.split("/")[-1]} {code}: {_e2}')
 
-    # ── 3. yfinance ETF info.navPrice ──────────────────────────────────────
+    # ── 3. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
     try:
-        import yfinance as _yf3
-        for _sfx3 in ('.TW', '.TWO'):
-            _tk3 = _yf3.Ticker(f'{code}{_sfx3}')
-            _info3 = _tk3.info
-            _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
-            if _nav3 and float(_nav3) > 0:
-                print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
-                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
-    except Exception as _e3:
-        print(f'[ETF NAV] yfinance {code}: {_e3}')
+        from bs4 import BeautifulSoup as _BS4
+        _hdrs_mdj = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
+            'Referer': 'https://www.moneydj.com/',
+        }
+        _url_mdj = f'https://www.moneydj.com/ETF/X/Basic/Basic0004.xdjhtm?etfid={code}'
+        _r_mdj = _rq_etfnav.get(_url_mdj, headers=_hdrs_mdj, timeout=12, verify=False)
+        if _r_mdj.status_code == 200:
+            _soup = _BS4(_r_mdj.text, 'lxml')
+            _nav_mdj = None
+            # 策略1：找含「淨值」的 th/td，取下一格數字
+            for _th in _soup.find_all(['th', 'td', 'span', 'div', 'dt']):
+                _t = _th.get_text(strip=True)
+                if ('淨值' in _t or 'NAV' in _t) and len(_t) < 20:
+                    _td = _th.find_next_sibling()
+                    if _td:
+                        try:
+                            _nav_mdj = float(_td.get_text(strip=True).replace(',', ''))
+                            if _nav_mdj > 0:
+                                break
+                        except Exception:
+                            pass
+            # 策略2：regex 直接掃 HTML
+            if not _nav_mdj:
+                import re as _re_mdj
+                _m = _re_mdj.search(r'(?:淨值|NAV)[^\d]{0,20}?(\d{1,5}\.\d{2,6})', _r_mdj.text)
+                if _m:
+                    try: _nav_mdj = float(_m.group(1))
+                    except Exception: pass
+            if _nav_mdj and _nav_mdj > 0:
+                print(f'[ETF NAV] MoneyDJ {code}: nav={_nav_mdj}')
+                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': _nav_mdj}])
+            else:
+                print(f'[ETF NAV] MoneyDJ {code}: HTTP {_r_mdj.status_code} 找不到淨值')
+        else:
+            print(f'[ETF NAV] MoneyDJ {code}: HTTP {_r_mdj.status_code}')
+    except Exception as _e_mdj:
+        print(f'[ETF NAV] MoneyDJ {code}: {_e_mdj}')
+
+    # ── 4. yfinance ETF info.navPrice（加限速 retry）──────────────────────
+    import time as _t3
+    for _sfx3 in ('.TW', '.TWO'):
+        for _retry3 in range(3):
+            try:
+                import yfinance as _yf3
+                _tk3 = _yf3.Ticker(f'{code}{_sfx3}')
+                _info3 = _tk3.info
+                _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
+                if _nav3 and float(_nav3) > 0:
+                    print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
+                    return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
+                break  # 沒資料，不 retry
+            except Exception as _e3:
+                _e3s = str(_e3)
+                if ('Too Many Requests' in _e3s or 'Rate' in _e3s) and _retry3 < 2:
+                    _t3.sleep(2 + _retry3 * 2)  # 2s, 4s
+                    print(f'[ETF NAV] yfinance {code}{_sfx3}: 限速 retry {_retry3+1}/3')
+                    continue
+                print(f'[ETF NAV] yfinance {code}{_sfx3}: {_e3}')
+                break
 
     # ── 4. 過舊 FinMind 資料備援（比顯示 N/A 好）──────────────────────────
     if _df_stale is not None and not _df_stale.empty:
