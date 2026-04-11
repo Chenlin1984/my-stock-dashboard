@@ -158,7 +158,7 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def fetch_etf_nav_history(ticker: str, days: int = 35, _ver: int = 3) -> "pd.DataFrame":
+def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.DataFrame":
     """ETF 歷史淨值及折溢價（最近 N 個交易日）
     資料來源優先順序：
       1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
@@ -271,7 +271,12 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, _ver: int = 3) -> "pd.Dat
             'Referer': 'https://www.moneydj.com/',
         }
         _url_mdj = f'https://www.moneydj.com/ETF/X/Basic/Basic0004.xdjhtm?etfid={code}'
-        _r_mdj = _rq_etfnav.get(_url_mdj, headers=_hdrs_mdj, timeout=12, verify=False)
+        # 優先用 curl_cffi 模擬 Chrome TLS 指紋，繞過反爬蟲；失敗再降級 requests
+        try:
+            from curl_cffi import requests as _cffi_req
+            _r_mdj = _cffi_req.get(_url_mdj, impersonate='chrome124', timeout=12)
+        except Exception:
+            _r_mdj = _rq_etfnav.get(_url_mdj, headers=_hdrs_mdj, timeout=12, verify=False)
         if _r_mdj.status_code == 200:
             _soup = _BS4(_r_mdj.text, 'lxml')
             _nav_mdj = None
@@ -378,11 +383,12 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                         return {'nav': _nav_v, 'price': _pr_v,
                                 'premium_pct': _prem, 'warning': _prem > 1.0}
 
-        # ── 備援：yfinance info ──
+        # ── 備援：yfinance info（此路徑 navPrice 可能過舊，結果僅供參考）──
         nav   = info.get('navPrice') or info.get('regularMarketNAV')
         price = float(df['Close'].iloc[-1]) if not df.empty else None
         if nav and price:
             prem = round((price - nav) / nav * 100, 2)
+            print(f'[折溢價-info備援] {ticker}: nav={nav} price={price} prem={prem}% (yfinance info，可能過舊)')
             return {'nav': nav, 'price': price, 'premium_pct': prem, 'warning': prem > 1.0}
     except Exception as _ep:
         import traceback as _tb_p; print(f'[折溢價] 錯誤: {_ep}'); _tb_p.print_exc()
