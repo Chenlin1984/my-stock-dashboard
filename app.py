@@ -1922,62 +1922,94 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
             # ── M1B-M2 + 乖離率 並發計算 ──────────────────────
             def _job_m1b():
-                try:
-                    import requests as _rq_m1, pandas as _pd_m1
-                    _fm_tok_m1 = _get_fm_token()
-                    if not _fm_tok_m1:
-                        raise ValueError('no token')
-                    _start_m1 = (datetime.date.today()-datetime.timedelta(days=400)).strftime('%Y-%m-%d')
-                    # CBC OpenData 直接抓 M1B/M2（完全免費，官方來源）
-                    # FinMind TaiwanMoneySupply 免費版 HTTP 422（權限不足）
+                import requests as _rq_m1, pandas as _pd_m1
+                _fm_tok_m1 = _get_fm_token()
+                _start_m1 = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
+
+                # ── 路徑 1：FinMind TaiwanMoneySupply（需 token，最準確）──
+                if _fm_tok_m1:
                     try:
-                        _r_cbc = requests.get(
-                            'https://www.cbc.gov.tw/public/data/ms1.json',
-                            headers={'User-Agent':'Mozilla/5.0'}, timeout=15, verify=False)
-                        if _r_cbc.status_code == 200:
-                            _cbc_data = _r_cbc.json()
-                            print(f'[M1B/CBC] 回傳 {type(_cbc_data)} len={len(str(_cbc_data)[:200])}')
-                            # CBC 格式通常是 list of records，含日期/M1B/M2 欄位
-                            if isinstance(_cbc_data, list) and len(_cbc_data) >= 13:
-                                _df_cbc = _pd_m1.DataFrame(_cbc_data)
-                                print(f'[M1B/CBC] 欄位={list(_df_cbc.columns)[:8]}')
-                                # 找 M1B 和 M2 欄位（可能是中文名）
-                                _m1b_col = next((c for c in _df_cbc.columns
-                                                 if 'M1B' in str(c).upper() or '貨幣供給額M1B' in str(c)), None)
-                                _m2_col  = next((c for c in _df_cbc.columns
-                                                 if str(c).upper().strip() == 'M2' or '貨幣供給額M2' in str(c)), None)
-                                if _m1b_col and _m2_col and len(_df_cbc) >= 13:
-                                    _m1b_v = _pd_m1.to_numeric(_df_cbc[_m1b_col], errors='coerce')
-                                    _m2_v  = _pd_m1.to_numeric(_df_cbc[_m2_col],  errors='coerce')
-                                    _m1b_yoy_cbc = round((_m1b_v.iloc[-1]/_m1b_v.iloc[-13]-1)*100, 2)
-                                    _m2_yoy_cbc  = round((_m2_v.iloc[-1]/_m2_v.iloc[-13]-1)*100, 2)
-                                    print(f'[M1B/CBC] ✅ M1B_yoy={_m1b_yoy_cbc:.2f}% M2_yoy={_m2_yoy_cbc:.2f}%')
-                                    return {'m1b_yoy': _m1b_yoy_cbc, 'm2_yoy': _m2_yoy_cbc, 'source': 'CBC'}
-                                else:
-                                    print(f'[M1B/CBC] 找不到欄位，所有欄={list(_df_cbc.columns)}')
-                    except Exception as _cbc_e:
-                        print(f'[M1B/CBC] ❌ {_cbc_e}')
-                    # FinMind TaiwanMoneySupply 免費版 HTTP 422，已改用 CBC OpenData
-                except Exception:
-                    pass
-                # 備援：大盤動能代理
+                        _fm_r = _rq_m1.get(
+                            'https://api.finmindtrade.com/api/v4/data',
+                            params={'dataset': 'TaiwanMoneySupply', 'start_date': _start_m1,
+                                    'token': _fm_tok_m1},
+                            timeout=15)
+                        _fm_j = _fm_r.json()
+                        print(f'[M1B/FM] status={_fm_j.get("status")} rows={len(_fm_j.get("data",[]))}')
+                        if _fm_j.get('status') == 200 and _fm_j.get('data'):
+                            _df_fm = _pd_m1.DataFrame(_fm_j['data'])
+                            print(f'[M1B/FM] 欄位={list(_df_fm.columns)[:10]}')
+                            # FinMind 格式：date, type, value（type=M1B or M2）
+                            if 'type' in _df_fm.columns and 'value' in _df_fm.columns:
+                                _df_fm['value'] = _pd_m1.to_numeric(_df_fm['value'], errors='coerce')
+                                _m1b_s = _df_fm[_df_fm['type'].str.upper().str.contains('M1B', na=False)].sort_values('date')
+                                _m2_s  = _df_fm[_df_fm['type'].str.upper() == 'M2'].sort_values('date')
+                                if len(_m1b_s) >= 13 and len(_m2_s) >= 13:
+                                    _m1b_yoy = round((_m1b_s['value'].iloc[-1]/_m1b_s['value'].iloc[-13]-1)*100, 2)
+                                    _m2_yoy  = round((_m2_s['value'].iloc[-1] /_m2_s['value'].iloc[-13] -1)*100, 2)
+                                    print(f'[M1B/FM] ✅ M1B={_m1b_yoy:.2f}% M2={_m2_yoy:.2f}%')
+                                    return {'m1b_yoy': _m1b_yoy, 'm2_yoy': _m2_yoy, 'source': 'FinMind'}
+                    except Exception as _fm_m1_e:
+                        print(f'[M1B/FM] ❌ {_fm_m1_e}')
+
+                # ── 路徑 2：CBC OpenData ms1.json（免費，官方來源）────────
                 try:
-                    _cp = tw_raw.get('台股加權指數')
-                    if _cp is not None and not _cp.empty:
-                        _cc = 'Close' if 'Close' in _cp.columns else 'close'
-                        if _cc in _cp.columns and len(_cp) >= 60:
-                            _chg20 = round((_cp[_cc].iloc[-1]/_cp[_cc].iloc[-20]-1)*100, 2)
-                            _chg60 = round((_cp[_cc].iloc[-1]/_cp[_cc].iloc[-60]-1)*100, 2)
-                            return {'m1b_yoy': _chg20, 'm2_yoy': round(_chg60/3,2), 'is_proxy': True}
-                except Exception:
-                    pass
+                    _r_cbc = _rq_m1.get(
+                        'https://www.cbc.gov.tw/public/data/ms1.json',
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[M1B/CBC] status={_r_cbc.status_code}')
+                    if _r_cbc.status_code == 200:
+                        _cbc_raw = _r_cbc.json()
+                        # CBC 可能是 list 或 dict with 'data' key
+                        _cbc_data = _cbc_raw if isinstance(_cbc_raw, list) else _cbc_raw.get('data', _cbc_raw)
+                        print(f'[M1B/CBC] type={type(_cbc_data)} len={len(_cbc_data) if hasattr(_cbc_data,"__len__") else "?"}')
+                        if isinstance(_cbc_data, list) and len(_cbc_data) >= 13:
+                            _df_cbc = _pd_m1.DataFrame(_cbc_data)
+                            print(f'[M1B/CBC] 欄位={list(_df_cbc.columns)[:10]}')
+                            # 寬鬆搜尋：M1B 欄、M2 欄（含各種中英文格式）
+                            _m1b_col = next((c for c in _df_cbc.columns
+                                             if 'M1B' in str(c).upper()), None)
+                            _m2_col  = next((c for c in _df_cbc.columns
+                                             if str(c).strip().upper() == 'M2'
+                                             or '供給額M2' in str(c) or 'M2' == str(c).strip().upper()), None)
+                            print(f'[M1B/CBC] m1b_col={_m1b_col} m2_col={_m2_col}')
+                            if _m1b_col and _m2_col:
+                                _m1b_v = _pd_m1.to_numeric(_df_cbc[_m1b_col].astype(str).str.replace(',',''), errors='coerce').dropna()
+                                _m2_v  = _pd_m1.to_numeric(_df_cbc[_m2_col].astype(str).str.replace(',',''),  errors='coerce').dropna()
+                                if len(_m1b_v) >= 13 and len(_m2_v) >= 13:
+                                    _m1b_yoy_c = round((_m1b_v.iloc[-1]/_m1b_v.iloc[-13]-1)*100, 2)
+                                    _m2_yoy_c  = round((_m2_v.iloc[-1] /_m2_v.iloc[-13] -1)*100, 2)
+                                    print(f'[M1B/CBC] ✅ M1B={_m1b_yoy_c:.2f}% M2={_m2_yoy_c:.2f}%')
+                                    return {'m1b_yoy': _m1b_yoy_c, 'm2_yoy': _m2_yoy_c, 'source': 'CBC'}
+                except Exception as _cbc_e:
+                    print(f'[M1B/CBC] ❌ {_cbc_e}')
+
+                # ── 路徑 3（已移除）：大盤代理數值完全不代表 M1B/M2 ────
+                # 若所有真實來源都失敗，回傳 None（顯示「待更新」比顯示錯誤數字好）
+                print('[M1B] 所有路徑失敗，回傳 None')
                 return None
 
             def _job_bias():
                 try:
+                    # tw_raw 只有 90 天，MA240 需要另外抓 2 年資料
                     _twii = tw_raw.get('台股加權指數')
+                    _cc_b = 'Close' if (_twii is not None and 'Close' in getattr(_twii,'columns',[])) else 'close'
+                    _n_existing = len(_twii) if _twii is not None and not _twii.empty else 0
+                    if _n_existing < 240:
+                        # 重新抓 2 年完整資料，確保 MA240 正確
+                        try:
+                            import yfinance as _yf_bias
+                            _twii_2y = _yf_bias.download('^TWII', period='2y',
+                                                          progress=False, auto_adjust=True)
+                            if _twii_2y is not None and len(_twii_2y) >= 240:
+                                _twii = _twii_2y
+                                _cc_b = 'Close'
+                                print(f'[Bias] yfinance ^TWII 2y 抓到 {len(_twii_2y)} 天')
+                            else:
+                                print(f'[Bias] yfinance 2y 資料不足 ({len(_twii_2y) if _twii_2y is not None else 0} 天)，使用現有 {_n_existing} 天')
+                        except Exception as _yf_b_e:
+                            print(f'[Bias] yfinance 2y 失敗: {_yf_b_e}')
                     if _twii is None or _twii.empty: return None
-                    _cc_b = 'Close' if 'Close' in _twii.columns else 'close'
                     if _cc_b not in _twii.columns: return None
                     _cs = _twii[_cc_b].dropna()
                     _n  = len(_cs)
@@ -1986,6 +2018,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _ma60  = float(_cs.tail(min(60,_n)).mean())
                     _ma120 = float(_cs.tail(min(120,_n)).mean())
                     _ma240 = float(_cs.tail(min(240,_n)).mean())
+                    print(f'[Bias] price={_lp:.0f} MA240={_ma240:.0f} bias240={((_lp-_ma240)/_ma240*100):.1f}% (n={_n})')
                     return {
                         'bias_20':  round((_lp-_ma20) /_ma20 *100, 1) if _ma20  else 0,
                         'bias_60':  round((_lp-_ma60) /_ma60 *100, 1) if _ma60  else 0,
