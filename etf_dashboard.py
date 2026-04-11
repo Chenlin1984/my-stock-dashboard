@@ -280,16 +280,15 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
     核心原則：NAV 與市價必須來自同一日，避免跨來源日期錯位。
     資料來源：1. TWSE OpenAPI 直讀（同日 NAV+市價+折溢價率）
-              2. FinMind NAV + df 中同日市價
+              2. FinMind NAV history + df 同日 inner join（精確日期配對）
               3. yfinance info navPrice
     """
     import pandas as _pd_prem
     try:
         if ticker:
-            _nav_hist = fetch_etf_nav_history(ticker, days=5)
+            _nav_hist = fetch_etf_nav_history(ticker, days=10)
             if not _nav_hist.empty and 'nav' in _nav_hist.columns:
                 _last = _nav_hist.iloc[-1]
-                _latest_nav = float(_last['nav'])
 
                 # ── 路徑A：TWSE 已含同日折溢價率，直接使用 ──
                 if 'premium_pct' in _nav_hist.columns:
@@ -297,39 +296,28 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                     _price_val = _last.get('price', None)
                     if _prem_val is not None and not _pd_prem.isna(_prem_val):
                         _pv = float(_prem_val)
+                        _latest_nav = float(_last['nav'])
                         _pr = float(_price_val) if _price_val else (_latest_nav * (1 + _pv / 100))
+                        print(f'[折溢價-A] {ticker}: nav={_latest_nav} prem={_pv}% (TWSE直讀)')
                         return {'nav': _latest_nav, 'price': round(_pr, 4),
                                 'premium_pct': _pv, 'warning': _pv > 1.0}
 
-                # ── 路徑B：NAV-only（TWSE/FinMind） + df 中最近收盤配對 ──
-                # 用 .date() 做比對，避免 yfinance tz-aware vs naive Timestamp 類型衝突
-                if _latest_nav > 0 and not df.empty and 'Close' in df.columns:
-                    import datetime as _dt_prem
-                    _nav_d = _last['date']
-                    if hasattr(_nav_d, 'date'):
-                        _nav_d = _nav_d.date()   # Timestamp → date
-                    elif not isinstance(_nav_d, _dt_prem.date):
-                        _nav_d = _pd_prem.Timestamp(_nav_d).date()
-                    # 建立 {date: iloc位置} 映射（tz-agnostic）
-                    _df_date_idx = {ts.date() if hasattr(ts, 'date') else _pd_prem.Timestamp(ts).date(): i
-                                    for i, ts in enumerate(df.index)}
-                    _price = None
-                    for _delta in [0, -1, 1, -2, 2, -3, 3]:
-                        _target_d = _nav_d + _dt_prem.timedelta(days=_delta)
-                        if _target_d in _df_date_idx:
-                            _price = float(df['Close'].iloc[_df_date_idx[_target_d]])
-                            break
-                    # 最終備援：距離最近的交易日（5天內）
-                    if _price is None:
-                        _days_diffs = [(abs((_nav_d - d).days), i)
-                                       for d, i in _df_date_idx.items()]
-                        if _days_diffs:
-                            _min_diff, _min_i = min(_days_diffs)
-                            if _min_diff <= 5:
-                                _price = float(df['Close'].iloc[_min_i])
-                    if _price:
-                        _prem = round((_price - _latest_nav) / _latest_nav * 100, 2)
-                        return {'nav': _latest_nav, 'price': _price,
+                # ── 路徑B：FinMind NAV history + df Same-Date Inner Join ──
+                # 與「近30日淨值」表格相同的精確日期配對邏輯，杜絕日期錯位
+                if not df.empty and 'Close' in df.columns:
+                    _nav_df = _nav_hist[['date', 'nav']].copy()
+                    _nav_df['date'] = _pd_prem.to_datetime(_nav_df['date']).dt.normalize()
+                    _nav_df = _nav_df.set_index('date')
+                    _price_s = df[['Close']].copy()
+                    _price_s.index = _pd_prem.to_datetime(_price_s.index).normalize()
+                    _merged = _nav_df.join(_price_s, how='inner').dropna()
+                    if not _merged.empty:
+                        _row = _merged.iloc[-1]  # 最近一筆同日配對
+                        _nav_v = float(_row['nav'])
+                        _pr_v  = float(_row['Close'])
+                        _prem  = round((_pr_v - _nav_v) / _nav_v * 100, 2)
+                        print(f'[折溢價-B] {ticker}: date={_merged.index[-1].date()} nav={_nav_v} price={_pr_v} prem={_prem}%')
+                        return {'nav': _nav_v, 'price': _pr_v,
                                 'premium_pct': _prem, 'warning': _prem > 1.0}
 
         # ── 備援：yfinance info ──
@@ -338,8 +326,8 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
         if nav and price:
             prem = round((price - nav) / nav * 100, 2)
             return {'nav': nav, 'price': price, 'premium_pct': prem, 'warning': prem > 1.0}
-    except Exception:
-        pass
+    except Exception as _ep:
+        import traceback as _tb_p; print(f'[折溢價] 錯誤: {_ep}'); _tb_p.print_exc()
     return {'nav': None, 'price': None, 'premium_pct': None, 'warning': False}
 
 
