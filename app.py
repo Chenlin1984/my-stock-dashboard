@@ -4405,6 +4405,130 @@ padding:12px 16px;margin:8px 0;">
             import traceback as _li_tb
             print(f'[先行指標-D2] 顯示錯誤: {_eli_err}'); _li_tb.print_exc()
 
+        # ── D2 動態投資建議（基於6大先行指標合成）──────────────
+        try:
+            from scoring_engine import calc_leading_indicators_detail as _cli_fn2
+            _li2 = _cli_fn2(rev_df=rev2, qtr_df=qtr2, bs_cf_df=qtr_extra2)
+            _li2_map = {r['id']: r for r in _li2}
+
+            # ── 蒐集信號 ─────────────────────────────────────
+            _pros  = []   # 多方理由
+            _cons  = []   # 空方理由
+            _notes = []   # 注意事項（事件驅動/中性）
+            _event_driven_flags = []
+
+            # I1 月營收YoY加速
+            _r1 = _li2_map.get('I1', {})
+            if _r1.get('signal') == '🟢':
+                _pros.append(f"月營收YoY連續加速（{_r1.get('value','').split(':')[-1].strip()}），業績動能確立")
+            elif _r1.get('signal') == '🔴':
+                _cons.append('月營收年減中，基本面走弱')
+
+            # I2 均線交叉
+            _r2 = _li2_map.get('I2', {})
+            if _r2.get('signal') == '🟢':
+                _pros.append(f"月營收3M均線位於12M均線之上（{_r2.get('value','').split(':')[-1].strip()}），中期動能向上")
+            elif _r2.get('signal') == '🔴':
+                _cons.append('月營收均線死叉，中期趨勢轉弱')
+
+            # I3 合約負債
+            _r3 = _li2_map.get('I3', {})
+            if _r3.get('signal') == '🟢':
+                _v3 = _r3.get('value','')
+                _pros.append(f"合約負債持續增加（{_v3}），未來營收能見度高")
+            elif _r3.get('signal') == '🔴':
+                _cons.append('合約負債減少，訂單能見度下降')
+
+            # I4 CapEx（含事件驅動判斷）
+            _r4 = _li2_map.get('I4', {})
+            if '事件驅動' in _r4.get('detail', ''):
+                _event_driven_flags.append('資本支出比較基期因重大資產處分失真')
+                _notes.append(f"⚠️ CapEx：{_r4.get('detail','')}")
+            elif _r4.get('signal') == '🟢':
+                _pros.append(f"資本支出強度提升（{_r4.get('value','')}），積極擴產佈局未來")
+            elif _r4.get('signal') == '🔴':
+                _cons.append(f"資本支出大幅縮減（{_r4.get('value','')}），擴張意願低")
+
+            # I5 存貨去化（含事件驅動）
+            _r5 = _li2_map.get('I5', {})
+            if '事件驅動' in _r5.get('detail', ''):
+                _event_driven_flags.append('存貨急降原因待確認（資產處分可能帶走存貨）')
+                _notes.append(f"⚠️ 存貨：{_r5.get('detail','')}")
+            elif _r5.get('signal') == '🟢':
+                _pros.append(f"存貨持續去化（{_r5.get('value','')}），供需關係改善")
+            elif _r5.get('signal') == '🔴':
+                _cons.append(f"存貨積壓風險（{_r5.get('value','')}），景氣下行壓力")
+
+            # ── 綜合評估 ────────────────────────────────────
+            _n_green = sum(1 for r in _li2 if r['signal'] == '🟢')
+            _n_red   = sum(1 for r in _li2 if r['signal'] == '🔴')
+            _n_scored = sum(1 for r in _li2 if r['signal'] in ('🟢','🟡','🔴'))
+
+            if _event_driven_flags:
+                _stance = 'event'
+                _stance_label = '⚠️ 事件驅動觀察'
+                _stance_color = '#d29922'
+                _stance_desc  = '偵測到重大資產處分，部分指標基期失真。建議關注重組後的資本配置方向與營運重啟節奏，暫不適用純基本面成長框架評估。'
+            elif _n_scored == 0:
+                _stance = 'na'
+                _stance_label = '⚪ 資料不足'
+                _stance_color = '#8b949e'
+                _stance_desc  = '基本面先行指標資料尚未完整載入，無法生成投資建議。'
+            elif _n_green >= _n_scored * 0.6:
+                _stance = 'bull'
+                _stance_label = '🟢 多方偏多'
+                _stance_color = '#3fb950'
+                _stance_desc  = f'{_n_green}/{_n_scored} 項指標偏多，基本面動能強勁。'
+            elif _n_red >= _n_scored * 0.6:
+                _stance = 'bear'
+                _stance_label = '🔴 基本面偏弱'
+                _stance_color = '#f85149'
+                _stance_desc  = f'{_n_red}/{_n_scored} 項指標偏空，基本面壓力明顯。'
+            else:
+                _stance = 'neutral'
+                _stance_label = '🟡 中性觀察'
+                _stance_color = '#d29922'
+                _stance_desc  = f'多空指標交錯（🟢{_n_green}/🔴{_n_red}），基本面尚未形成明確方向。'
+
+            # ── 建議行動 ────────────────────────────────────
+            _action_map = {
+                'bull':    '基本面動能向上，可搭配技術面（VCP/布林）確認進場時機，適合中長線佈局。',
+                'bear':    '基本面呈現壓力，建議降低曝險或觀望，等待指標轉向後再評估。',
+                'neutral': '基本面方向尚不明朗，建議輕倉或等待更多季度數據確認後再行動。',
+                'event':   '轉機股需追蹤：①後續資本支出重建節奏 ②新業務（如HBM後段）訂單能見度 ③毛利率是否回升至正常水位。',
+                'na':      '請確認 FINMIND_TOKEN 是否正確，並重新載入後查看建議。',
+            }
+            _action = _action_map.get(_stance, '')
+
+            # ── 渲染 ────────────────────────────────────────
+            _pros_html  = ''.join(f'<li style="margin:2px 0;">✅ {p}</li>' for p in _pros)  if _pros  else ''
+            _cons_html  = ''.join(f'<li style="margin:2px 0;">⛔ {c}</li>' for c in _cons)  if _cons  else ''
+            _notes_html = ''.join(f'<li style="margin:2px 0;">{n}</li>'    for n in _notes) if _notes else ''
+
+            _pros_section  = (f'<div style="margin-top:6px;"><span style="font-size:11px;color:#3fb950;font-weight:600;">多方因素</span>'
+                              f'<ul style="margin:2px 0 0 12px;padding:0;font-size:11px;color:#e6edf3;">{_pros_html}</ul></div>') if _pros_html else ''
+            _cons_section  = (f'<div style="margin-top:4px;"><span style="font-size:11px;color:#f85149;font-weight:600;">風險因素</span>'
+                              f'<ul style="margin:2px 0 0 12px;padding:0;font-size:11px;color:#e6edf3;">{_cons_html}</ul></div>') if _cons_html else ''
+            _notes_section = (f'<div style="margin-top:4px;"><span style="font-size:11px;color:#d29922;font-weight:600;">注意事項</span>'
+                              f'<ul style="margin:2px 0 0 12px;padding:0;font-size:11px;color:#8b949e;">{_notes_html}</ul></div>') if _notes_html else ''
+
+            st.markdown(
+                f'<div style="background:#161b22;border:1px solid {_stance_color};border-left:4px solid {_stance_color};'
+                f'padding:10px 14px;border-radius:6px;margin:8px 0;">'
+                f'<div style="font-size:12px;color:#8b949e;margin-bottom:4px;">💡 基本面先行指標 · 動態投資建議</div>'
+                f'<div style="font-size:15px;font-weight:700;color:{_stance_color};">{_stance_label}</div>'
+                f'<div style="font-size:12px;color:#e6edf3;margin-top:4px;">{_stance_desc}</div>'
+                f'{_pros_section}{_cons_section}{_notes_section}'
+                f'<div style="margin-top:8px;padding-top:6px;border-top:1px solid #30363d;">'
+                f'<span style="font-size:11px;color:#8b949e;">📌 建議行動：</span>'
+                f'<span style="font-size:12px;color:#e6edf3;">{_action}</span>'
+                f'</div>'
+                f'</div>', unsafe_allow_html=True
+            )
+        except Exception as _eli2_err:
+            import traceback as _li2_tb
+            print(f'[先行指標-建議] 顯示錯誤: {_eli2_err}'); _li2_tb.print_exc()
+
         # ══ E. VCP + 布林 ══════════════════════════════════════
         st.markdown('---')
         st.markdown('#### 🎯 E. VCP波幅收縮 + 布林通道')
