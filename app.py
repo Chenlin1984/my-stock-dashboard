@@ -2559,27 +2559,22 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     if _li4 is not None and not _li4.empty:
         _fut4 = (float(_li4.iloc[-1].get('外資大小', 0)) if '外資大小' in _li4.columns else None)
         _pcr4 = (float(_li4.iloc[-1].get('選PCR', 0)) if '選PCR' in _li4.columns else None)
-        _spot4 = (float(_li4.iloc[-1].get('外資', 0)) if '外資' in _li4.columns else None)
         if _fut4 is not None:
             _pcr_txt = f' | PCR {_pcr4:.1f}' if _pcr4 else ''
-            _spot_txt = f' | 現貨 {_spot4:+.0f}億' if _spot4 is not None else ''
-            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_spot_txt}{_pcr_txt}'
-            # 期現貨背離矩陣
-            if _fut4 <= -30000 and (_spot4 is not None and _spot4 > 0):
-                _l4c = '外資鎖單避險（買現貨、空期貨），高檔誘多，隨時反轉倒貨'
-                _l4a = '嚴陣以待，持股壓低至 20%，停損紀律第一'
-            elif _fut4 <= -30000 and (_spot4 is None or _spot4 <= 0):
-                _l4c = '期現貨雙殺，外資毫無顧忌全面撤退，極度悲觀'
-                _l4a = '清倉跑路，現金為王，等待期貨空單大幅回補後再入場'
-            elif _fut4 >= 10000 and (_spot4 is not None and _spot4 > 0):
-                _l4c = '期現貨同步做多，外資熱錢狂潮，主升段燃料充足'
+            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_pcr_txt}'
+            # 宏爺絕對口數門檻（容錯率最高）
+            if _fut4 <= -30000:
+                _l4c = f'外資期貨空單 {abs(_fut4):,.0f}口 > 3萬口，啟動強制防禦，強制減倉至20%以下，等待空單回補'
+                _l4a = '強制減倉至 20% 以下，嚴禁追高攤平，保護本金'
+            elif _fut4 <= -15000:
+                _l4c = f'外資期貨空單 {abs(_fut4):,.0f}口，空單累積中，大戶動向保守，逢高調節'
+                _l4a = '收回資金，持股降至 50%，等待明確表態'
+            elif _fut4 > 0:
+                _l4c = f'外資期貨多單 {_fut4:,.0f}口，外資期貨翻多，燃料充足，積極作多'
                 _l4a = '順勢重壓強勢股，持股 80~100%'
-            elif -10000 < _fut4 < 10000:
-                _l4c = '期貨籌碼中性，外資方向未明，以現貨與內資動向為主'
-                _l4a = '區間操作，持股 50%，等待方向確認'
             else:
-                _l4c = f'外資期貨偏空 {_fut4:,.0f}口，保守操作'
-                _l4a = '減少新買入，守好現有部位，持股 30~50%'
+                _l4c = f'外資期貨微空 {abs(_fut4):,.0f}口，水位正常，依個股技術面操作'
+                _l4a = '持股 70%，現金 30% 備用'
         else:
             _l4c = '先行指標欄位異常，請確認 FinMind Token'; _l4a = ''; _l4_ind = '外資期貨留倉'
     else:
@@ -2745,19 +2740,22 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         # ── v5.0 動態資產配置建議（純現金策略，無 ETF）────────────────
         try:
             _v5_fut = float(_last_row.get('外資大小') or 0)
-            _v5_spot = float(_last_row.get('外資') or 0)
             if _v5_fut <= -30000:
                 _v5_stock, _v5_cash = 20, 80
-                _v5_strategy = '防禦策略：鎖定非 ETF 之低基期高殖利率個股，嚴禁追高攤平'
+                _v5_strategy = '嚴禁追高攤平，保護本金優先；可留意低基期高殖利率個股'
                 _v5_color = '#f85149'
             elif _v5_fut <= -15000:
                 _v5_stock, _v5_cash = 50, 50
-                _v5_strategy = '防禦策略：逢高減碼漲多個股，保留現金等待期空回補'
+                _v5_strategy = '收回資金，逢高減碼漲多個股，等待期空回補訊號'
                 _v5_color = '#d29922'
-            else:
-                _v5_stock, _v5_cash = 80, 20
-                _v5_strategy = '攻擊策略：精選強勢個股順勢操作，外投同買優先布局'
+            elif _v5_fut > 0:
+                _v5_stock, _v5_cash = 90, 10
+                _v5_strategy = '期貨翻多，順勢重壓強勢股，外投同買個股優先布局'
                 _v5_color = '#3fb950'
+            else:
+                _v5_stock, _v5_cash = 70, 30
+                _v5_strategy = '水位中性，依個股技術面操作，保留現金彈藥'
+                _v5_color = '#58a6ff'
             st.markdown(
                 f'<div style="border-left:5px solid {_v5_color};background:#0d1117;'
                 f'padding:9px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
