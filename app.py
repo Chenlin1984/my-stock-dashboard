@@ -4311,18 +4311,34 @@ padding:12px 16px;margin:8px 0;">
                     if _fgms_r.get('fgms') is not None:
                         _fv = _fgms_r['fgms']; _fl = _fgms_r['fgms_label']
                         _fc = '#3fb950' if _fv >= 60 else ('#d29922' if _fv >= 45 else '#f85149')
-                        # 子維度摘要
+                        # 子維度摘要（得分）
                         _fd_parts = []
-                        if _fgms_r['cl_momentum']   is not None: _fd_parts.append(f"合約負債:{_fgms_r['cl_momentum']:.0f}")
-                        if _fgms_r['inv_divergence'] is not None: _fd_parts.append(f"存貨背離:{_fgms_r['inv_divergence']:.0f}")
-                        if _fgms_r['three_rate']     is not None: _fd_parts.append(f"三率:{_fgms_r['three_rate']:.0f}")
+                        if _fgms_r['cl_momentum']    is not None: _fd_parts.append(f"合約負債:{_fgms_r['cl_momentum']:.0f}")
+                        if _fgms_r['inv_divergence']  is not None: _fd_parts.append(f"存貨背離:{_fgms_r['inv_divergence']:.0f}")
+                        if _fgms_r['three_rate']      is not None: _fd_parts.append(f"三率:{_fgms_r['three_rate']:.0f}")
                         if _fgms_r['capex_intensity'] is not None: _fd_parts.append(f"資本支出:{_fgms_r['capex_intensity']:.0f}")
                         _fd_str = '  '.join(_fd_parts)
+                        # 三率實際數值（最新季）
+                        _rate_parts = []
+                        if qtr2 is not None and not qtr2.empty:
+                            def _last_rate(col):
+                                if col in qtr2.columns:
+                                    _s = pd.to_numeric(qtr2[col], errors='coerce').dropna()
+                                    return f"{_s.iloc[-1]:.1f}%" if len(_s) else None
+                                return None
+                            _gm_v = _last_rate('毛利率'); _oi_v = _last_rate('營業利益率'); _ni_v = _last_rate('淨利率')
+                            if _gm_v: _rate_parts.append(f"毛利率{_gm_v}")
+                            if _oi_v: _rate_parts.append(f"營業利益率{_oi_v}")
+                            if _ni_v: _rate_parts.append(f"淨利率{_ni_v}")
+                        _rate_str = '  '.join(_rate_parts)
+                        _rate_line = (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">📊 三率實值：{_rate_str}</div>'
+                                      if _rate_str else '')
                         st.markdown(
                             f'<div style="background:#0d1117;border-left:3px solid {_fc};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
                             f'<span style="font-size:11px;color:#8b949e;">🔭 前瞻動能 FGMS</span>　'
                             f'<span style="font-size:13px;font-weight:700;color:{_fc};">FGMS {_fv:.0f}分 · {_fl}</span>'
                             f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">{_fd_str}</span>'
+                            f'{_rate_line}'
                             f'</div>', unsafe_allow_html=True
                         )
                 except Exception:
