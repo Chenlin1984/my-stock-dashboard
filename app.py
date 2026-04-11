@@ -2559,17 +2559,27 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     if _li4 is not None and not _li4.empty:
         _fut4 = (float(_li4.iloc[-1].get('外資大小', 0)) if '外資大小' in _li4.columns else None)
         _pcr4 = (float(_li4.iloc[-1].get('選PCR', 0)) if '選PCR' in _li4.columns else None)
+        _spot4 = (float(_li4.iloc[-1].get('外資', 0)) if '外資' in _li4.columns else None)
         if _fut4 is not None:
-            if _fut4 < -30000:
-                _l4c = f'外資期貨空單 {abs(_fut4):,.0f}口 > 3萬，啟動強制防禦'; _l4a = '強制減倉至20%以下，等待空單回補'
-            elif _fut4 < -10000:
-                _l4c = f'外資期貨偏空 {_fut4:,.0f}口，保守操作'; _l4a = '減少新買入，守好現有部位'
-            elif _fut4 > 10000:
-                _l4c = f'外資期貨留多 {_fut4:,.0f}口，法人看多'; _l4a = '可積極持股，跟隨外資方向'
-            else:
-                _l4c = f'外資期貨淨部位 {_fut4:,.0f}口，中性'; _l4a = '謹慎觀望，方向待確認'
             _pcr_txt = f' | PCR {_pcr4:.1f}' if _pcr4 else ''
-            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_pcr_txt}'
+            _spot_txt = f' | 現貨 {_spot4:+.0f}億' if _spot4 is not None else ''
+            _l4_ind = f'外資期貨 {_fut4:,.0f}口{_spot_txt}{_pcr_txt}'
+            # 期現貨背離矩陣
+            if _fut4 <= -30000 and (_spot4 is not None and _spot4 > 0):
+                _l4c = '外資鎖單避險（買現貨、空期貨），高檔誘多，隨時反轉倒貨'
+                _l4a = '嚴陣以待，持股壓低至 20%，停損紀律第一'
+            elif _fut4 <= -30000 and (_spot4 is None or _spot4 <= 0):
+                _l4c = '期現貨雙殺，外資毫無顧忌全面撤退，極度悲觀'
+                _l4a = '清倉跑路，現金為王，等待期貨空單大幅回補後再入場'
+            elif _fut4 >= 10000 and (_spot4 is not None and _spot4 > 0):
+                _l4c = '期現貨同步做多，外資熱錢狂潮，主升段燃料充足'
+                _l4a = '順勢重壓強勢股，持股 80~100%'
+            elif -10000 < _fut4 < 10000:
+                _l4c = '期貨籌碼中性，外資方向未明，以現貨與內資動向為主'
+                _l4a = '區間操作，持股 50%，等待方向確認'
+            else:
+                _l4c = f'外資期貨偏空 {_fut4:,.0f}口，保守操作'
+                _l4a = '減少新買入，守好現有部位，持股 30~50%'
         else:
             _l4c = '先行指標欄位異常，請確認 FinMind Token'; _l4a = ''; _l4_ind = '外資期貨留倉'
     else:
@@ -2732,21 +2742,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             pass
 
 
-        # ── v5.0 動態資產配置建議 (Task 12) ─────────────────────────────
+        # ── v5.0 動態資產配置建議（純現金策略，無 ETF）────────────────
         try:
-            if '_v4_veto' in dir():
-                _v5_alloc = get_defensive_allocation(_v4_veto.get('level','Safe'))
-                if _v5_alloc['stock_pct'] < 80 and _v5_alloc['etf_recommendations']:
-                    _etf_str = '、'.join(
-                        f"{eid}({DEFENSIVE_ETFS[eid]['name']})"
-                        for eid in _v5_alloc['etf_recommendations']
-                        if eid in DEFENSIVE_ETFS
-                    )
-                    st.info(
-                        f"💰 **v5 動態配置**：建議股票 {_v5_alloc['stock_pct']}% ／"
-                        f"債券 {_v5_alloc['bond_pct']}% ／現金 {_v5_alloc['cash_pct']}%\n"
-                        f"📌 防禦型 ETF：{_etf_str}"
-                    )
+            _v5_fut = float(_last_row.get('外資大小') or 0)
+            _v5_spot = float(_last_row.get('外資') or 0)
+            if _v5_fut <= -30000:
+                _v5_stock, _v5_cash = 20, 80
+                _v5_strategy = '防禦策略：鎖定非 ETF 之低基期高殖利率個股，嚴禁追高攤平'
+                _v5_color = '#f85149'
+            elif _v5_fut <= -15000:
+                _v5_stock, _v5_cash = 50, 50
+                _v5_strategy = '防禦策略：逢高減碼漲多個股，保留現金等待期空回補'
+                _v5_color = '#d29922'
+            else:
+                _v5_stock, _v5_cash = 80, 20
+                _v5_strategy = '攻擊策略：精選強勢個股順勢操作，外投同買優先布局'
+                _v5_color = '#3fb950'
+            st.markdown(
+                f'<div style="border-left:5px solid {_v5_color};background:#0d1117;'
+                f'padding:9px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
+                f'<span style="font-size:11px;color:#6e7681;">💰 v5 動態配置</span><br>'
+                f'<span style="font-size:14px;font-weight:900;color:{_v5_color};">'
+                f'建議股票 {_v5_stock}% ／現金 {_v5_cash}%</span><br>'
+                f'<span style="font-size:12px;color:#c9d1d9;">📌 {_v5_strategy}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
         except Exception:
             pass
 
