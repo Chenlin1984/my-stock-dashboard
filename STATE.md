@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `a495ce4` — ETF NAV MoneyDJ備援 + yfinance retry
+- **最新 commit**: `c38feb6` — STATE.md 存檔（對應 a495ce4 ETF NAV MoneyDJ備援）
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -69,6 +69,8 @@
 - [x] ETF折溢價日期錯位：Path B改用same-date inner join（+1.24%→正確-0.53%）✅
 - [x] SQ獲利品質得分：scoring_engine.calc_quality_score + 個股/排行tab顯示 ✅
 - [x] FGMS根本錯誤修復：`import pandas as pd` 漏加導致 NameError → 726c12a 已修 ✅
+- [ ] ETF NAV MoneyDJ：部署後確認 [ETF NAV] MoneyDJ log 是否成功（HTTP 200 + 找到淨值）
+- [ ] ETF NAV yfinance retry：若MoneyDJ失敗，確認 retry log 是否出現並最終取得 navPrice
 - [ ] 三率實值顯示：部署後確認毛利率/營業利益率/淨利率數值是否正常出現
 - [ ] FGMS分數顯示：部署後確認 fgms/cl_momentum/inv_divergence/three_rate/capex 各維度
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
