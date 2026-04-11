@@ -528,6 +528,7 @@ def calc_forward_momentum_score(quarterly_df=None, bs_cf_df=None,
     回傳 dict: fgms(0-100 or None), fgms_label, 分項 dict
     """
     import numpy as np
+    import pandas as pd
     _empty = {'fgms': None, 'fgms_label': '-',
               'cl_momentum': None, 'inv_divergence': None,
               'three_rate': None, 'capex_intensity': None}
