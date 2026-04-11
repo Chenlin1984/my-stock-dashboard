@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `f7084f8` — ETF折溢價根治（Path B改用same-date inner join）
+- **最新 commit**: `a495ce4` — ETF NAV MoneyDJ備援 + yfinance retry
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -44,6 +44,8 @@
 | `50ae5c7` | **FGMS debug log**: 加入 qtr_extra2/fgms/three_rate 狀態 print，供 Cloud 驗證 |
 | `726c12a` | **FGMS根本修復**: scoring_engine.calc_forward_momentum_score 補 `import pandas as pd`（NameError 根治）|
 | `f7084f8` | **ETF折溢價根治**: Path B舊±3天容差→同日inner join，NAV/市價日期錯位問題根除 |
+| `683a411` | **ETF NAV debug**: FinMind非200補log + _ver=3快取破解 |
+| `a495ce4` | **ETF NAV MoneyDJ備援**: 新增MoneyDJ爬蟲路徑(BeautifulSoup雙策略) + yfinance限速retry(2s/4s backoff) |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
