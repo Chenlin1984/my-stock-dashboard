@@ -3,8 +3,8 @@
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
-- **分支**: main（最新）
-- **最新 commit**: `726c12a` — 修復 FGMS 根本錯誤（scoring_engine 補 import pandas）
+- **分支**: claude/analyze-test-coverage-070Kf（開發中），main（上線）
+- **最新 commit**: `fa09590` — 新增基本面先行指標6大指標（模組一~四）
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -43,6 +43,12 @@
 | `ef197e3` | **FGMS三率實值顯示**: 個股頁面 FGMS 區塊加入毛利率/營業利益率/淨利率最新季實際數值（方便確認抓取狀態） |
 | `50ae5c7` | **FGMS debug log**: 加入 qtr_extra2/fgms/three_rate 狀態 print，供 Cloud 驗證 |
 | `726c12a` | **FGMS根本修復**: scoring_engine.calc_forward_momentum_score 補 `import pandas as pd`（NameError 根治）|
+| `f7084f8` | **ETF折溢價根治**: Path B舊±3天容差→同日inner join，NAV/市價日期錯位問題根除 |
+| `683a411` | **ETF NAV debug**: FinMind非200補log + _ver=3快取破解 |
+| `a495ce4` | **ETF NAV MoneyDJ備援**: 新增MoneyDJ爬蟲路徑(BeautifulSoup雙策略) + yfinance限速retry(2s/4s backoff) |
+| `0acdf64` | **ETF NAV三修**: _ver→ver(Streamlit快取破解修正) + curl_cffi模擬Chrome繞反爬 + info備援補log |
+| `b808b9a` | **移除錯誤備援**: 刪除yfinance info.navPrice備援路徑，NAV抓不到顯N/A不顯錯誤數字 |
+| `fa09590` | **基本面先行指標6大指標**: calc_leading_indicators_detail() 模組一~四 + 個股頁D2區塊 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -65,9 +71,13 @@
 - [x] ETF折溢價：FinMind自動偵測 nav/base_unit_net_value 欄位 + 試兩個dataset名稱 ✅
 - [x] SQ獲利品質得分：scoring_engine.calc_quality_score + 個股/排行tab顯示 ✅
 - [x] FGMS根本錯誤修復：`import pandas as pd` 漏加導致 NameError → 726c12a 已修 ✅
-- [ ] 三率實值顯示：部署後確認毛利率/營業利益率/淨利率數值是否正常出現
-- [ ] FGMS分數顯示：部署後確認 fgms/cl_momentum/inv_divergence/three_rate/capex 各維度
+- [x] 三率實值顯示：毛利率/營業利益率/淨利率最新季數值顯示於FGMS區塊 ✅
+- [x] FGMS分數顯示：fgms/cl_momentum/inv_divergence/three_rate/capex 各維度已顯示 ✅
+- [x] ETF折溢價錯誤數字：移除yfinance info備援，無法取得NAV時顯示N/A ✅
+- [x] ETF NAV MoneyDJ/curl_cffi：已部署，待Cloud log確認成功路徑
+- [x] 基本面先行指標D2區塊：I1~I6 6大指標計算+顯示 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
+- [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
 ## 🐞 長期已知限制
 - TWSE 直接 API 被 Streamlit Cloud IP 封鎖（`頁面無法執行`）→ 全部依賴 FinMind/openapi 備援
