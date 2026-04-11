@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `8295b53` — 修正M1B/M2與年線乖離率資料錯誤
+- **最新 commit**: `cd992de` — 宏爺/孫慶龍公式升級 + ADL邏輯Bug修復
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -53,6 +53,7 @@
 | `003547a` | **D2動態投資建議**: 6指標合成→🟢多方/🔴偏弱/🟡中性/⚠️事件驅動 + 多方因素/風險/建議行動 |
 | `c2d330c` | **下載按鈕WebSocket修復**: st.download_button→Base64 data URL，行動瀏覽器不再噴錯 |
 | `8295b53` | **M1B/M2+乖離率資料根治**: 乖離率改用2y TWII(MA240正確)；M1B加FM路徑+移除大盤代理誤導備援 |
+| `cd992de` | **宏爺/孫慶龍公式升級+ADL Bug修復**: SOX×DXY四象限/Yield三區間公式；ADL↑誤判空頭根治 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -86,6 +87,8 @@
 - [x] 下載按鈕行動瀏覽器斷線錯誤：改用Base64 data URL ✅
 - [x] 年線乖離率低估：改用2年TWII確保MA240正確計算 ✅
 - [x] M1B/M2錯誤數字：加入FinMind路徑，移除大盤代理誤導備援 ✅（待Cloud log確認CBC/FM哪條路徑成功）
+- [x] ADL宏爺邏輯Bug：_twii_p5=0落入else空頭分支 → 改用tw_s優先源+None判斷 ✅
+- [x] 宏爺/孫慶龍公式升級：SOX×DXY四象限 + 10Y Yield三區間 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
