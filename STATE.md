@@ -3,8 +3,8 @@
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
-- **分支**: main（最新）
-- **最新 commit**: `730481d` — 台股大盤Section二升級：股匯四象限精準公式
+- **分支**: main（已同步 dev 分支所有修復，2532009）
+- **最新 commit**: `2532009` — STATE.md: 記錄Section七年線乖離修復
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -98,6 +98,10 @@
 - [x] Section三籌碼公式：宏爺外資100億門檻 + 孫慶龍融資2800/3400億門檻 ✅
 - [x] Section四ETF遺毒根除：移除 00679B/00720B，v5改為純現金策略卡片 ✅
 - [x] Section四宏爺期現貨背離矩陣：4象限精準公式(鎖單避險/雙殺/主升段/中性) ✅
+- [x] Section四宏爺公式最終版：純期貨口數絕對門檻（≤-3萬強制防禦/≤-1.5萬收縮/微空持平/翻多積極）✅
+- [x] Section七年線乖離MultiIndex：yfinance 1.2.x MultiIndex展平+寬鬆欄位查找 ✅
+- [x] Section七M1B多路徑：FinMind改data非空判斷 + CBC三URL輪詢備援 ✅
+- [x] **main分支已同步**：dev分支20+commits全部合併至main並推送，Streamlit Cloud已觸發重新部署 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
