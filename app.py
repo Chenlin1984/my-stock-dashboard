@@ -2368,19 +2368,37 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
     _twii2 = tw_s.get('台股加權指數'); _twd2 = tw_s.get('新台幣匯率')
     if _twii2 and _twd2:
-        _tp = _twii2.get('pct', 0); _fp = _twd2.get('pct', 0)
-        if _tp > 0 and _fp < 0:
-            _t2c = f'台股漲 {_tp:+.1f}% + 台幣升值，外資匯入，確認多頭'; _t2a = '可持股或小幅加碼'
-        elif _tp > 0 and _fp >= 0:
-            _t2c = f'台股漲 {_tp:+.1f}% 但台幣貶值，疑似外資拉高出貨'; _t2a = '不追高，謹慎觀察'
-        elif _tp < 0 and _fp < 0:
-            _t2c = f'台股跌 {_tp:+.1f}% 但台幣升值，可能為技術回調非外資逃跑'; _t2a = '等待止跌訊號，勿貿然抄底'
+        _tp = _twii2.get('pct') ; _fp = _twd2.get('pct')
+        # 邊界防呆：API 回傳 None 時不崩潰
+        _tp = float(_tp) if _tp is not None else None
+        _fp = float(_fp) if _fp is not None else None
+        if _tp is not None and _fp is not None:
+            # 四象限資金流向判斷（fx>0=台幣貶值，fx<0=台幣升值）
+            if _tp > 0 and _fp < 0:
+                # 股匯雙漲：外資真實匯入
+                _t2c = f'台股 {_tp:+.1f}% ／ 台幣升值 {_fp:+.2f}% → 股匯雙漲，外資真金白銀匯入，權值股領軍'
+                _t2a = '順勢大膽作多，持股建議 80~100%'
+            elif _tp > 0 and _fp > 0:
+                # 股漲匯貶：疑似拉高出貨
+                _t2c = f'台股 {_tp:+.1f}% ／ 台幣貶值 {_fp:+.2f}% → 股漲匯貶，指數虛漲，疑似外資拉高出貨'
+                _t2a = '不追高，謹慎觀察，持股建議 50%'
+            elif _tp < 0 and _fp > 0:
+                # 股匯雙殺：外資大舉提款
+                _t2c = f'台股 {_tp:+.1f}% ／ 台幣貶值 {_fp:+.2f}% → 股匯雙殺，外資無情提款撤出'
+                _t2a = '嚴格減碼防守，持股建議 0~30%（現金為王）'
+            elif _tp < 0 and _fp < 0:
+                # 股跌匯升：技術性洗盤
+                _t2c = f'台股 {_tp:+.1f}% ／ 台幣升值 {_fp:+.2f}% → 股跌匯升，外資資金停泊未撤，技術性洗盤'
+                _t2a = '尋找錯殺優質股逢低布局，持股建議 50~70%'
+            else:
+                _t2c = f'台股 {_tp:+.1f}% ／ 台幣 {_fp:+.2f}%，無明顯方向性波動'; _t2a = '維持現有部位，靜待表態'
         else:
-            _t2c = f'台股跌 {_tp:+.1f}% + 台幣貶值，資金外逃，偏空格局'; _t2a = '降低持倉，保護本金'
-        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}% | 台幣 {_twd2.get("last",0):.2f}'
+            _t2c = f'台股資料載入中'; _t2a = '等待完整數據'
+            _tp = _twii2.get('pct', 0) or 0; _fp = _twd2.get('pct', 0) or 0
+        _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {(_tp or 0):+.1f}% | 台幣 {_twd2.get("last",0):.2f}'
     elif _twii2:
-        _tp = _twii2.get('pct', 0)
-        _t2c = f'台股 {_tp:+.1f}%，{"偏多" if _tp > 0 else "偏空"}'; _t2a = '參考其他指標確認方向'
+        _tp = _twii2.get('pct', 0) or 0
+        _t2c = f'台股 {_tp:+.1f}%，{"偏多" if _tp > 0 else "偏空"}（台幣資料未載入）'; _t2a = '參考其他指標確認方向'
         _t2_ind = f'加權 {_twii2.get("last",0):,.0f}pt {_tp:+.1f}%'
     else:
         _t2c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _t2a = ''; _t2_ind = '台股加權 + 台幣'
@@ -2400,26 +2418,39 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
                                 use_container_width=True,config={'displayModeBar':False})
         except Exception: pass
-    with st.expander('📖 宏爺 結論（台股 + 台幣）', expanded=False):
-        st.caption('💡 本節看「今天漲跌」和「台幣走向」。資金面M1B-M2見Section七。')
-        _twii = tw_s.get('台股加權指數')
-        _twd  = tw_s.get('新台幣匯率')
-        _mkt_r2 = st.session_state.get('mkt_info', {})
-        _concl_tw = []
-        if _twii: _concl_tw.append(f'台股 {_twii["last"]:,.0f}pt ({_twii["pct"]:+.1f}%) → {_twii["status"]}')
-        if _twd:  _concl_tw.append(f'台幣 {_twd["last"]:.2f} ({_twd["pct"]:+.2f}%)')
-        if _twii and _twd:
-            _is_bull_tw = _twii['pct'] > 0
-            _is_twd_up  = _twd['pct'] < 0  # 台幣升值 = 數字變小
-            if _is_bull_tw and _is_twd_up:
-                _concl_tw.append('✅ 台股漲+台幣升 → 外資匯入，真實多頭')
-            elif _is_bull_tw and not _is_twd_up:
-                _concl_tw.append('⚠️ 台股漲+台幣貶 → 疑似外資拉高出貨，需警戒')
-        if _mkt_r2:
-            _concl_tw.append(f'大盤評估：{_mkt_r2.get("label","--")} | 建議持股 {_mkt_r2.get("exposure_pct","--")}')
-        for _ct in _concl_tw:
-            st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_ct}</div>', unsafe_allow_html=True)
-        # 台股+台幣結論已由上方 _concl_tw 列表顯示
+    with st.expander('📖 宏爺 結論（股匯四象限）', expanded=False):
+        st.caption('💡 台幣 USD/TWD 漲(>0)=台幣貶值，跌(<0)=台幣升值。資金面M1B-M2見Section七。')
+        _twii_e = tw_s.get('台股加權指數')
+        _twd_e  = tw_s.get('新台幣匯率')
+        if _twii_e and _twd_e:
+            _tp_e = _twii_e.get('pct', 0) or 0
+            _fp_e = _twd_e.get('pct', 0) or 0
+            _quadrant_rows = [
+                (f'台股 {_twii_e["last"]:,.0f}pt ({_tp_e:+.1f}%)',
+                 f'台幣 {_twd_e["last"]:.2f} ({_fp_e:+.2f}%)'),
+            ]
+            if _tp_e > 0 and _fp_e < 0:
+                _quadrant_rows.append(('🟢 股匯雙漲（真實多頭）',
+                    '外資真金白銀匯入，順勢大膽作多 → 持股 80~100%'))
+            elif _tp_e > 0 and _fp_e > 0:
+                _quadrant_rows.append(('⚠️ 股漲匯貶（拉高出貨警戒）',
+                    '指數虛漲，疑似外資拉高出貨或純內資自嗨 → 不追高，持股 50%'))
+            elif _tp_e < 0 and _fp_e > 0:
+                _quadrant_rows.append(('🔴 股匯雙殺（外資大舉提款）',
+                    '外資無情撤出，面臨系統性修正 → 嚴格減碼，持股 0~30%'))
+            elif _tp_e < 0 and _fp_e < 0:
+                _quadrant_rows.append(('🟡 股跌匯升（技術性洗盤）',
+                    '外資資金停泊台灣未撤離，尋找錯殺優質股 → 持股 50~70%'))
+            else:
+                _quadrant_rows.append(('⚪ 無明顯方向', '靜待表態，維持現有部位'))
+            for _qt in _quadrant_rows:
+                _label = _qt[0]; _act = _qt[1] if len(_qt) > 1 else ''
+                st.markdown(
+                    f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">'
+                    f'{_label}'
+                    + (f' → <span style="color:#8b949e;">{_act}</span>' if _act else '')
+                    + '</div>', unsafe_allow_html=True
+                )
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
