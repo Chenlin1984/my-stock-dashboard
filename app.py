@@ -2664,12 +2664,21 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _raw_items.append(f'{_c}={_v}')
                 st.code(' | '.join(_raw_items), language=None)
 
-        # ── ⑤ 下載按鈕 ────────────────────────────────────────────────
-        st.download_button(
-            '⬇️ 下載先行指標 CSV',
-            data=df_li_show.to_csv(index=False, encoding='utf-8-sig'),
-            file_name='先行指標.csv', mime='text/csv', key='li_dl'
-        )
+        # ── ⑤ 下載按鈕（Base64 data URL，不依賴 WebSocket）──────
+        try:
+            import base64 as _b64_li
+            _csv_li = df_li_show.to_csv(index=False, encoding='utf-8-sig')
+            _b64_li_data = _b64_li.b64encode(_csv_li.encode('utf-8-sig')).decode()
+            st.markdown(
+                f'<a href="data:text/csv;charset=utf-8-sig;base64,{_b64_li_data}" '
+                f'download="先行指標.csv" '
+                f'style="display:inline-block;padding:5px 14px;background:#21262d;'
+                f'color:#e6edf3;border:1px solid #30363d;border-radius:6px;'
+                f'font-size:13px;text-decoration:none;">⬇️ 下載先行指標 CSV</a>',
+                unsafe_allow_html=True
+            )
+        except Exception:
+            pass
 
     elif cd:
         # 已有其他總經數據但先行指標失敗 → 顯示診斷
