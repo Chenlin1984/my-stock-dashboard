@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `c38feb6` — STATE.md 存檔（對應 a495ce4 ETF NAV MoneyDJ備援）
+- **最新 commit**: `0acdf64` — ETF NAV 三修（ver快取破解 + curl_cffi + 備援log）
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -46,6 +46,7 @@
 | `f7084f8` | **ETF折溢價根治**: Path B舊±3天容差→同日inner join，NAV/市價日期錯位問題根除 |
 | `683a411` | **ETF NAV debug**: FinMind非200補log + _ver=3快取破解 |
 | `a495ce4` | **ETF NAV MoneyDJ備援**: 新增MoneyDJ爬蟲路徑(BeautifulSoup雙策略) + yfinance限速retry(2s/4s backoff) |
+| `0acdf64` | **ETF NAV三修**: _ver→ver(Streamlit快取破解修正) + curl_cffi模擬Chrome繞反爬 + info備援補log |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -69,8 +70,8 @@
 - [x] ETF折溢價日期錯位：Path B改用same-date inner join（+1.24%→正確-0.53%）✅
 - [x] SQ獲利品質得分：scoring_engine.calc_quality_score + 個股/排行tab顯示 ✅
 - [x] FGMS根本錯誤修復：`import pandas as pd` 漏加導致 NameError → 726c12a 已修 ✅
-- [ ] ETF NAV MoneyDJ：部署後確認 [ETF NAV] MoneyDJ log 是否成功（HTTP 200 + 找到淨值）
-- [ ] ETF NAV yfinance retry：若MoneyDJ失敗，確認 retry log 是否出現並最終取得 navPrice
+- [ ] ETF NAV MoneyDJ/curl_cffi：部署後確認 log 路徑（MoneyDJ HTTP 200 成功 or 403）
+- [ ] 若仍顯示 [折溢價-info備援]→代表所有路徑失敗，navPrice 過舊是根本原因需換源
 - [ ] 三率實值顯示：部署後確認毛利率/營業利益率/淨利率數值是否正常出現
 - [ ] FGMS分數顯示：部署後確認 fgms/cl_momentum/inv_divergence/three_rate/capex 各維度
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
