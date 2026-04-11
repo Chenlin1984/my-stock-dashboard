@@ -383,13 +383,7 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                         return {'nav': _nav_v, 'price': _pr_v,
                                 'premium_pct': _prem, 'warning': _prem > 1.0}
 
-        # ── 備援：yfinance info（此路徑 navPrice 可能過舊，結果僅供參考）──
-        nav   = info.get('navPrice') or info.get('regularMarketNAV')
-        price = float(df['Close'].iloc[-1]) if not df.empty else None
-        if nav and price:
-            prem = round((price - nav) / nav * 100, 2)
-            print(f'[折溢價-info備援] {ticker}: nav={nav} price={price} prem={prem}% (yfinance info，可能過舊)')
-            return {'nav': nav, 'price': price, 'premium_pct': prem, 'warning': prem > 1.0}
+        print(f'[折溢價] {ticker}: 所有路徑失敗，回傳 N/A')
     except Exception as _ep:
         import traceback as _tb_p; print(f'[折溢價] 錯誤: {_ep}'); _tb_p.print_exc()
     return {'nav': None, 'price': None, 'premium_pct': None, 'warning': False}
