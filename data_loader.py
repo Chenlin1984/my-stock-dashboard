@@ -1400,6 +1400,13 @@ class StockDataLoader:
             _CX_KEYS  = ['AcquisitionOfPropertyPlantAndEquipment',
                          'PropertyAndPlantAndEquipment',
                          '取得不動產、廠房及設備', '購置不動產、廠房及設備', '資本支出']
+            # 處分PP&E現金流入（偵測賣廠等重大資產處分）
+            _DISP_KEYS = ['ProceedsFromDisposalOfPropertyPlantAndEquipment',
+                          'SaleOfPropertyPlantAndEquipment',
+                          'DisposalOfPropertyPlantAndEquipment',
+                          '處分不動產、廠房及設備之現金流入',
+                          '出售不動產、廠房及設備收入',
+                          '處分固定資產收入']
 
             _records = []
             for _d in _all_dates:
@@ -1408,10 +1415,12 @@ class StockDataLoader:
                     _yr = _ts.year; _qt = ((_ts.month - 1) // 3) + 1
                     _lbl = f'{_yr}Q{_qt}'
                 except: continue
-                _cl  = _val(_bs_map, _d, _CL_KEYS)
-                _inv = _val(_bs_map, _d, _INV_KEYS)
-                _cx  = _val(_cf_map, _d, _CX_KEYS)
-                _records.append({'季度標籤': _lbl, '合約負債': _cl, '存貨': _inv, '資本支出': _cx})
+                _cl   = _val(_bs_map, _d, _CL_KEYS)
+                _inv  = _val(_bs_map, _d, _INV_KEYS)
+                _cx   = _val(_cf_map, _d, _CX_KEYS)
+                _disp = _val(_cf_map, _d, _DISP_KEYS)
+                _records.append({'季度標籤': _lbl, '合約負債': _cl, '存貨': _inv,
+                                  '資本支出': _cx, '處分資產現金流入': _disp})
 
             if not _records:
                 return None, f"{stock_id} BS+CF：日期解析失敗"
@@ -1419,7 +1428,7 @@ class StockDataLoader:
             df_extra = pd.DataFrame(_records)
             df_extra = df_extra.drop_duplicates(subset=['季度標籤'], keep='last')
             df_extra = df_extra.sort_values('季度標籤').tail(12).reset_index(drop=True)
-            print(f'[BS/CF] {stock_id}: ✅ {len(df_extra)} 季 CL={df_extra["合約負債"].notna().sum()} INV={df_extra["存貨"].notna().sum()} CX={df_extra["資本支出"].notna().sum()}')
+            print(f'[BS/CF] {stock_id}: ✅ {len(df_extra)} 季 CL={df_extra["合約負債"].notna().sum()} INV={df_extra["存貨"].notna().sum()} CX={df_extra["資本支出"].notna().sum()} DISP={df_extra["處分資產現金流入"].notna().sum()}')
             return df_extra, None
 
         except Exception as _e_bscf:

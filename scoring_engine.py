@@ -820,30 +820,57 @@ def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> l
 
     # ─────────────────────────────────────────────────
     # 模組二 I4：資本支出強度（CapEx / Revenue YoY 變化）
+    #   Edge Case：偵測重大資產處分（賣廠），避免將賣廠後的
+    #   資本支出帳面衰退誤判為「縮減投資」紅燈懲罰。
+    #   觸發條件：處分資產現金流入 / CapEx_TTM > 2.0
+    #   → 暫停懲罰，改標記「⚠️ 事件驅動」觀察名單
     # ─────────────────────────────────────────────────
     try:
         if (bs_cf_df is not None and not bs_cf_df.empty and '資本支出' in bs_cf_df.columns
                 and qtr_df is not None and not qtr_df.empty and '營收' in qtr_df.columns):
             _cx = pd.to_numeric(bs_cf_df['資本支出'], errors='coerce').dropna()
             _rv = pd.to_numeric(qtr_df['營收'], errors='coerce').dropna()
+
+            # 處分資產現金流入（有則計算，無則視為 0）
+            _disp_ttm = 0.0
+            if '處分資產現金流入' in bs_cf_df.columns:
+                _disp = pd.to_numeric(bs_cf_df['處分資產現金流入'], errors='coerce').fillna(0)
+                _disp_ttm = float(_disp.tail(4).sum())
+
             if len(_cx) >= 4 and len(_rv) >= 4:
                 _cx_ttm  = float(_cx.tail(4).sum())
                 _cx_prev = float(_cx.iloc[-8:-4].sum()) if len(_cx) >= 8 else float(_cx.head(4).sum())
                 _rv_ttm  = float(_rv.tail(4).sum())
                 _rv_prev = float(_rv.iloc[-8:-4].sum()) if len(_rv) >= 8 else float(_rv.head(4).sum())
+
+                # ── 重大資產處分偵測（Edge Case: 賣廠/轉型股）────────
+                _event_driven = (_cx_ttm > 0 and _disp_ttm / _cx_ttm > 2.0)
+
                 if _rv_ttm > 0 and _rv_prev > 0:
                     _ratio_now  = _cx_ttm  / _rv_ttm
                     _ratio_prev = _cx_prev / _rv_prev
                     _ratio_chg  = (_ratio_now - _ratio_prev) / _ratio_prev * 100 if _ratio_prev > 0 else 0
-                    if _ratio_chg > 15:
+
+                    if _event_driven:
+                        # 暫停正常懲罰邏輯，標記事件驅動
+                        _disp_b = _disp_ttm / 1e8
+                        _sig = '🟡'
+                        _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
+                        _detail = (f'⚠️ 事件驅動：偵測到重大資產處分現金流入 {_disp_b:.1f}億'
+                                   f'（約{_disp_ttm/_cx_ttm:.1f}×CapEx），'
+                                   f'資本支出比較基期失真，移出純成長評估')
+                    elif _ratio_chg > 15:
                         _sig = '🟢'; _detail = f'資本支出/營收比率YoY上升{_ratio_chg:.0f}%，積極擴產訊號'
+                        _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
                     elif _ratio_chg > 0:
                         _sig = '🟡'; _detail = f'資本支出/營收比率小幅提升{_ratio_chg:.0f}%，維持投入'
+                        _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
                     elif _ratio_chg > -20:
                         _sig = '🟡'; _detail = f'資本支出/營收比率小幅收縮{_ratio_chg:.0f}%，尚可'
+                        _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
                     else:
                         _sig = '🔴'; _detail = f'資本支出/營收比率大幅下滑{_ratio_chg:.0f}%，縮減投資'
-                    _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
+                        _val = f'CapEx率: {_ratio_now*100:.1f}% (YoY {_ratio_chg:+.0f}%)'
                 else:
                     _sig = '⚪'; _val = 'N/A'; _detail = '營收資料不足'
             else:
@@ -857,20 +884,30 @@ def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> l
 
     # ─────────────────────────────────────────────────
     # 模組三 I5：存貨銷售比連續下降
+    #   Edge Case：賣廠後存貨可能隨廠一併移轉，造成存貨
+    #   急降，誤判為「庫存去化加速」的正向訊號。
+    #   若 I4 偵測到重大資產處分，同步標記 I5 為「⚠️ 事件驅動」
     # ─────────────────────────────────────────────────
     try:
+        # 重用 I4 已計算的處分資產偵測結果
+        _i5_event_driven = False
+        if bs_cf_df is not None and '處分資產現金流入' in bs_cf_df.columns:
+            _disp5 = pd.to_numeric(bs_cf_df['處分資產現金流入'], errors='coerce').fillna(0)
+            _cx5   = pd.to_numeric(bs_cf_df.get('資本支出', pd.Series(dtype=float)), errors='coerce').fillna(0)
+            _disp5_ttm = float(_disp5.tail(4).sum())
+            _cx5_ttm   = float(_cx5.tail(4).sum())
+            _i5_event_driven = (_cx5_ttm > 0 and _disp5_ttm / _cx5_ttm > 2.0)
+
         if (bs_cf_df is not None and not bs_cf_df.empty and '存貨' in bs_cf_df.columns
                 and qtr_df is not None and not qtr_df.empty and '營收' in qtr_df.columns):
             _inv = pd.to_numeric(bs_cf_df['存貨'], errors='coerce')
             _rv  = pd.to_numeric(qtr_df['營收'],    errors='coerce')
-            # 計算最近 4 季的存貨/季營收比
             _inv_clean = _inv.dropna()
             _rv_clean  = _rv.dropna()
             if len(_inv_clean) >= 3 and len(_rv_clean) >= 3:
                 _n = min(len(_inv_clean), len(_rv_clean), 4)
                 _inv_tail = _inv_clean.iloc[-_n:].values
                 _rv_tail  = _rv_clean.iloc[-_n:].values
-                # 只保留存貨>0的季度
                 _valid = [(_inv_tail[i], _rv_tail[i]) for i in range(_n)
                           if _inv_tail[i] > 0 and _rv_tail[i] > 0]
                 if len(_valid) >= 2:
@@ -878,7 +915,13 @@ def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> l
                     _last_r = _ratios[-1]; _prev_r = _ratios[-2]
                     _all_down = all(_ratios[i] <= _ratios[i-1] for i in range(1, len(_ratios)))
                     _pct_chg  = (_last_r - _prev_r) / _prev_r * 100
-                    if _all_down and len(_ratios) >= 3:
+                    _val = f'存貨率: {_last_r:.2f}x (QoQ {_pct_chg:+.0f}%)'
+
+                    if _i5_event_driven and _pct_chg < -10:
+                        # 存貨急降但同期有重大資產處分 → 可能是廠房移轉帶走存貨
+                        _sig = '🟡'
+                        _detail = f'⚠️ 事件驅動：存貨大降{_pct_chg:.0f}%，但同期偵測重大資產處分，去化原因需確認'
+                    elif _all_down and len(_ratios) >= 3:
                         _sig = '🟢'; _detail = f'存貨/銷售比連續{len(_ratios)}季下降，去化速度加快'
                     elif _pct_chg < -10:
                         _sig = '🟢'; _detail = f'存貨/銷售比單季大降{_pct_chg:.0f}%，庫存快速去化'
@@ -888,7 +931,6 @@ def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> l
                         _sig = '🟡'; _detail = f'存貨/銷售比小幅上升{_pct_chg:.0f}%，尚在合理範圍'
                     else:
                         _sig = '🔴'; _detail = f'存貨/銷售比上升{_pct_chg:.0f}%，庫存積壓風險'
-                    _val = f'存貨率: {_last_r:.2f}x (QoQ {_pct_chg:+.0f}%)'
                 else:
                     _sig = '⚪'; _val = 'N/A'; _detail = '存貨為零（服務業/金融股），跳過此項'
             else:
