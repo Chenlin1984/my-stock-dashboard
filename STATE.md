@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: 持續修復中
 - **分支**: main（最新）
-- **最新 commit**: `003547a` — D2下方新增動態投資建議區塊
+- **最新 commit**: `8295b53` — 修正M1B/M2與年線乖離率資料錯誤
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -51,6 +51,8 @@
 | `fa09590` | **基本面先行指標6大指標**: calc_leading_indicators_detail() 模組一~四 + 個股頁D2區塊 |
 | `6d92f72` | **Edge Case防護**: 重大資產處分偵測（處分流入/CapEx>2×）→ I4/I5暫停懲罰改標⚠️事件驅動 |
 | `003547a` | **D2動態投資建議**: 6指標合成→🟢多方/🔴偏弱/🟡中性/⚠️事件驅動 + 多方因素/風險/建議行動 |
+| `c2d330c` | **下載按鈕WebSocket修復**: st.download_button→Base64 data URL，行動瀏覽器不再噴錯 |
+| `8295b53` | **M1B/M2+乖離率資料根治**: 乖離率改用2y TWII(MA240正確)；M1B加FM路徑+移除大盤代理誤導備援 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -81,6 +83,9 @@
 - [x] 基本面先行指標D2區塊：I1~I6 6大指標計算+顯示 ✅
 - [x] Edge Case賣廠誤判：I4/I5重大資產處分偵測，暫停懲罰改標⚠️事件驅動 ✅
 - [x] D2動態投資建議：6指標合成多方/偏弱/中性/事件驅動 + 建議行動 ✅
+- [x] 下載按鈕行動瀏覽器斷線錯誤：改用Base64 data URL ✅
+- [x] 年線乖離率低估：改用2年TWII確保MA240正確計算 ✅
+- [x] M1B/M2錯誤數字：加入FinMind路徑，移除大盤代理誤導備援 ✅（待Cloud log確認CBC/FM哪條路徑成功）
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
