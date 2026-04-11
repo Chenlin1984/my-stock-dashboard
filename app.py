@@ -2287,20 +2287,42 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
     st.markdown(section_header('一','🌍 國際市場動態（影響台股的全球指標）','🌐'), unsafe_allow_html=True)
     _sox1 = intl_s.get('費城半導體 SOX'); _dji1 = intl_s.get('道瓊工業 DJI')
-    if _sox1 and _dji1:
-        _sp = _sox1.get('pct', 0); _dp = _dji1.get('pct', 0)
-        if _sp > 1 and _dp > 0:
-            _i1c = f'費半+道瓊同步上漲（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日可偏多'; _i1a = '科技股+台積電可持有'
-        elif _sp < -2 or _dp < -2:
-            _i1c = f'美股重挫（SOX {_sp:+.1f}% / DJI {_dp:+.1f}%），台股明日開低機率高'; _i1a = '謹慎減倉，等待止跌訊號'
-        elif _sp < 0 and _dp < 0:
-            _i1c = f'美股雙跌（SOX {_sp:+.1f}%），台股偏空謹慎'; _i1a = '觀望，不追高'
+    _dxy1 = intl_s.get('美元指數 DXY');  _tyx1 = intl_s.get('10Y公債殖利率')
+
+    # ── 宏爺：SOX × DXY 動態結論 ─────────────────────────────
+    _sox_pct = _sox1.get('pct', None) if _sox1 else None
+    _dxy_val = _dxy1.get('last', None) if _dxy1 else None
+    _tyx_val = _tyx1.get('last', None) if _tyx1 else None
+
+    if _sox_pct is not None and _dxy_val is not None:
+        if _sox_pct >= 1.5 and _dxy_val < 100:
+            _i1c = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f} → 熱錢狂潮，重壓電子強勢股'; _i1a = '台積電/矽力/聯發科可積極持有'
+        elif _sox_pct <= -1.5 and _dxy_val >= 103:
+            _i1c = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f} → 外資提款，電子股嚴格減碼'; _i1a = '降倉至 3 成以下，等待 DXY 回落'
+        elif _sox_pct >= 1.0 and _dxy_val >= 100:
+            _i1c = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f} → 內資控盤，精選中小型題材股'; _i1a = '避開外資重倉大型權值，找內資題材'
+        elif _sox_pct <= -1.5:
+            _i1c = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f} → 費半重挫，台股科技開低機率高'; _i1a = '設好停損，避免隔日追殺'
         else:
-            _i1c = f'費半 {_sp:+.1f}%，走勢分化，方向未定'; _i1a = '等待費半方向確認再行動'
-        _i1_ind = f'SOX {_sp:+.1f}% / DJI {_dp:+.1f}%'
+            _i1c = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f} → 走勢分化，方向未明'; _i1a = '降部位等待費半方向確認'
+        _i1_ind = f'SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f}'
+    elif _sox1 and _dji1:
+        _sp = _sox1.get('pct', 0); _dp = _dji1.get('pct', 0)
+        _i1c = f'費半 {_sp:+.1f}% / 道瓊 {_dp:+.1f}%（DXY 資料未載入）'; _i1a = '等待完整數據確認'
+        _i1_ind = f'SOX {_sp:+.1f}%'
     else:
-        _i1c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _i1a = ''; _i1_ind = '費半+道瓊'
+        _i1c = '數據尚未載入，請點擊「🔄 更新全部總經數據」'; _i1a = ''; _i1_ind = '費半+美元'
     st.markdown(teacher_conclusion('宏爺', _i1_ind, _i1c, _i1a), unsafe_allow_html=True)
+
+    # ── 孫慶龍：10Y Yield 動態結論 ─────────────────────────────
+    if _tyx_val is not None:
+        if _tyx_val >= 4.8:
+            _sql_c = f'10Y殖利率 {_tyx_val:.2f}% → 系統風險！無風險利率飆升，本益比大幅下修'; _sql_a = '保留現金，嚴格控制槓桿'
+        elif _tyx_val >= 4.5:
+            _sql_c = f'10Y殖利率 {_tyx_val:.2f}% → 估值承壓，資金成本上升'; _sql_a = '避開高本夢比個股，轉向低本益比價值股'
+        else:
+            _sql_c = f'10Y殖利率 {_tyx_val:.2f}% → 總經安全，利率溫和股市友善'; _sql_a = '精選低基期價值股，可適度持有'
+        st.markdown(teacher_conclusion('孫慶龍', f'10Y {_tyx_val:.2f}%', _sql_c, _sql_a), unsafe_allow_html=True)
     ci = st.columns(len(INTL_UNIT))
     for col,(name,unit) in zip(ci,INTL_UNIT.items()):
         with col: st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
@@ -2317,19 +2339,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
                             use_container_width=True,config={'displayModeBar':False})
-    with st.expander('📖 宏爺 結論', expanded=False):
-        # 動態結論：根據真實資料
-        _sox = intl_s.get('費城半導體 SOX')
-        _dxy = intl_s.get('美元指數 DXY')
-        _tyx = intl_s.get('10Y公債殖利率')
-        _concl_intl = []
-        if _sox: _concl_intl.append(f'費半 {_sox["last"]:.0f} ({_sox["pct"]:+.1f}%) → {"⚠️ 半導體領先走弱" if _sox["pct"]<-1 else "✅ 半導體強勁"}')
-        if _tyx: _concl_intl.append(f'10Y殖利率 {_tyx["last"]:.2f}% → {"⚠️ >4.5% 科技股承壓" if _tyx["last"]>4.5 else "✅ 利率溫和，科技股友善"}')
-        if _dxy: _concl_intl.append(f'美元指數 {_dxy["last"]:.1f} {_dxy["status"]} → {"⚠️ 美元強→外資撤新興市場" if _dxy["pct"]>0.5 else "✅ 美元弱→資金流入新興市場"}')
-        if _concl_intl:
-            for _ci in _concl_intl:
-                st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_ci}</div>', unsafe_allow_html=True)
-        # 國際三指標結論已由上方 _concl_intl 列表顯示
+    with st.expander('📖 宏爺 × 孫慶龍 結論（SOX/DXY/殖利率公式）', expanded=False):
+        _expander_rows = []
+        if _sox_pct is not None and _dxy_val is not None:
+            if _sox_pct >= 1.5 and _dxy_val < 100:
+                _expander_rows.append(('🟢', f'宏爺 — 熱錢狂潮 (SOX {_sox_pct:+.1f}% ≥1.5% ∩ DXY {_dxy_val:.1f} <100)', '重壓電子強勢股'))
+            elif _sox_pct <= -1.5 and _dxy_val >= 103:
+                _expander_rows.append(('🔴', f'宏爺 — 外資提款 (SOX {_sox_pct:+.1f}% ∩ DXY {_dxy_val:.1f} ≥103)', '降倉至 3 成以下'))
+            elif _sox_pct >= 1.0 and _dxy_val >= 100:
+                _expander_rows.append(('🟡', f'宏爺 — 內資控盤 (SOX {_sox_pct:+.1f}% ≥1.0% ∩ DXY {_dxy_val:.1f} ≥100)', '精選中小型題材股'))
+            else:
+                _expander_rows.append(('⚪', f'宏爺 — 走勢分化 (SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f})', '降部位等待確認'))
+        if _tyx_val is not None:
+            if _tyx_val >= 4.8:
+                _expander_rows.append(('🔴', f'孫慶龍 — 系統風險 (10Y {_tyx_val:.2f}% ≥4.8%)', '保留現金，嚴控槓桿'))
+            elif _tyx_val >= 4.5:
+                _expander_rows.append(('🟡', f'孫慶龍 — 估值承壓 (10Y {_tyx_val:.2f}% 4.5~4.8%)', '避開高本夢比個股'))
+            else:
+                _expander_rows.append(('🟢', f'孫慶龍 — 總經安全 (10Y {_tyx_val:.2f}% <4.5%)', '精選低基期價值股'))
+        for _ico, _txt, _act in _expander_rows:
+            st.markdown(
+                f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">'
+                f'{_ico} {_txt} → <span style="color:#8b949e;">{_act}</span></div>',
+                unsafe_allow_html=True
+            )
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
@@ -2791,13 +2824,22 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _ac5 = next((c for c in _adl5.columns if 'adl' in c.lower()), _adl5.columns[0])
         _adl_vals5 = _adl5[_ac5].dropna().tail(5)
         _adl_up5 = (len(_adl_vals5) >= 2 and float(_adl_vals5.iloc[-1]) > float(_adl_vals5.iloc[0]))
-        _twii_p5 = _mkt5.get('台股加權指數', {}).get('pct', 0) if isinstance(_mkt5.get('台股加權指數'), dict) else 0
-        if _adl_up5 and _twii_p5 > 0:
+        # 優先從 tw_s 取當日漲跌 %（比 mkt_info 更可靠），fallback 到 mkt5
+        _twii_s5 = tw_s.get('台股加權指數') or {}
+        _twii_p5 = _twii_s5.get('pct') if isinstance(_twii_s5, dict) and _twii_s5.get('pct') is not None \
+                   else (_mkt5.get('台股加權指數', {}).get('pct', None) if isinstance(_mkt5.get('台股加權指數'), dict) else None)
+        # Bug fix：_twii_p5=0 或 None 時，依 ADL 方向判斷（不能落入空頭 else）
+        _idx_up = (_twii_p5 is not None and _twii_p5 > 0)
+        _idx_dn = (_twii_p5 is not None and _twii_p5 < 0)
+        if _adl_up5 and _idx_up:
             _a5c = '廣泛多頭：ADL↑+指數↑，市場健康，全面性上漲'; _a5a = '可積極持股'
-        elif not _adl_up5 and _twii_p5 > 0:
-            _a5c = '⚠️ 背離警訊：指數漲但ADL↓，行情由少數權值股撐，不可追'; _a5a = '謹慎，不追高，等待廣度改善'
-        elif _adl_up5 and _twii_p5 < 0:
+        elif _adl_up5 and _idx_dn:
             _a5c = 'ADL↑但指數跌，廣度健康，或為技術回調非崩盤'; _a5a = '可留意回調後逢低布局'
+        elif _adl_up5:
+            # ADL上升但指數資料不足/持平 → 廣度健康，中性偏多
+            _a5c = 'ADL↑廣度健康，指數方向待確認（持平或資料更新中）'; _a5a = '維持現有部位，等待指數方向確認'
+        elif not _adl_up5 and _idx_up:
+            _a5c = '⚠️ 背離警訊：指數漲但ADL↓，行情由少數權值股撐，不可追'; _a5a = '謹慎，不追高，等待廣度改善'
         else:
             _a5c = '廣泛賣壓：ADL↓+指數↓，空頭格局，降低部位'; _a5a = '降低持倉，保護本金'
         _a5_ind = f'ADL近5日{"↑上升" if _adl_up5 else "↓下降"}'
