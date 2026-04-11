@@ -2471,8 +2471,14 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             st.plotly_chart(bar_chart_institutional(inst),use_container_width=True,config={'displayModeBar':False})
             _mkt_ref = st.session_state.get('mkt_info',{})
             if abs(_f_net) > 5:
-                _fc2 = '#da3633' if _f_net > 0 else '#2ea043'
-                _fl2 = f'✅ 外資買超 {_f_net:.1f}億' if _f_net > 0 else f'🔴 外資賣超 {abs(_f_net):.1f}億'
+                if _f_net >= 100:
+                    _fc2 = '#3fb950'; _fl2 = f'🟢 外資大買 {_f_net:.1f}億 → 大戶點火'
+                elif _f_net <= -100:
+                    _fc2 = '#f85149'; _fl2 = f'🔴 外資大賣 {abs(_f_net):.1f}億 → 大戶倒貨'
+                elif _f_net > 0:
+                    _fc2 = '#8b949e'; _fl2 = f'⚪ 外資小買 {_f_net:.1f}億（觀望區間）'
+                else:
+                    _fc2 = '#8b949e'; _fl2 = f'⚪ 外資小賣 {abs(_f_net):.1f}億（觀望區間）'
                 st.markdown(f'<span style="color:{_fc2};font-size:12px;font-weight:700;">{_fl2}</span>', unsafe_allow_html=True)
         else:
             _now_h = _tw_now().hour
@@ -2487,41 +2493,59 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if _margin_is_cached:
             st.caption('⚠️ 快取資料（最後已知融資餘額）')
         if margin:
-            mc = '#f85149' if margin>3400 else ('#d29922' if margin>2500 else '#3fb950')
-            ml = '🔴極度危險' if margin>3400 else ('🟡警戒' if margin>2500 else '🟢安全')
+            mc = '#f85149' if margin >= 3400 else ('#d29922' if margin >= 2800 else '#3fb950')
+            ml = '🔴泡沫尾端' if margin >= 3400 else ('🟡警戒區' if margin >= 2800 else '🟢籌碼乾淨')
             st.markdown(f'<div style="color:{mc};font-size:13px;font-weight:700;margin-top:6px;">{ml}</div>', unsafe_allow_html=True)
             _mkt_r = st.session_state.get('mkt_info', {})
-            if margin > 2500 and _mkt_r.get('regime') == 'bull':
-                st.warning('⚠️ 市場偏多但融資過高，注意假突破風險')
-            elif margin and margin <= 2000 and _mkt_r.get('regime') == 'bull':
+            if margin >= 2800 and _mkt_r.get('regime') == 'bull':
+                st.warning('⚠️ 市場偏多但融資水位偏高，注意假突破風險')
+            elif margin and margin < 2800 and _mkt_r.get('regime') == 'bull':
                 st.success('✅ 融資乾淨 + 市場偏多 = 健康多頭格局')
     with st.expander('📖 孫慶龍 · 宏爺 結論', expanded=False):
-        # 連動結論
-        _inst_concl = []
         if inst:
-            _fk3 = next((k for k in inst if '外資' in k), None)
-            if _fk3 is None: _fk3 = next((k for k in inst if '外資' in k), None)
+            _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
             _tk3 = next((k for k in inst if '投信' in k), None)
             _fn3 = inst[_fk3]['net'] if _fk3 else 0
             _tn3 = inst[_tk3]['net'] if _tk3 else 0
-            if _fn3 > 10: _inst_concl.append(f'✅ 外資買超 {_fn3:.1f}億 → 宏爺：跟著大戶走')
-            elif _fn3 < -10: _inst_concl.append(f'🔴 外資賣超 {abs(_fn3):.1f}億 → 宏爺：準備降倉')
-            if _tn3 > 5: _inst_concl.append(f'✅ 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號')
-        if margin:
-            if margin > 3400: _inst_concl.append(f'🔴 融資 {margin:.0f}億（極度危險）→ 孫慶龍：行情尾端訊號')
-            elif margin > 2500: _inst_concl.append(f'⚠️ 融資 {margin:.0f}億（警戒）→ 孫慶龍：需提高警惕')
-            else: _inst_concl.append(f'✅ 融資 {margin:.0f}億（安全）→ 孫慶龍：籌碼健康')
-        for _ic in _inst_concl:
-            _ic_clean = _ic.replace('✅','').replace('⚠️','').replace('🔴','').strip()
-            if '→' in _ic_clean:
-                _parts = _ic_clean.split('→', 1)
-                _ind3, _res3 = _parts[0].strip(), _parts[1].strip()
-                _col3 = '#f85149' if any(k in _ic for k in ['⚠️','🔴']) else '#3fb950'
-                # 判斷老師
-                _tchr3 = '孫慶龍' if '融資' in _ic else '宏爺'
-                st.markdown(teacher_conclusion(_tchr3, _ind3, _res3, color=_col3), unsafe_allow_html=True)
+            # 宏爺外資公式
+            if _fn3 >= 100:
+                _hye_c = '#3fb950'
+                _hye_ind = f'外資大買超 {_fn3:.1f}億'
+                _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'
+                _hye_act = '趁拉回布局，持股 80~100%'
+            elif _fn3 <= -100:
+                _hye_c = '#f85149'
+                _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'
+                _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'
+                _hye_act = '持股降至 0~30%，停損優先'
             else:
-                st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_ic}</div>', unsafe_allow_html=True)
+                _hye_c = '#8b949e'
+                _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'
+                _hye_concl = '資金觀望，區間操作'
+                _hye_act = '持股 50%，高出低進等方向'
+            st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
+            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
+            if _tn3 > 5:
+                st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
+        if margin:
+            # 孫慶龍融資公式
+            if margin >= 3400:
+                _sql_mc = '#f85149'
+                _sql_mind = f'融資餘額 {margin:.0f}億'
+                _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'
+                _sql_mact = '全面減碼，勿追高，準備逃命'
+            elif margin >= 2800:
+                _sql_mc = '#d29922'
+                _sql_mind = f'融資餘額 {margin:.0f}億'
+                _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'
+                _sql_mact = '持股降至 50% 以下，避免重倉'
+            else:
+                _sql_mc = '#3fb950'
+                _sql_mind = f'融資餘額 {margin:.0f}億'
+                _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'
+                _sql_mact = '健康多頭格局，持股 70~100%'
+            st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
+            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
