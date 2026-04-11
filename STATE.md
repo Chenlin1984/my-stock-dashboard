@@ -58,6 +58,7 @@
 | `bede66d` | **Section三籌碼公式升級**: 宏爺外資門檻100億(大戶點火/觀望/大戶倒貨) + 孫慶龍融資2800/3400億(乾淨/警戒/泡沫尾端) |
 | `6a6ddb6` | **Section四ETF遺毒根除+期現貨背離矩陣**: 宏爺4象限(鎖單避險/雙殺/主升段/中性) + v5純股票%/現金%卡片(移除00679B/00720B) |
 | `556b01f` | **Section四宏爺公式改版**: 改用純期貨口數絕對門檻（≤-3萬/≤-1.5萬/微空/翻多），移除期現貨矩陣，容錯率最高 |
+| `33cb5a5` | **Section七根治**: 年線乖離MultiIndex展平(yfinance 1.2.x bug) + M1B FinMind判斷改data非空 + CBC多URL輪詢 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
