@@ -1936,7 +1936,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             timeout=15)
                         _fm_j = _fm_r.json()
                         _fm_data = _fm_j.get('data') or []
-                        print(f'[M1B/FM] status={_fm_j.get("status")} rows={len(_fm_data)} keys={list(_fm_j.keys())[:5]}')
+                        print(f'[M1B/FM] status={_fm_j.get("status")} rows={len(_fm_data)} keys={list(_fm_j.keys())[:5]} detail={str(_fm_j.get("detail",""))[:80]}')
                         if _fm_data:
                             _df_fm = _pd_m1.DataFrame(_fm_data)
                             print(f'[M1B/FM] 欄位={list(_df_fm.columns)[:10]}')
@@ -1952,7 +1952,64 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _fm_m1_e:
                         print(f'[M1B/FM] ❌ {_fm_m1_e}')
 
-                # ── 路徑 2：CBC OpenData（多 URL 嘗試，官方來源）──────────
+                # ── 路徑 2：FRED（聖路易聯邦儲備銀行，IMF 來源，無需 Key）──
+                try:
+                    import io as _io_m1
+                    _fred_m1b_r = _rq_m1.get(
+                        'https://fred.stlouisfed.org/graph/fredgraph.csv?id=MYAGM1TWA189S',
+                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    _fred_m2_r  = _rq_m1.get(
+                        'https://fred.stlouisfed.org/graph/fredgraph.csv?id=MYAGM2TWA189S',
+                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[M1B/FRED] M1={_fred_m1b_r.status_code} M2={_fred_m2_r.status_code}')
+                    if _fred_m1b_r.status_code == 200 and _fred_m2_r.status_code == 200:
+                        _df_fred_m1 = _pd_m1.read_csv(_io_m1.StringIO(_fred_m1b_r.text))
+                        _df_fred_m2 = _pd_m1.read_csv(_io_m1.StringIO(_fred_m2_r.text))
+                        _df_fred_m1.columns = ['date', 'value']
+                        _df_fred_m2.columns = ['date', 'value']
+                        _df_fred_m1['value'] = _pd_m1.to_numeric(_df_fred_m1['value'], errors='coerce')
+                        _df_fred_m2['value'] = _pd_m1.to_numeric(_df_fred_m2['value'], errors='coerce')
+                        _df_fred_m1 = _df_fred_m1.dropna(subset=['value'])
+                        _df_fred_m2 = _df_fred_m2.dropna(subset=['value'])
+                        print(f'[M1B/FRED] M1 rows={len(_df_fred_m1)} M2 rows={len(_df_fred_m2)} last={_df_fred_m1["date"].iloc[-1] if len(_df_fred_m1) else "?"}')
+                        if len(_df_fred_m1) >= 13 and len(_df_fred_m2) >= 13:
+                            _m1b_yoy_f = round((_df_fred_m1['value'].iloc[-1]/_df_fred_m1['value'].iloc[-13]-1)*100, 2)
+                            _m2_yoy_f  = round((_df_fred_m2['value'].iloc[-1]/_df_fred_m2['value'].iloc[-13]-1)*100, 2)
+                            print(f'[M1B/FRED] ✅ M1B={_m1b_yoy_f:.2f}% M2={_m2_yoy_f:.2f}%')
+                            return {'m1b_yoy': _m1b_yoy_f, 'm2_yoy': _m2_yoy_f, 'source': 'FRED'}
+                except Exception as _fred_e:
+                    print(f'[M1B/FRED] ❌ {_fred_e}')
+
+                # ── 路徑 2b：IMF DataMapper API（FRED 備援，全球可達）──
+                try:
+                    import io as _io_m1b
+                    # MABMM301 = M2 年增率%, MANMM101 = M1 年增率% (IMF IFS)
+                    _imf_m1_r = _rq_m1.get(
+                        'https://www.imf.org/external/datamapper/api/v1/MANMM101/TW',
+                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    _imf_m2_r = _rq_m1.get(
+                        'https://www.imf.org/external/datamapper/api/v1/MABMM301/TW',
+                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[M1B/IMF] M1={_imf_m1_r.status_code} M2={_imf_m2_r.status_code}')
+                    if _imf_m1_r.status_code == 200 and _imf_m2_r.status_code == 200:
+                        _imf_m1_j = _imf_m1_r.json()
+                        _imf_m2_j = _imf_m2_r.json()
+                        _imf_m1_vals = _imf_m1_j.get('values', {}).get('MANMM101', {}).get('TW', {})
+                        _imf_m2_vals = _imf_m2_j.get('values', {}).get('MABMM301', {}).get('TW', {})
+                        print(f'[M1B/IMF] M1 years={len(_imf_m1_vals)} M2 years={len(_imf_m2_vals)}')
+                        if _imf_m1_vals and _imf_m2_vals:
+                            # IMF 返回的已是 YoY 年增率%，取最新一年
+                            _imf_m1_sorted = sorted([(k, float(v)) for k, v in _imf_m1_vals.items() if v is not None], key=lambda x: x[0])
+                            _imf_m2_sorted = sorted([(k, float(v)) for k, v in _imf_m2_vals.items() if v is not None], key=lambda x: x[0])
+                            if _imf_m1_sorted and _imf_m2_sorted:
+                                _m1b_yoy_imf = round(_imf_m1_sorted[-1][1], 2)
+                                _m2_yoy_imf  = round(_imf_m2_sorted[-1][1], 2)
+                                print(f'[M1B/IMF] ✅ year={_imf_m1_sorted[-1][0]} M1B={_m1b_yoy_imf:.2f}% M2={_m2_yoy_imf:.2f}%')
+                                return {'m1b_yoy': _m1b_yoy_imf, 'm2_yoy': _m2_yoy_imf, 'source': f'IMF({_imf_m1_sorted[-1][0]})'}
+                except Exception as _imf_e:
+                    print(f'[M1B/IMF] ❌ {_imf_e}')
+
+                # ── 路徑 3：CBC OpenData（多 URL 嘗試，官方來源）──────────
                 _cbc_urls = [
                     'https://www.cbc.gov.tw/public/data/ms1.json',
                     'https://www.cbc.gov.tw/public/Attachment/ms1.json',
@@ -1988,7 +2045,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _cbc_e:
                         print(f'[M1B/CBC] ❌ {_cbc_url.split("/")[-1]}: {_cbc_e}')
 
-                # ── 路徑 3（已移除）：大盤代理數值完全不代表 M1B/M2 ────
                 # 若所有真實來源都失敗，回傳 None（顯示「待更新」比顯示錯誤數字好）
                 print('[M1B] 所有路徑失敗，回傳 None')
                 return None
