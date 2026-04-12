@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: v4.0 總經拼圖升級完成
+- **進度**: v4.0 矩陣+M1B根治完成
 - **分支**: main（最新）
-- **最新 commit**: `ba11c14` (dev) / `d1ec7ef` (main) — 孫慶龍BIAS240邏輯修正 + 宏爺M1B Gap公式
+- **最新 commit**: `df6b88f` (dev) / `1f4eefe` (main) — M1B大存量偵測根治+孫慶龍v4.0矩陣+NDC多URL+外銷訂單OECD
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -67,6 +67,7 @@
 | `72ccdab` | **CBC M1B 診斷+修正**: 加印 meta/row0 診斷 / meta-as-list 欄位提取 / 首列全字串作 header / 移除重複 cpx URL |
 | `70f29b8` | **CBC M1B 根治**: EF17M01（貨幣總計數月底數）+EF01M01 雙路徑 / _parse_cbc_ds+_extract_yoy 統一解析 / 數值範圍自動偵測 YoY 欄位（0.05~35%）三層防禦 |
 | `ba11c14` | **孫慶龍BIAS240邏輯修正+宏爺M1B Gap**: 孫慶龍改為純BIAS240四段門檻（≥15%史詩/≥10%紅警/≥0%多頭/≥-10%整理/<-10%黃金坑），移除CLI條件閘；Section8新增宏爺M1B-M2 Gap三段公式 |
+| `df6b88f` | **四項根治**: M1B大存量偵測(median>100排序M2>M1B)根治MacroMicro不符 / 孫慶龍v4.0 BIAS240×CLI二維矩陣 / NDC景氣燈號Chrome頭+多URL / 外銷訂單改OECD MEI DB.nomics |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
