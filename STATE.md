@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: v4.0 總經拼圖升級完成
 - **分支**: main（最新）
-- **最新 commit**: `70f29b8` — CBC M1B 根治（EF17M01 雙路徑+數值範圍自動偵測）
+- **最新 commit**: `ba11c14` (dev) / `d1ec7ef` (main) — 孫慶龍BIAS240邏輯修正 + 宏爺M1B Gap公式
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -66,6 +66,7 @@
 | `44d96cb` | **防禦模式誤顯修正**: 點擊更新時立即覆蓋舊燈號為「載入中」，防止舊快取強制防禦旗幟在新資料抓取期間誤導用戶 |
 | `72ccdab` | **CBC M1B 診斷+修正**: 加印 meta/row0 診斷 / meta-as-list 欄位提取 / 首列全字串作 header / 移除重複 cpx URL |
 | `70f29b8` | **CBC M1B 根治**: EF17M01（貨幣總計數月底數）+EF01M01 雙路徑 / _parse_cbc_ds+_extract_yoy 統一解析 / 數值範圍自動偵測 YoY 欄位（0.05~35%）三層防禦 |
+| `ba11c14` | **孫慶龍BIAS240邏輯修正+宏爺M1B Gap**: 孫慶龍改為純BIAS240四段門檻（≥15%史詩/≥10%紅警/≥0%多頭/≥-10%整理/<-10%黃金坑），移除CLI條件閘；Section8新增宏爺M1B-M2 Gap三段公式 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -113,6 +114,8 @@
 - [x] v4.0 總經否決權：VIX≥30強制空手 / PMI<48無基之彈 / CPI>4%外資提款 / 藍燈危機入市 ✅
 - [x] **防禦模式燈號誤顯**：點擊更新立即覆蓋舊快取燈號為載入中提示，防止強制防禦旗幟誤導 ✅
 - [ ] **M1B/CBC 最終驗證**：EF17M01+EF01M01 雙路徑+數值自動偵測已部署，待 Cloud log 確認 `[M1B/CPX] ✅` 成功
+- [x] **孫慶龍 BIAS240 邏輯Bug修正**：+13.9% 原誤顯「中性」，改為純BIAS240四段門檻，現正確觸發「紅色警戒線」 ✅
+- [x] **宏爺 M1B Gap 新增**：Section 8 新增 Gap≥1%=熱錢狂潮 / 0~1%=資金溫和 / <0%=資金退潮 三段公式 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
