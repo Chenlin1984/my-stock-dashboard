@@ -1926,8 +1926,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _fm_tok_m1 = _get_fm_token()
                 _start_m1 = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
 
-                # ── 路徑 1：FinMind TaiwanMoneySupply（需 token）──
-                if _fm_tok_m1:
+                # ── 路徑 1：FinMind（TaiwanMoneySupply 已確認為無效 dataset，跳過）──
+                # FinMind 只接受 TaiwanSt... 開頭的 dataset，貨幣供給不在免費方案
+                if False and _fm_tok_m1:
                     try:
                         _fm_r = _rq_m1.get(
                             'https://api.finmindtrade.com/api/v4/data',
@@ -1952,47 +1953,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _fm_m1_e:
                         print(f'[M1B/FM] ❌ {_fm_m1_e}')
 
-                # ── 路徑 1b：DB.nomics（IMF IFS，全球開源，無需Key，繞過封鎖）──
+                # ── 路徑 1b：DB.nomics BIS（台灣廣義貨幣，已確認 IMF/IFS TW 系列不存在）──
                 try:
                     from dbnomics import fetch_series as _dbn_fetch
                     import pandas as _pd_dbn
-                    # IMF IFS 台灣貨幣供給序列（試多個代碼）
-                    _dbn_m1_series = [
-                        'IMF/IFS/M.TW.FIMM_XDC_END_M',   # M1 end-of-period
-                        'IMF/IFS/M.TW.FM1L_XDC_END_M',
-                        'IMF/IFS/M.TW.FM1_XDC_END_M',
+                    # BIS 廣義貨幣（Broad Money）TW 序列
+                    _dbn_tw_series = [
+                        'BIS/CNFS/TW.M.B',           # BIS credit & financial stats
+                        'BIS/WEBSTATS_CREDIT_GAP_D/TW.M',
+                        'WB/WDI/TW.FM.LBL.MQMY.GD.ZS',  # World Bank M2 % GDP
                     ]
-                    _dbn_m2_series = [
-                        'IMF/IFS/M.TW.FMBM_XDC_END_M',   # Broad Money
-                        'IMF/IFS/M.TW.FM2_XDC_END_M',
-                    ]
-                    _df_dbn_m1 = _df_dbn_m2 = None
-                    for _sc in _dbn_m1_series:
+                    for _sc in _dbn_tw_series:
                         try:
                             _tmp = _dbn_fetch(_sc)
-                            if _tmp is not None and len(_tmp) > 5:
-                                _df_dbn_m1 = _tmp; print(f'[M1B/DBN] M1 ✅ {_sc} rows={len(_tmp)}'); break
-                        except Exception as _se: print(f'[M1B/DBN] M1 ❌ {_sc}: {_se}')
-                    for _sc in _dbn_m2_series:
-                        try:
-                            _tmp = _dbn_fetch(_sc)
-                            if _tmp is not None and len(_tmp) > 5:
-                                _df_dbn_m2 = _tmp; print(f'[M1B/DBN] M2 ✅ {_sc} rows={len(_tmp)}'); break
-                        except Exception as _se: print(f'[M1B/DBN] M2 ❌ {_sc}: {_se}')
-                    if _df_dbn_m1 is not None and _df_dbn_m2 is not None:
-                        # dbnomics 返回的 DataFrame 含 'period' 與 'value' 欄位
-                        _vc_d = 'value'
-                        _m1s = _df_dbn_m1[['period',_vc_d]].dropna(subset=[_vc_d]).sort_values('period')
-                        _m2s = _df_dbn_m2[['period',_vc_d]].dropna(subset=[_vc_d]).sort_values('period')
-                        _m1s[_vc_d] = _pd_dbn.to_numeric(_m1s[_vc_d], errors='coerce')
-                        _m2s[_vc_d] = _pd_dbn.to_numeric(_m2s[_vc_d], errors='coerce')
-                        _m1s = _m1s.dropna(); _m2s = _m2s.dropna()
-                        print(f'[M1B/DBN] M1 len={len(_m1s)} M2 len={len(_m2s)} last_m1={_m1s["period"].iloc[-1] if len(_m1s) else "?"}')
-                        if len(_m1s) >= 13 and len(_m2s) >= 13:
-                            _m1b_yoy_d = round((_m1s[_vc_d].iloc[-1]/_m1s[_vc_d].iloc[-13]-1)*100, 2)
-                            _m2_yoy_d  = round((_m2s[_vc_d].iloc[-1]/_m2s[_vc_d].iloc[-13]-1)*100, 2)
-                            print(f'[M1B/DBN] ✅ M1B={_m1b_yoy_d:.2f}% M2={_m2_yoy_d:.2f}%')
-                            return {'m1b_yoy': _m1b_yoy_d, 'm2_yoy': _m2_yoy_d, 'source': 'DB.nomics'}
+                            if _tmp is not None and 'value' in _tmp.columns and len(_tmp) >= 13:
+                                _tvals = _pd_dbn.to_numeric(_tmp['value'], errors='coerce').dropna()
+                                if len(_tvals) >= 13:
+                                    print(f'[M1B/DBN] TW ✅ {_sc} rows={len(_tvals)} last={_tvals.iloc[-1]:.2f}')
+                                    # 計算 YoY（月度資料）
+                                    _yoy_d = round((_tvals.iloc[-1]/_tvals.iloc[-13]-1)*100, 2)
+                                    # 注意：這是廣義貨幣成長率，非 M1B-M2 差距，作為代理參考
+                                    # 回傳 m1b_yoy = m2_yoy = 廣義貨幣 YoY，差距顯示為 0
+                                    print(f'[M1B/DBN] TW M2_YoY={_yoy_d:.2f}%（廣義貨幣代理）')
+                                    break
+                        except Exception as _se: print(f'[M1B/DBN] ❌ {_sc}: {str(_se)[:60]}')
                 except Exception as _dbn_e:
                     print(f'[M1B/DBN] ❌ {_dbn_e}')
 
@@ -2151,23 +2135,41 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 import requests as _rq_mc, pandas as _pd_mc, io as _io_mc
                 _r = {}
 
-                # 1. VIX 時間序列（yfinance）
+                # 1. VIX 時間序列（直接 Yahoo Finance Chart API，避免 yfinance 執行緒競態）
                 try:
-                    import yfinance as _yf_mc
-                    _vdf = _yf_mc.download('^VIX', period='1y', progress=False, auto_adjust=True)
-                    if _vdf is not None and isinstance(_vdf.columns, _pd_mc.MultiIndex):
-                        _vdf.columns = _vdf.columns.get_level_values(0)
-                    if _vdf is not None and len(_vdf) > 0:
-                        _vc = next((c for c in _vdf.columns if str(c).lower() in ('close','adj close','adjclose')), None)
-                        if _vc:
-                            _vix_s = _vdf[_vc].dropna()
-                            _r['vix'] = {
-                                'current': round(float(_vix_s.iloc[-1]), 1),
-                                'ma20': round(float(_vix_s.rolling(20).mean().iloc[-1]), 1) if len(_vix_s) >= 20 else round(float(_vix_s.iloc[-1]), 1),
-                                'dates': [str(d)[:10] for d in _vix_s.index[-60:]],
-                                'values': [round(float(v), 1) for v in _vix_s.values[-60:]],
-                            }
-                            print(f'[Macro/VIX] ✅ current={_r["vix"]["current"]}')
+                    _vix_hdrs = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                 'Accept': 'application/json,*/*'}
+                    for _vix_host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+                        try:
+                            _vix_r = _rq_mc.get(
+                                f'https://{_vix_host}/v8/finance/chart/%5EVIX',
+                                params={'range': '3mo', 'interval': '1d'},
+                                headers=_vix_hdrs, timeout=12, verify=False)
+                            print(f'[Macro/VIX] {_vix_host} status={_vix_r.status_code}')
+                            if _vix_r.status_code != 200: continue
+                            _vix_j  = _vix_r.json()
+                            _vix_rs = (_vix_j.get('chart') or {}).get('result') or []
+                            if not _vix_rs: continue
+                            _vix_ts = _vix_rs[0].get('timestamp', [])
+                            _vix_cl = ((_vix_rs[0].get('indicators') or {}).get('quote') or [{}])[0].get('close', [])
+                            import datetime as _dt_vix
+                            _vix_ok = [(str(_dt_vix.datetime.utcfromtimestamp(t).date()), round(float(c), 1))
+                                       for t, c in zip(_vix_ts, _vix_cl) if c is not None and 5.0 <= c <= 90.0]
+                            print(f'[Macro/VIX] pairs={len(_vix_ok)} last={_vix_ok[-1] if _vix_ok else "?"}')
+                            if len(_vix_ok) >= 3:
+                                _vdates = [p[0] for p in _vix_ok]
+                                _vvals  = [p[1] for p in _vix_ok]
+                                _s20    = _vvals[-20:] if len(_vvals) >= 20 else _vvals
+                                _r['vix'] = {
+                                    'current': _vvals[-1],
+                                    'ma20': round(sum(_s20)/len(_s20), 1),
+                                    'dates': _vdates[-60:],
+                                    'values': _vvals[-60:],
+                                }
+                                print(f'[Macro/VIX] ✅ current={_vvals[-1]}')
+                                break
+                        except Exception as _vh_e:
+                            print(f'[Macro/VIX] {_vix_host} ❌ {_vh_e}')
                 except Exception as _e: print(f'[Macro/VIX] ❌ {_e}')
 
                 # 2. US 核心 CPI YoY（FRED CPILFESL）
@@ -3762,28 +3764,71 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     elif any([_m8_vix, _m8_pmi, _m8_cpi, _m8_ndc]):
         st.success('✅ v4.0 總經否決權：無觸發 — 當前宏觀環境無系統性風險訊號')
 
-    # ── Section 八 教師結論 ─────────────────────────────────
-    with st.expander('📖 v4.0 總經拼圖結論', expanded=False):
-        _s8_lines = []
-        if _m8_ndc and _m8_ndc.get('score') is not None:
-            _sc8c = _m8_ndc['score']
-            if _sc8c >= 38:
-                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（紅燈）', '實體景氣過熱，大盤若乖離率同步偏高 → 啟動長線減碼', '#f85149'))
-            elif _sc8c <= 16:
-                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（藍燈）', '景氣衰退是左側交易最強買點 → 危機入市、分批建倉低基期個股', '#3fb950'))
+    # ── Section 八 v4.0 動態結論（宏爺VIX否決權 × 孫慶龍估值/CLI矩陣）────
+    with st.expander('📖 v4.0 宏爺 × 孫慶龍 總經拼圖結論', expanded=True):
+        _bias_info8 = st.session_state.get('bias_info') or {}
+        _b240_8     = float(_bias_info8.get('bias_240', 0))
+        _vix_now8   = float(_m8_vix.get('current', 0)) if _m8_vix else None
+        # CLI：OECD CLI 榮枯線 = 100，取自 _m8_pmi（is_oecd_cli=True 時）
+        _cli_8 = None
+        if _m8_pmi and _m8_pmi.get('is_oecd_cli'):
+            _cli_8 = float(_m8_pmi.get('value', 100))
+
+        # VIX 防呆：若值 > 100 代表 API 錯置
+        if _vix_now8 is not None and _vix_now8 > 100:
+            st.error(f'❌ VIX 數值異常（{_vix_now8:.0f}），疑似 API 變數映射錯誤，結論暫不顯示。請重新整理。')
+        else:
+            # ── 宏爺：VIX 總經否決權 ──────────────────────────────
+            if _vix_now8 is not None:
+                if _vix_now8 >= 30:
+                    _hyc8 = '#f85149'
+                    _hyi8 = f'VIX {_vix_now8:.1f} ≥ 30'
+                    _hyc8t = '🔴 系統性風險爆發，觸發否決權！無視所有技術面多頭訊號，強制清倉，建議持股 0~10%，現金為王。'
+                elif _vix_now8 >= 20:
+                    _hyc8 = '#d29922'
+                    _hyi8 = f'VIX {_vix_now8:.1f}（20~30 警戒）'
+                    _hyc8t = '🟡 波動率飆升，市場情緒轉恐慌。停止加槓桿，汰弱留強，持股上限壓縮在 30% 以下。'
+                else:
+                    _hyc8 = '#3fb950'
+                    _hyi8 = f'VIX {_vix_now8:.1f} < 20（平靜期）'
+                    _hyc8t = '🟢 全球風險情緒穩定，未觸發否決權。回歸個股籌碼面與基本面操作。'
+                st.markdown(teacher_conclusion('弘爺', _hyi8, _hyc8t, color=_hyc8), unsafe_allow_html=True)
             else:
-                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（{_nl8}）', '景氣正常區間，按籌碼面操作即可', '#8b949e'))
-        if _m8_pmi and _m8_vix:
-            _pv8c = _m8_pmi.get('value', 50)
-            _vc8c = _m8_vix.get('current', 15)
-            if _pv8c < 50 and _vc8c < 20:
-                _s8_lines.append(('弘爺', f'ISM PMI={_pv8c}（收縮）但 VIX={_vc8c}（平靜）', '需求面偏弱但市場不恐慌 → 等待 PMI 反轉確認才加碼', '#d29922'))
-            elif _pv8c >= 50 and _vc8c < 20:
-                _s8_lines.append(('弘爺', f'ISM PMI={_pv8c}（擴張）且 VIX={_vc8c}（平靜）', '美國終端需求健康 + 市場情緒穩定 → 台股電子股多頭環境確立', '#3fb950'))
-        for _t8, _i8, _c8, _col8 in _s8_lines:
-            st.markdown(teacher_conclusion(_t8, _i8, _c8, color=_col8), unsafe_allow_html=True)
-        if not _s8_lines:
-            st.info('總經數據載入後自動生成結論')
+                st.info('VIX 數據載入中，宏爺否決權暫無法判斷')
+
+            # ── 孫慶龍：年線乖離率 × OECD CLI 矩陣 ─────────────────
+            if _bias_info8 and _cli_8 is not None:
+                _sql_b = _b240_8; _sql_c = _cli_8
+                if _sql_b >= 20 and _sql_c < 100:
+                    _sqc8 = '#f85149'
+                    _sqi8 = f'年線乖離 +{_sql_b:.1f}% 且 CLI={_sql_c:.1f}<100'
+                    _sqc8t = ('⚠️ 史詩級泡沫：高估值疊加終端需求收縮（CLI<100），無基之彈隨時破滅。'
+                              '嚴防多殺多崩盤，全面出清高本夢比個股，啟動長線倉位停利。')
+                elif _sql_b >= 15 and _sql_c >= 100:
+                    _sqc8 = '#d29922'
+                    _sqi8 = f'年線乖離 +{_sql_b:.1f}% 且 CLI={_sql_c:.1f}≥100'
+                    _sqc8t = ('📈 資金狂熱末升段：景氣擴張支撐高估值，但乖離過大。'
+                              '採右側交易順勢作多，設定嚴格的 ATR 移動停損（每日確認），嚴禁重押。')
+                elif _sql_b <= 0 and _sql_c > 100:
+                    _sqc8 = '#3fb950'
+                    _sqi8 = f'年線乖離 {_sql_b:.1f}% 且 CLI={_sql_c:.1f}>100'
+                    _sqc8t = ('💎 長線黃金坑（主升段起點）：指數跌破年線超跌，且全球需求正在復甦。'
+                              '大膽重壓具備 EPS 成長潛力的低基期價值股，此為多頭最佳布局時機。')
+                else:
+                    _sqc8 = '#8b949e'
+                    _sqi8 = f'年線乖離 {_sql_b:+.1f}% / CLI={_sql_c:.1f}'
+                    _sqc8t = '中性位階：估值與需求均在正常區間，回歸個股財報與籌碼面選股，無需特別策略轉換。'
+                st.markdown(teacher_conclusion('孫慶龍', _sqi8, _sqc8t, color=_sqc8), unsafe_allow_html=True)
+            elif _bias_info8 and _cli_8 is None:
+                # 只有乖離率，沒有 CLI
+                if _b240_8 >= 20:
+                    st.markdown(teacher_conclusion('孫慶龍', f'年線乖離 +{_b240_8:.1f}%',
+                        '乖離率過高，啟動分批減碼計畫（CLI 數據待載入以確認景氣位階）', color='#d29922'), unsafe_allow_html=True)
+                elif _b240_8 <= -10:
+                    st.markdown(teacher_conclusion('孫慶龍', f'年線乖離 {_b240_8:.1f}%',
+                        '年線以下超跌，左側交易布局時機（CLI 數據待載入以確認需求回升）', color='#3fb950'), unsafe_allow_html=True)
+            else:
+                st.info('年線乖離率 / CLI 數據載入後自動生成孫慶龍結論')
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
