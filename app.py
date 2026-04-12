@@ -1993,25 +1993,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                      ('M2' in str(c).upper() and 'M1' not in str(c).upper() and
                                       not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY')))), None)
                     print(f'[M1B/{label}] m1b_yoy={_m1b_yoy} m2_yoy={_m2_yoy} m1b_lv={_m1b_lv} m2_lv={_m2_lv}')
-                    # ⑤ 大數值存量偵測（M2 定義上 > M1B > M1A，最大兩正值欄即 M2/M1B）
-                    # 優先於 pct 偵測，避免 EF01M01 pct 欄選錯；適用 EF17M01 純存量格式
-                    if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
-                        _ranked = []
-                        for _ci in _df.columns:
-                            try:
-                                _v = pd_mod.to_numeric(
-                                    _df[_ci].astype(str).str.replace(',',''), errors='coerce').dropna()
-                                _med = float(_v.median())
-                                if len(_v) >= 13 and _med > 100:  # 大正數 = 存量欄
-                                    _ranked.append((_med, _ci))
-                            except: pass
-                        _ranked.sort(reverse=True)
-                        print(f'[M1B/{label}] 大存量排序={[(round(m),c) for m,c in _ranked[:6]]}')
-                        if len(_ranked) >= 2:
-                            _m2_lv  = _ranked[0][1]   # 最大 = M2
-                            _m1b_lv = _ranked[1][1]   # 次大 = M1B
-                            print(f'[M1B/{label}] 大存量: M2={_m2_lv}(≈{round(_ranked[0][0])}) M1B={_m1b_lv}(≈{round(_ranked[1][0])})')
                     # ② 數值範圍偵測（百分比 0.05~35%，最後備援）
+                    # EF01M01: pct_cols[-2]='25.79'=M2(5.38%), pct_cols[-3]=M1B(7.12%) — 經 MacroMicro 確認
                     if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
                         _pct_cols = []
                         for _ci in _df.columns:
@@ -2023,12 +2006,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _pct_cols.append(_ci)
                             except: pass
                         try:
-                            _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols[:8]]
-                        except: _pct_dbg = _pct_cols[:8]
+                            _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols]
+                        except: _pct_dbg = _pct_cols
                         print(f'[M1B/{label}] pct候選欄值={_pct_dbg}')
-                        if len(_pct_cols) >= 2:
+                        if len(_pct_cols) >= 3:
+                            _m1b_yoy, _m2_yoy = _pct_cols[-3], _pct_cols[-2]
+                            print(f'[M1B/{label}] pct備援偵測(≥3欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                        elif len(_pct_cols) >= 2:
                             _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]
-                            print(f'[M1B/{label}] pct備援偵測: M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                            print(f'[M1B/{label}] pct備援偵測(2欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
                     # ③ 有 YoY 欄 → 直接讀值
                     if _m1b_yoy and _m2_yoy:
                         _v1 = pd_mod.to_numeric(_df[_m1b_yoy].astype(str).str.replace(',',''), errors='coerce').dropna()
@@ -2045,8 +2031,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     return None, None, None
 
                 _cpx_fnames = [
-                    ('EF17M01', '貨幣總計數月底數'),  # 最直接：M1A/M1B/M2月底存量+年增率
-                    ('EF01M01', '重要金融指標'),       # 備援
+                    ('EF01M01', '重要金融指標'),       # 確認: pct_cols[-2]=M2, pct_cols[-3]=M1B
+                    ('EF17M01', '貨幣總計數月底數'),  # 備援
                 ]
                 for _fname, _fdesc in _cpx_fnames:
                     try:
