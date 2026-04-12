@@ -2379,11 +2379,74 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
 
-                # 4. NDC 景氣對策信號（已確認封鎖，略過）
-                # index.ndc.gov.tw 為 Angular SPA (ng-app="NDCapp")，
-                # 所有 /n/api/* 路由皆回傳 SPA HTML shell（非 JSON），
-                # CDN 層亦對部分路由回傳 403。Streamlit Cloud 無法取得資料，略過。
-                print('[Macro/NDC] ⚠️ 已知封鎖：NDC 為 Angular SPA，跳過景氣燈號')
+                # 4. NDC 景氣對策信號
+                # 主站 index.ndc.gov.tw 為 Angular SPA，改用政府開放資料平臺 (data.gov.tw)
+                # 備援：OECD CLI（已在步驟3取得）映射為景氣燈號近似分數
+                _ndc_fetched = False
+                try:
+                    # data.gov.tw 開放資料 API — NDC 景氣對策信號月資料
+                    for _ng_res in [
+                        '32d4c078-cfd6-4d3b-b2a0-dbbf26f27773',
+                        'e8f35029-22f9-42da-92b8-c2baa7a7c6c6',
+                        'A000001_1',
+                    ]:
+                        try:
+                            _ng_url = f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}'
+                            _ngr = _rq_mc.get(_ng_url,
+                                              params={'limit': 3, 'sort': '_id desc'},
+                                              timeout=8, verify=False,
+                                              headers={'Accept': 'application/json'})
+                            print(f'[Macro/NDC/Gov] {_ng_res[:8]}... status={_ngr.status_code} len={len(_ngr.content)}')
+                            if _ngr.status_code != 200:
+                                continue
+                            _ngj = _ngr.json()
+                            _ngd = (_ngj.get('result') or {}).get('records') or []
+                            print(f'[Macro/NDC/Gov] records={len(_ngd)} keys={list(_ngd[0].keys())[:8] if _ngd else []}')
+                            if not _ngd:
+                                continue
+                            _lng = _ngd[0]
+                            _sc_ng = None
+                            for _kk, _kv in _lng.items():
+                                try:
+                                    _vv = float(str(_kv).replace(',', ''))
+                                    if 9.0 <= _vv <= 45.0:
+                                        _sc_ng = _vv
+                                        print(f'[Macro/NDC/Gov] 分數 key={_kk} val={_sc_ng}')
+                                        break
+                                except Exception: pass
+                            if _sc_ng is not None:
+                                _r['ndc_signal'] = {
+                                    'score': _sc_ng, 'signal': None,
+                                    'date': str(_lng.get('statistic_ym',
+                                               _lng.get('period', _lng.get('期間', '')))),
+                                }
+                                print(f'[Macro/NDC/Gov] ✅ score={_sc_ng}')
+                                _ndc_fetched = True
+                                break
+                        except Exception as _nge:
+                            print(f'[Macro/NDC/Gov] ❌ {_ng_res[:8]}: {_nge}')
+                except Exception as _ngoe:
+                    print(f'[Macro/NDC/Gov] ❌ outer: {_ngoe}')
+
+                # OECD CLI 代理備援（若 data.gov.tw 也失敗）
+                if not _ndc_fetched:
+                    _cli_prx = _r.get('ism_pmi') or {}
+                    if _cli_prx and _cli_prx.get('is_oecd_cli'):
+                        _cv = float(_cli_prx.get('value', 100))
+                        # OECD CLI → NDC 景氣燈號近似對應（非官方，用於顯示參考）
+                        if _cv >= 101.5:   _psc = 36.0
+                        elif _cv >= 100.5: _psc = 28.0
+                        elif _cv >= 100.0: _psc = 24.0
+                        elif _cv >= 99.0:  _psc = 19.0
+                        else:               _psc = 13.0
+                        _r['ndc_signal'] = {
+                            'score': _psc, 'signal': None,
+                            'date': _cli_prx.get('date', ''),
+                            '_is_proxy': True,
+                        }
+                        print(f'[Macro/NDC] ⚠️ OECD CLI={_cv:.2f} 代理→NDC近似={_psc:.0f}分')
+                    else:
+                        print('[Macro/NDC] ⚠️ data.gov.tw 失敗且無CLI代理')
 
                 # 5. 台灣出口 YoY（OECD Stats JSON → DB.nomics IMF/OECD 備援）
                 # TaiwanExportOrders 非有效 FinMind dataset；改用 OECD MEI 台灣出口數據
@@ -3769,7 +3832,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _nl8   = ('🔴 紅燈 過熱' if _sc8 >= 38 else '🟡 黃紅燈 繁榮' if _sc8 >= 32 else
                       '🟢 綠燈 穩定' if _sc8 >= 23 else '🔵 黃藍燈 趨緩' if _sc8 >= 17 else '🔵 藍燈 衰退')
             _nd8   = f" ({_m8_ndc.get('date','')})" if _m8_ndc.get('date') else ''
-            st.markdown(kpi('NDC 景氣燈號', f'{_sc8:.0f} 分', f'{_nl8}{_nd8}', _nc8, '#0d1117'), unsafe_allow_html=True)
+            _proxy8 = _m8_ndc.get('_is_proxy', False)
+            _ndc_title8 = 'NDC 景氣燈號 (OECD CLI代理)' if _proxy8 else 'NDC 景氣燈號'
+            st.markdown(kpi(_ndc_title8, f'{_sc8:.0f} 分', f'{_nl8}{_nd8}', _nc8, '#0d1117'), unsafe_allow_html=True)
         else:
             st.markdown(kpi('NDC 景氣燈號', '待取得', '9分藍燈→45分紅燈', '#484f58', '#0d1117'), unsafe_allow_html=True)
 
@@ -4087,6 +4152,207 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     f'第二環（確認燃料）：{_r2_html}<br>'
                     f'第三環（點火訊號）：{_r3_html}</div>'
                     f'</div>', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # SECTION 九: 總經 AI 投資決策分析（五維度綜合研判）
+    # ══════════════════════════════════════════════════════════════
+    st.markdown(section_header('九', '🧠 總經 AI 投資決策分析', '🧠'), unsafe_allow_html=True)
+
+    # ── 安全取數 ────────────────────────────────────────────────
+    _ai_vix  = float(_m8_vix.get('current', 0))  if _m8_vix else None
+    _ai_vma  = float(_m8_vix.get('ma20', 0))     if _m8_vix else None
+    _ai_is_cli = bool(_m8_pmi.get('is_oecd_cli', False)) if _m8_pmi else False
+    _ai_cli  = float(_m8_pmi.get('value', 100))  if (_m8_pmi and _ai_is_cli) else None
+    _ai_pmi  = float(_m8_pmi.get('value', 50))   if (_m8_pmi and not _ai_is_cli) else None
+    _ai_exp  = float(_m8_exp.get('yoy', 0))      if _m8_exp else None
+    _ai_cpi  = float(_m8_cpi.get('yoy', 0))      if _m8_cpi else None
+    _ai_mi8  = st.session_state.get('m1b_m2_info') or {}
+    _ai_m1b  = float(_ai_mi8['m1b_yoy']) if _ai_mi8.get('m1b_yoy') is not None else None
+    _ai_m2   = float(_ai_mi8['m2_yoy'])  if _ai_mi8.get('m2_yoy') is not None else None
+    _ai_gap  = round(_ai_m1b - _ai_m2, 2) if (_ai_m1b is not None and _ai_m2 is not None) else None
+    _ai_bias = float(st.session_state.get('bias_info', {}).get('bias_240', 0))
+    _ai_sox  = float((tech_s.get('費城半導體 SOX') or {}).get('pct') or 0)
+    _ai_nvda = float((tech_s.get('輝達 NVDA') or {}).get('pct') or 0)
+    _ai_twii_pct = float((tech_s.get('大盤 TWII') or tw_s.get('台股加權指數') or {}).get('pct') or 0)
+
+    # ── ① 目前總經位階 ──────────────────────────────────────────
+    _ai1_lbl, _ai1_clr, _ai1_desc, _ai1_cyc = '資料載入中', '#484f58', '請點擊更新總經拼圖', None
+    _cycle_ref = _ai_cli if _ai_cli is not None else (_ai_pmi if _ai_pmi is not None else None)
+    _cycle_exp = (_cycle_ref >= 100.0) if (_ai_cli is not None) else (_cycle_ref >= 50.0 if _cycle_ref is not None else None)
+    if _ai_exp is not None:
+        _exp_str = f'外銷訂單YoY={_ai_exp:+.1f}%'
+        _cli_str = (f'OECD CLI={_ai_cli:.2f}' if _ai_cli is not None else
+                    f'ISM PMI={_ai_pmi:.1f}' if _ai_pmi is not None else '')
+        if _cycle_exp and _ai_exp >= 10:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣擴張強勢期 📈', '#f85149', 'bull'
+            _ai1_desc = f'{_cli_str}（擴張）× {_exp_str}（強勁需求）— 主升段格局，基本面充分支撐'
+        elif _cycle_exp and _ai_exp > 0:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣溫和擴張 🟢', '#3fb950', 'bull'
+            _ai1_desc = f'{_cli_str}（擴張）× {_exp_str}— 穩步復甦，基本面有撐，持股安全'
+        elif _cycle_exp and _ai_exp <= 0:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣高峰震盪 ⚡', '#d29922', 'peak'
+            _ai1_desc = f'{_cli_str}（微擴張）× {_exp_str}— 高位整理，需求疲軟，留意反轉訊號'
+        elif not _cycle_exp and _ai_exp >= 5:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣觸底回升 💎', '#58a6ff', 'recovery'
+            _ai1_desc = f'{_cli_str}（收縮但出口反彈）× {_exp_str}— 左側佈局黃金窗口'
+        elif not _cycle_exp and _ai_exp < 0:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣收縮期 📉', '#8b949e', 'bear'
+            _ai1_desc = f'{_cli_str}（收縮）× {_exp_str}— 多看少做，等待出口數據翻正'
+        else:
+            _ai1_lbl, _ai1_clr, _ai1_cyc = '景氣整理期 🟡', '#d29922', 'neutral'
+            _ai1_desc = f'{_cli_str} × {_exp_str}— 方向待確認，保守持股'
+    elif _cycle_ref is not None:
+        _cli_str = f'OECD CLI={_ai_cli:.2f}' if _ai_cli is not None else f'ISM PMI={_ai_pmi:.1f}'
+        _ai1_lbl = '景氣擴張（出口待確認）' if _cycle_exp else '景氣趨緩（出口待確認）'
+        _ai1_clr = '#3fb950' if _cycle_exp else '#d29922'
+        _ai1_cyc = 'bull' if _cycle_exp else 'neutral'
+        _ai1_desc = f'{_cli_str} — 外銷訂單數據載入中'
+
+    # ── ② 建議配置 ──────────────────────────────────────────────
+    _ai2_lbl, _ai2_clr, _ai2_desc = '計算中', '#484f58', '等待 VIX 及資金數據'
+    if _ai_vix is not None:
+        _r1_ok  = _ai_vix < 20
+        _r2_exp = _ai_exp is not None and _ai_exp >= 10
+        _r2_gap = _ai_gap is not None and _ai_gap >= 1.0
+        _r2_cnt = int(_r2_exp) + int(_r2_gap)
+        _r3_sox = _ai_sox >= 1.5 or _ai_nvda >= 2.0
+        _r3_tw  = _ai_twii_pct > 0
+        _r3_cnt = int(_r3_sox) + int(_r3_tw)
+        _fuel_str = ((' 出口+' if _r2_exp else '') + (' M1B-M2+' if _r2_gap else '')).strip(' +') or '—'
+        if not _r1_ok:
+            _ai2_lbl, _ai2_clr = '⛔ 防禦模式 持股0~20%', '#f85149'
+            _ai2_desc = f'VIX={_ai_vix:.1f}≥20，大環境風險偏高，現金為王，等待 VIX<20 才考慮進場'
+        elif _r2_cnt >= 2 and _r3_cnt >= 1:
+            _ai2_lbl, _ai2_clr = '🚀 積極進攻 持股80~100%', '#f0e040'
+            _ai2_desc = f'VIX={_ai_vix:.1f}安全 × 燃料充足（{_fuel_str}）× 點火訊號啟動 — 三環齊備，重壓主流'
+        elif _r2_cnt >= 1 and _r3_cnt >= 1:
+            _ai2_lbl, _ai2_clr = '🔥 標準多頭 持股60~80%', '#f85149'
+            _ai2_desc = f'VIX={_ai_vix:.1f}安全，燃料（{_fuel_str}）有效，順勢佈局強勢個股，跌破10MA停損'
+        elif _r3_cnt >= 1:
+            _ai2_lbl, _ai2_clr = '🛡️ 試探建倉 持股30~50%', '#d29922'
+            _ai2_desc = '短線點火訊號存在但燃料不足，打帶跑策略，見好就收，嚴設停損'
+        else:
+            _ai2_lbl, _ai2_clr = '⏸️ 保守觀望 持股30%以下', '#8b949e'
+            _ai2_desc = '三環條件均不足，保留現金等待更明確訊號，避免追高'
+
+    # ── ③ 目前貨幣流向 ──────────────────────────────────────────
+    _ai3_lbl, _ai3_clr, _ai3_desc = '待取得 M1B/M2', '#484f58', '央行貨幣數據載入中'
+    if _ai_gap is not None:
+        _gap_str = f'M1B={_ai_m1b:.1f}% M2={_ai_m2:.1f}% Gap={_ai_gap:+.2f}%'
+        if _ai_gap >= 2.0:
+            _ai3_lbl, _ai3_clr = '🔥 熱錢大量流入股市', '#f85149'
+            _ai3_desc = f'{_gap_str} — 黃金交叉大幅擴散，投機資金湧入，活絡貨幣遠超廣義貨幣'
+        elif _ai_gap >= 1.0:
+            _ai3_lbl, _ai3_clr = '✅ 資金動能轉強', '#3fb950'
+            _ai3_desc = f'{_gap_str} — 活絡資金超越廣義貨幣，熱錢進場訊號確立，行情可期'
+        elif _ai_gap >= 0:
+            _ai3_lbl, _ai3_clr = '🟡 資金溫和偏多', '#d29922'
+            _ai3_desc = f'{_gap_str} — M1B微幅領先，資金偏多但動能尚未爆發，需等待 Gap≥1% 確認'
+        elif _ai_gap > -1.0:
+            _ai3_lbl, _ai3_clr = '⚠️ 資金略偏保守', '#d29922'
+            _ai3_desc = f'{_gap_str} — M2相對偏高，部分資金仍停留在定存，股市吸引力不足'
+        else:
+            _ai3_lbl, _ai3_clr = '📉 資金明顯外逃', '#8b949e'
+            _ai3_desc = f'{_gap_str} — 死亡交叉，資金轉向固定收益，股市失血，謹慎操作'
+    elif _ai_m1b is not None:
+        _ai3_lbl, _ai3_clr = f'M1B={_ai_m1b:.1f}% M2待取得', '#484f58'
+        _ai3_desc = 'M2 數據未就緒，暫無法判斷 Gap'
+
+    # ── ④ 美股動態 ──────────────────────────────────────────────
+    _ai4_lbl, _ai4_clr, _ai4_desc = '待取得', '#484f58', 'VIX / CPI 數據載入中'
+    if _ai_vix is not None:
+        _cpi_ok  = _ai_cpi is None or _ai_cpi < 3.0
+        _cpi_wrm = _ai_cpi is not None and 3.0 <= _ai_cpi < 4.0
+        _cpi_hot = _ai_cpi is not None and _ai_cpi >= 4.0
+        _cpi_s   = f' CPI={_ai_cpi:.1f}%' if _ai_cpi is not None else ''
+        _sox_s   = f' SOX={_ai_sox:+.1f}%' if _ai_sox else ''
+        _vma_s   = f' MA20={_ai_vma:.1f}' if _ai_vma else ''
+        if _ai_vix < 20 and _cpi_ok and (_ai_sox >= 1.5 or _ai_nvda >= 2.0):
+            _ai4_lbl, _ai4_clr = '🚀 美股強勢，科技領漲', '#f85149'
+            _ai4_desc = f'VIX={_ai_vix:.1f}（恐慌低）{_sox_s}（半導體點火）{_cpi_s} — 台股跟漲機率高，可積極佈局科技'
+        elif _ai_vix < 20 and _cpi_ok:
+            _ai4_lbl, _ai4_clr = '🟢 美股平穩，降息預期支撐', '#3fb950'
+            _ai4_desc = f'VIX={_ai_vix:.1f}{_vma_s}（安全）{_cpi_s} — 無系統性風險，有利個股選股表現'
+        elif _ai_vix < 20 and _cpi_wrm:
+            _ai4_lbl, _ai4_clr = '🟡 美股震盪，通膨黏性制約', '#d29922'
+            _ai4_desc = f'VIX={_ai_vix:.1f}尚可但{_cpi_s}偏高 — Fed降息預期受壓，資金轉向謹慎，避免過度加槓桿'
+        elif _ai_vix < 20 and _cpi_hot:
+            _ai4_lbl, _ai4_clr = '⚠️ 美股承壓，Fed鷹派升溫', '#d29922'
+            _ai4_desc = f'VIX={_ai_vix:.1f}{_cpi_s}超標 — 高利率環境延續，外資提款風險升高，注意匯率走勢'
+        elif _ai_vix < 30:
+            _ai4_lbl, _ai4_clr = '🟡 美股波動加劇，謹慎操作', '#d29922'
+            _ai4_desc = f'VIX={_ai_vix:.1f}（警戒區間 20~30）{_vma_s} — 市場情緒不確定，控制倉位，勿追高'
+        else:
+            _ai4_lbl, _ai4_clr = '🔴 美股恐慌模式，流動性危機', '#f85149'
+            _ai4_desc = f'VIX={_ai_vix:.1f}≥30 — 全球流動性急凍，強制防禦，任何技術面買訊均視為誘多'
+
+    # ── ⑤ 結論 ──────────────────────────────────────────────────
+    _ai5_pts = []
+    if _ai1_cyc == 'bull':      _ai5_pts.append('景氣擴張有基本面支撐')
+    elif _ai1_cyc == 'recovery': _ai5_pts.append('景氣觸底，左側佈局機會')
+    elif _ai1_cyc == 'peak':    _ai5_pts.append('高位整理，防範反轉')
+    elif _ai1_cyc == 'bear':    _ai5_pts.append('景氣收縮，防禦優先')
+    if _ai_gap is not None:
+        if _ai_gap >= 1.0:  _ai5_pts.append(f'M1B-M2 Gap=+{_ai_gap:.1f}% 資金動能正向共振')
+        elif _ai_gap < 0:   _ai5_pts.append('M1B-M2死亡交叉，貨幣資金外逃')
+    if _ai_vix is not None:
+        if _ai_vix < 15:       _ai5_pts.append(f'VIX={_ai_vix:.1f} 極度平靜')
+        elif _ai_vix < 20:     _ai5_pts.append(f'VIX={_ai_vix:.1f} 安全窗口')
+        elif _ai_vix >= 30:    _ai5_pts.append(f'VIX={_ai_vix:.1f} 觸發危機，暫停攻擊')
+    if _ai_bias >= 15:   _ai5_pts.append(f'年線乖離+{_ai_bias:.1f}% 高估值需嚴設停損')
+    elif _ai_bias <= -5: _ai5_pts.append(f'年線乖離{_ai_bias:.1f}% 超跌逢低佈局')
+    if _ai_exp is not None:
+        if _ai_exp >= 10:    _ai5_pts.append(f'外銷訂單YoY={_ai_exp:+.1f}% 出口強勁')
+        elif _ai_exp < -5:   _ai5_pts.append(f'外銷訂單YoY={_ai_exp:+.1f}% 出口衰退警訊')
+
+    if _ai5_pts:
+        _ai5_txt = '；'.join(_ai5_pts) + '。'
+        _bull_score = (int(_ai1_cyc in ('bull', 'recovery')) +
+                       int(_ai_gap is not None and _ai_gap >= 1.0) +
+                       int(_ai_vix is not None and _ai_vix < 20) +
+                       int(_ai_exp is not None and _ai_exp >= 0))
+        _bear_score = (int(_ai1_cyc == 'bear') +
+                       int(_ai_gap is not None and _ai_gap < 0) +
+                       int(_ai_vix is not None and _ai_vix >= 30))
+        if _bull_score >= 3 and _bear_score == 0:
+            _ai5_clr, _ai5_icon = '#3fb950', '✅ 整體偏多，積極操作'
+        elif _bear_score >= 2 or (_ai_vix is not None and _ai_vix >= 30):
+            _ai5_clr, _ai5_icon = '#f85149', '🚨 整體偏空，防禦為主'
+        elif _bull_score >= 2:
+            _ai5_clr, _ai5_icon = '#d29922', '🟡 溫和偏多，精選個股'
+        else:
+            _ai5_clr, _ai5_icon = '#8b949e', '⏸️ 中性觀望，等待訊號'
+    else:
+        _ai5_txt  = '請點擊「更新總經拼圖」載入資料後自動生成結論。'
+        _ai5_clr, _ai5_icon = '#484f58', '⏳ 等待資料'
+
+    # ── 渲染五維度卡片 ────────────────────────────────────────────
+    _aic1, _aic2, _aic3 = st.columns(3)
+    def _ai_card(title, label, desc, color):
+        return (f'<div style="background:#0d1117;border:1px solid {color}44;border-radius:8px;'
+                f'padding:12px;min-height:110px;">'
+                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">{title}</div>'
+                f'<div style="font-size:13px;font-weight:700;color:{color};line-height:1.3;">{label}</div>'
+                f'<div style="font-size:11px;color:#8b949e;margin-top:6px;line-height:1.5;">{desc}</div>'
+                f'</div>')
+    with _aic1:
+        st.markdown(_ai_card('① 目前總經位階', _ai1_lbl, _ai1_desc, _ai1_clr), unsafe_allow_html=True)
+    with _aic2:
+        st.markdown(_ai_card('② 建議配置', _ai2_lbl, _ai2_desc, _ai2_clr), unsafe_allow_html=True)
+    with _aic3:
+        st.markdown(_ai_card('③ 目前貨幣流向', _ai3_lbl, _ai3_desc, _ai3_clr), unsafe_allow_html=True)
+
+    _aic4, _aic5 = st.columns(2)
+    with _aic4:
+        st.markdown(_ai_card('④ 美股動態', _ai4_lbl, _ai4_desc, _ai4_clr), unsafe_allow_html=True)
+    with _aic5:
+        st.markdown(
+            f'<div style="background:#0d1117;border:2px solid {_ai5_clr};border-radius:8px;'
+            f'padding:12px;min-height:110px;">'
+            f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">⑤ 結論</div>'
+            f'<div style="font-size:14px;font-weight:900;color:{_ai5_clr};">{_ai5_icon}</div>'
+            f'<div style="font-size:12px;color:#c9d1d9;margin-top:6px;line-height:1.6;">{_ai5_txt}</div>'
+            f'</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
