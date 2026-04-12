@@ -1942,19 +1942,47 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     print(f'[M1B/CPX] status={_cpx_r.status_code}')
                     if _cpx_r.status_code == 200:
                         _cpx_j = _cpx_r.json()
-                        # 結構：{"Header":..., "DataSet":[...], "Structure":...}
                         _cpx_keys = list(_cpx_j.keys())[:8] if isinstance(_cpx_j, dict) else type(_cpx_j).__name__
                         print(f'[M1B/CPX] keys={_cpx_keys}')
+                        _cpx_meta = _cpx_j.get('meta', {}) if isinstance(_cpx_j, dict) else {}
+                        print(f'[M1B/CPX] meta={str(_cpx_meta)[:300]}')
                         _cpx_ds = (_cpx_j.get('DataSet') or _cpx_j.get('dataset') or
                                    _cpx_j.get('data') or (_cpx_j if isinstance(_cpx_j, list) else []))
                         if isinstance(_cpx_ds, dict):
-                            # DataSet 可能是 {"Series":[...]} 格式
                             _cpx_ds = (_cpx_ds.get('Series') or _cpx_ds.get('series') or
                                        list(_cpx_ds.values())[0] if _cpx_ds else [])
                         print(f'[M1B/CPX] DataSet type={type(_cpx_ds).__name__} len={len(_cpx_ds) if hasattr(_cpx_ds,"__len__") else "?"}')
+                        if _cpx_ds:
+                            print(f'[M1B/CPX] row0={str(_cpx_ds[0])[:200]}')
                         if isinstance(_cpx_ds, list) and len(_cpx_ds) >= 13:
+                            # ── 嘗試從 meta 取欄位名 ──────────────────────
+                            _cpx_col_names = None
+                            if isinstance(_cpx_meta, dict):
+                                _flds = (_cpx_meta.get('fields') or _cpx_meta.get('columns') or
+                                         _cpx_meta.get('header') or _cpx_meta.get('cols'))
+                                if isinstance(_flds, list) and len(_flds) > 0:
+                                    if isinstance(_flds[0], dict):
+                                        _cpx_col_names = [f.get('label') or f.get('id') or f.get('name') or str(f) for f in _flds]
+                                    elif isinstance(_flds[0], str):
+                                        _cpx_col_names = _flds
+                            elif isinstance(_cpx_meta, list) and len(_cpx_meta) > 0:
+                                # meta 本身就是欄位名 list
+                                if isinstance(_cpx_meta[0], dict):
+                                    _cpx_col_names = [f.get('label') or f.get('id') or f.get('name') or str(f) for f in _cpx_meta]
+                                elif isinstance(_cpx_meta[0], str):
+                                    _cpx_col_names = _cpx_meta
+                            # ── 若第一列全是字串 → 用作 header ────────────
+                            if _cpx_col_names is None and isinstance(_cpx_ds[0], (list, tuple)):
+                                if all(isinstance(v, str) for v in _cpx_ds[0]):
+                                    _cpx_col_names = list(_cpx_ds[0])
+                                    _cpx_ds = _cpx_ds[1:]
+                                    print(f'[M1B/CPX] 首列作欄位名: {_cpx_col_names[:8]}')
                             _df_cpx = _pd_m1.DataFrame(_cpx_ds)
-                            print(f'[M1B/CPX] 欄位={list(_df_cpx.columns)[:12]}')
+                            if _cpx_col_names and len(_cpx_col_names) == len(_df_cpx.columns):
+                                _df_cpx.columns = _cpx_col_names
+                                print(f'[M1B/CPX] 套用欄位名: {list(_df_cpx.columns)[:12]}')
+                            else:
+                                print(f'[M1B/CPX] 整數欄位={list(_df_cpx.columns)[:12]} (col_names={str(_cpx_col_names)[:80]})')
                             # 尋找 M1B 欄（含 'M1B' 字串）
                             _m1b_c = next((c for c in _df_cpx.columns if 'M1B' in str(c).upper()), None)
                             # 尋找 M2 欄（精確='M2' 或包含'M2'但非M1B）
@@ -2099,9 +2127,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 except Exception as _imf_e:
                     print(f'[M1B/IMF] ❌ {_imf_e}')
 
-                # ── 路徑 3：CBC 舊 URL 備援（已知大多404，但仍保留以防萬一）──────
+                # ── 路徑 3：CBC 舊 URL 備援（已知大多404，cpx已在Path0處理）──────
                 _cbc_urls = [
-                    'https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EF01M01',  # 正式 API 第二次嘗試
                     'https://www.cbc.gov.tw/public/data/ms1.json',
                     'https://www.cbc.gov.tw/public/Attachment/ms1.json',
                 ]
