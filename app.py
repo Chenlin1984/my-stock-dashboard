@@ -1994,7 +1994,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                       not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY')))), None)
                     print(f'[M1B/{label}] m1b_yoy={_m1b_yoy} m2_yoy={_m2_yoy} m1b_lv={_m1b_lv} m2_lv={_m2_lv}')
                     # ② 數值範圍偵測（百分比 0.05~35%，最後備援）
-                    # EF01M01: pct_cols[-2]='25.79'=M2(5.38%), pct_cols[-3]=M1B(7.12%) — 經 MacroMicro 確認
+                    # EF01M01 實測 pct_cols 結構（均為1987年值作欄名，共10欄）：
+                    #   [-10]='27.38'→M1A YoY, [-9]='29.28', [-8]='27.37', [-7]='34.22',
+                    #   [-6]='47.49', [-5]='48.99',
+                    #   [-4]='52.09'→M1B YoY(7.12%) ✓, [-3]='53.28'（另一M1B定義）,
+                    #   [-2]='25.79'→M2 YoY(5.38%) ✓,  [-1]='26.11'（另一M2定義）
+                    # → M2=pct_cols[-2], M1B=pct_cols[-4]（每隔一欄，跳過alternate定義）
                     if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
                         _pct_cols = []
                         for _ci in _df.columns:
@@ -2009,12 +2014,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols]
                         except: _pct_dbg = _pct_cols
                         print(f'[M1B/{label}] pct候選欄值={_pct_dbg}')
-                        if len(_pct_cols) >= 3:
-                            _m1b_yoy, _m2_yoy = _pct_cols[-3], _pct_cols[-2]
-                            print(f'[M1B/{label}] pct備援偵測(≥3欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                        if len(_pct_cols) >= 4:
+                            _m1b_yoy, _m2_yoy = _pct_cols[-4], _pct_cols[-2]
+                            print(f'[M1B/{label}] pct備援偵測(≥4欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
                         elif len(_pct_cols) >= 2:
                             _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]
-                            print(f'[M1B/{label}] pct備援偵測(2欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                            print(f'[M1B/{label}] pct備援偵測(2~3欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
                     # ③ 有 YoY 欄 → 直接讀值
                     if _m1b_yoy and _m2_yoy:
                         _v1 = pd_mod.to_numeric(_df[_m1b_yoy].astype(str).str.replace(',',''), errors='coerce').dropna()
@@ -2374,61 +2379,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
 
-                # 4. NDC 景氣對策信號（台灣國發會官方 API，session暖機+多 URL 輪詢）
-                _ndc_hdrs = {
-                    'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                                   'AppleWebKit/537.36 (KHTML, like Gecko) '
-                                   'Chrome/124.0.0.0 Safari/537.36'),
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
-                    'Referer': 'https://index.ndc.gov.tw/',
-                    'Origin': 'https://index.ndc.gov.tw',
-                }
-                # 暖機：先 GET 首頁讓 server 設置 session cookie，再呼叫 API
-                try:
-                    _rq_mc.get('https://index.ndc.gov.tw/', headers=_ndc_hdrs,
-                               timeout=8, verify=False)
-                except Exception as _warm_e:
-                    print(f'[Macro/NDC] 暖機失敗(可繼續): {_warm_e}')
-                _ndc_urls = [
-                    'https://index.ndc.gov.tw/n/api/Signal',
-                    'https://index.ndc.gov.tw/n/api/signal',
-                    'https://index.ndc.gov.tw/n/api/Composite',
-                    'https://index.ndc.gov.tw/n/api/composite',
-                    'https://index.ndc.gov.tw/n/api/CyclicalIndicators',
-                ]
-                for _nu in _ndc_urls:
-                    try:
-                        _nr = _rq_mc.get(_nu, headers=_ndc_hdrs, timeout=12, verify=False)
-                        print(f'[Macro/NDC] {_nu.split("/")[-1]} status={_nr.status_code} len={len(_nr.content)}')
-                        if _nr.status_code != 200:
-                            continue
-                        if not _nr.content or len(_nr.content) < 2:
-                            print(f'[Macro/NDC] ⚠️ {_nu.split("/")[-1]}: 空回應，跳過')
-                            continue
-                        print(f'[Macro/NDC] raw={_nr.text[:120]}')
-                        _nj = _nr.json()
-                        _nd = _nj if isinstance(_nj, list) else _nj.get('data', _nj.get('Data', []))
-                        print(f'[Macro/NDC] type={type(_nd).__name__} len={len(_nd) if hasattr(_nd,"__len__") else "?"}')
-                        if isinstance(_nd, list) and len(_nd) > 0:
-                            _last = _nd[-1] if isinstance(_nd[-1], dict) else None
-                            if _last:
-                                print(f'[Macro/NDC] keys={list(_last.keys())[:10]}')
-                                _sc = (_last.get('score') or _last.get('Score') or _last.get('composite')
-                                       or _last.get('total') or _last.get('cyclicalScore')
-                                       or _last.get('value') or None)
-                                _sig = (_last.get('signal') or _last.get('Signal') or _last.get('light')
-                                        or _last.get('color') or _last.get('cyclicalSignal') or None)
-                                _dn = (_last.get('date') or _last.get('Date') or _last.get('yearMonth')
-                                       or _last.get('period') or _last.get('ym') or None)
-                                if _sc is not None:
-                                    _r['ndc_signal'] = {'score': float(_sc), 'signal': str(_sig) if _sig else None, 'date': str(_dn) if _dn else None}
-                                    print(f'[Macro/NDC] ✅ score={_sc} signal={_sig}')
-                                    break
-                                else:
-                                    print(f'[Macro/NDC] 找不到score欄，last={dict(list(_last.items())[:6])}')
-                    except Exception as _e:
-                        print(f'[Macro/NDC] ❌ {_nu.split("/")[-1]}: {_e}')
+                # 4. NDC 景氣對策信號（已確認封鎖，略過）
+                # index.ndc.gov.tw 為 Angular SPA (ng-app="NDCapp")，
+                # 所有 /n/api/* 路由皆回傳 SPA HTML shell（非 JSON），
+                # CDN 層亦對部分路由回傳 403。Streamlit Cloud 無法取得資料，略過。
+                print('[Macro/NDC] ⚠️ 已知封鎖：NDC 為 Angular SPA，跳過景氣燈號')
 
                 # 5. 台灣出口 YoY（OECD Stats JSON → DB.nomics IMF/OECD 備援）
                 # TaiwanExportOrders 非有效 FinMind dataset；改用 OECD MEI 台灣出口數據
