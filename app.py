@@ -1980,7 +1980,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     return _df
 
                 def _extract_yoy(_df, label, pd_mod):
-                    """從 DataFrame 找 M1B/M2 YoY 欄；先找欄名，再用數值範圍偵測"""
+                    """從 DataFrame 找 M1B/M2 YoY 欄；先找欄名→大存量排序→數值範圍偵測"""
                     # ① 欄名搜尋
                     _m1b_yoy = next((c for c in _df.columns if 'M1B' in str(c).upper() and
                                      any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY'))), None)
@@ -1993,7 +1993,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                      ('M2' in str(c).upper() and 'M1' not in str(c).upper() and
                                       not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY')))), None)
                     print(f'[M1B/{label}] m1b_yoy={_m1b_yoy} m2_yoy={_m2_yoy} m1b_lv={_m1b_lv} m2_lv={_m2_lv}')
-                    # ② 數值範圍偵測（百分比範圍 0.05~35% 之間的欄）
+                    # ⑤ 大數值存量偵測（M2 定義上 > M1B > M1A，最大兩正值欄即 M2/M1B）
+                    # 優先於 pct 偵測，避免 EF01M01 pct 欄選錯；適用 EF17M01 純存量格式
+                    if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
+                        _ranked = []
+                        for _ci in _df.columns:
+                            try:
+                                _v = pd_mod.to_numeric(
+                                    _df[_ci].astype(str).str.replace(',',''), errors='coerce').dropna()
+                                _med = float(_v.median())
+                                if len(_v) >= 13 and _med > 100:  # 大正數 = 存量欄
+                                    _ranked.append((_med, _ci))
+                            except: pass
+                        _ranked.sort(reverse=True)
+                        print(f'[M1B/{label}] 大存量排序={[(round(m),c) for m,c in _ranked[:6]]}')
+                        if len(_ranked) >= 2:
+                            _m2_lv  = _ranked[0][1]   # 最大 = M2
+                            _m1b_lv = _ranked[1][1]   # 次大 = M1B
+                            print(f'[M1B/{label}] 大存量: M2={_m2_lv}(≈{round(_ranked[0][0])}) M1B={_m1b_lv}(≈{round(_ranked[1][0])})')
+                    # ② 數值範圍偵測（百分比 0.05~35%，最後備援）
                     if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
                         _pct_cols = []
                         for _ci in _df.columns:
@@ -2004,17 +2022,20 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 if len(_v) >= 12 and 0.05 < abs(_med) < 35:
                                     _pct_cols.append(_ci)
                             except: pass
-                        print(f'[M1B/{label}] 數值偵測YoY候選欄={_pct_cols[:8]}')
+                        try:
+                            _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols[:8]]
+                        except: _pct_dbg = _pct_cols[:8]
+                        print(f'[M1B/{label}] pct候選欄值={_pct_dbg}')
                         if len(_pct_cols) >= 2:
-                            _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]  # 取最後兩個（通常是M1B/M2年增率）
-                            print(f'[M1B/{label}] 自動偵測: M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                            _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]
+                            print(f'[M1B/{label}] pct備援偵測: M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
                     # ③ 有 YoY 欄 → 直接讀值
                     if _m1b_yoy and _m2_yoy:
                         _v1 = pd_mod.to_numeric(_df[_m1b_yoy].astype(str).str.replace(',',''), errors='coerce').dropna()
                         _v2 = pd_mod.to_numeric(_df[_m2_yoy].astype(str).str.replace(',',''),  errors='coerce').dropna()
                         if len(_v1) > 0 and len(_v2) > 0:
                             return round(float(_v1.iloc[-1]),2), round(float(_v2.iloc[-1]),2), 'YoY直讀'
-                    # ④ 有存量欄 → 計算 YoY
+                    # ④ 有存量欄 → 計算 YoY（最新月 ÷ 12個月前）
                     if _m1b_lv and _m2_lv:
                         _v1 = pd_mod.to_numeric(_df[_m1b_lv].astype(str).str.replace(',',''), errors='coerce').dropna()
                         _v2 = pd_mod.to_numeric(_df[_m2_lv].astype(str).str.replace(',',''),  errors='coerce').dropna()
@@ -2367,60 +2388,78 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
 
-                # 4. NDC 景氣對策信號（台灣國發會官方 API）
-                try:
-                    _nr = _rq_mc.get('https://index.ndc.gov.tw/n/api/Signal',
-                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
-                    print(f'[Macro/NDC] status={_nr.status_code}')
-                    if _nr.status_code == 200:
+                # 4. NDC 景氣對策信號（台灣國發會官方 API，多 URL 輪詢 + Chrome headers）
+                _ndc_hdrs = {
+                    'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                                   'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                   'Chrome/124.0.0.0 Safari/537.36'),
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
+                    'Referer': 'https://index.ndc.gov.tw/',
+                    'Origin': 'https://index.ndc.gov.tw',
+                }
+                _ndc_urls = [
+                    'https://index.ndc.gov.tw/n/api/Signal',
+                    'https://index.ndc.gov.tw/n/api/signal',
+                    'https://index.ndc.gov.tw/n/api/Composite',
+                    'https://index.ndc.gov.tw/n/api/composite',
+                    'https://index.ndc.gov.tw/n/api/CyclicalIndicators',
+                ]
+                for _nu in _ndc_urls:
+                    try:
+                        _nr = _rq_mc.get(_nu, headers=_ndc_hdrs, timeout=12, verify=False)
+                        print(f'[Macro/NDC] {_nu.split("/")[-1]} status={_nr.status_code}')
+                        if _nr.status_code != 200:
+                            continue
                         _nj = _nr.json()
-                        _nd = _nj if isinstance(_nj, list) else _nj.get('data', [])
+                        _nd = _nj if isinstance(_nj, list) else _nj.get('data', _nj.get('Data', []))
                         print(f'[Macro/NDC] type={type(_nd).__name__} len={len(_nd) if hasattr(_nd,"__len__") else "?"}')
                         if isinstance(_nd, list) and len(_nd) > 0:
                             _last = _nd[-1] if isinstance(_nd[-1], dict) else None
                             if _last:
                                 print(f'[Macro/NDC] keys={list(_last.keys())[:10]}')
                                 _sc = (_last.get('score') or _last.get('Score') or _last.get('composite')
-                                       or _last.get('total') or _last.get('cyclicalScore') or None)
+                                       or _last.get('total') or _last.get('cyclicalScore')
+                                       or _last.get('value') or None)
                                 _sig = (_last.get('signal') or _last.get('Signal') or _last.get('light')
                                         or _last.get('color') or _last.get('cyclicalSignal') or None)
                                 _dn = (_last.get('date') or _last.get('Date') or _last.get('yearMonth')
-                                       or _last.get('period') or None)
+                                       or _last.get('period') or _last.get('ym') or None)
                                 if _sc is not None:
                                     _r['ndc_signal'] = {'score': float(_sc), 'signal': str(_sig) if _sig else None, 'date': str(_dn) if _dn else None}
                                     print(f'[Macro/NDC] ✅ score={_sc} signal={_sig}')
+                                    break
                                 else:
-                                    print(f'[Macro/NDC] 找不到score欄位，last={dict(list(_last.items())[:6])}')
-                except Exception as _e: print(f'[Macro/NDC] ❌ {_e}')
+                                    print(f'[Macro/NDC] 找不到score欄，last={dict(list(_last.items())[:6])}')
+                    except Exception as _e:
+                        print(f'[Macro/NDC] ❌ {_nu.split("/")[-1]}: {_e}')
 
-                # 5. 台灣外銷訂單 YoY（FinMind TaiwanExportOrders）
-                _fm_tok_mc = _get_fm_token()
-                if _fm_tok_mc:
-                    try:
-                        _start_ex = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
-                        _er = _rq_mc.get('https://api.finmindtrade.com/api/v4/data',
-                                         params={'dataset': 'TaiwanExportOrders', 'start_date': _start_ex,
-                                                 'token': _fm_tok_mc}, timeout=15)
-                        _ej = _er.json()
-                        _ed = _ej.get('data') or []
-                        print(f'[Macro/Export] status={_ej.get("status")} rows={len(_ed)} detail={str(_ej.get("detail",""))[:60]}')
-                        if _ed:
-                            _edf = _pd_mc.DataFrame(_ed)
-                            print(f'[Macro/Export] 欄位={list(_edf.columns)[:8]}')
-                            _yoy_c = next((c for c in _edf.columns if 'yoy' in str(c).lower() or '年增' in str(c)), None)
-                            _val_c = next((c for c in _edf.columns if 'total' in str(c).lower() or '合計' in str(c) or 'value' in str(c).lower()), None)
-                            if _yoy_c:
-                                _eyoy = round(float(_pd_mc.to_numeric(_edf[_yoy_c], errors='coerce').dropna().iloc[-1]), 2)
-                                _r['tw_export'] = {'yoy': _eyoy, 'date': str(_edf['date'].iloc[-1] if 'date' in _edf.columns else '?')}
-                                print(f'[Macro/Export] ✅ YoY={_eyoy}%')
-                            elif _val_c:
-                                _edf[_val_c] = _pd_mc.to_numeric(_edf[_val_c], errors='coerce')
-                                _edf2 = _edf.dropna(subset=[_val_c])
-                                if len(_edf2) >= 13:
-                                    _eyoy2 = round((_edf2[_val_c].iloc[-1]/_edf2[_val_c].iloc[-13]-1)*100, 2)
-                                    _r['tw_export'] = {'yoy': _eyoy2, 'date': str(_edf2['date'].iloc[-1] if 'date' in _edf2.columns else '?')}
-                                    print(f'[Macro/Export] ✅ 計算YoY={_eyoy2}%')
-                    except Exception as _e: print(f'[Macro/Export] ❌ {_e}')
+                # 5. 台灣出口 YoY（OECD Stats JSON → DB.nomics IMF/OECD 備援）
+                # TaiwanExportOrders 非有效 FinMind dataset；改用 OECD MEI 台灣出口數據
+                try:
+                    from dbnomics import fetch_series as _dbn_ex
+                    for _exs in [
+                        'OECD/MEI/TWN.XTEXVA01.CXML.M',   # OECD MEI Taiwan Exports Value
+                        'OECD/MEI/TWN.XTEXVA01.CXML.Q',
+                        'IMF/IFS/M.TW.TXG_FOB_USD',        # IMF IFS Taiwan Goods Exports
+                    ]:
+                        try:
+                            _ex_dbn = _dbn_ex(_exs)
+                            if _ex_dbn is None or len(_ex_dbn) < 14:
+                                continue
+                            _ev = _pd_mc.to_numeric(_ex_dbn['value'], errors='coerce').dropna()
+                            _step = 4 if '.Q' in _exs else 12
+                            if len(_ev) < _step + 1:
+                                continue
+                            _eyoy_d = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
+                            _edate_d = str(_ex_dbn['period'].iloc[-1])[:7]
+                            _r['tw_export'] = {'yoy': _eyoy_d, 'date': _edate_d, 'source': 'OECD'}
+                            print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_eyoy_d:.2f}% date={_edate_d}')
+                            break
+                        except Exception as _ee:
+                            print(f'[Macro/Export/DBN] ❌ {_exs}: {_ee}')
+                except Exception as _e:
+                    print(f'[Macro/Export/DBN] ❌ import dbnomics: {_e}')
 
                 print(f'[Macro] 完成 keys={list(_r.keys())}')
                 return _r if _r else None
@@ -3939,36 +3978,38 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             else:
                 st.info('M1B/M2 數據載入後自動顯示宏爺資金動能判斷')
 
-            # ── 孫慶龍：純 BIAS240 四段門檻（CLI 作補充說明）────────
+            # ── 孫慶龍：BIAS240 × CLI 二維矩陣（v4.0 修訂版）────────
             if _bias_info8:
                 _sql_b = _b240_8
-                _cli_note = ''
-                if _cli_8 is not None:
-                    _cli_note = f'（OECD CLI={_cli_8:.1f}，{"景氣擴張" if _cli_8 >= 100 else "景氣收縮"}）'
-                if _sql_b >= 15:
-                    _sqc8 = '#f85149'
-                    _sqi8 = f'年線乖離 +{_sql_b:.1f}%（史詩級過熱）{_cli_note}'
-                    _sqc8t = ('⚠️ 史詩級過熱：年線正乖離突破 15%，均值回歸壓力極大，嚴防多殺多崩盤。'
+                _cli_txt = f'CLI={_cli_8:.1f}（{"擴張" if _cli_8 >= 100 else "收縮"}）' if _cli_8 is not None else 'CLI未知'
+                if _sql_b >= 15 and _cli_8 is not None and _cli_8 >= 100:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt}（資金狂熱·有基之彈）'
+                    _sqc8t = ('🔥 資金狂熱+景氣擴張=有基之彈：技術嚴重過熱且基本面支撐，'
+                              '可順勢持多，嚴設 ATR 動態停損。逢回不輕易止損，'
+                              '但切勿追漲加倉，靜待均值回歸後的修正。')
+                elif _sql_b >= 15:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt}（史詩級過熱·無基之彈）'
+                    _sqc8t = ('⚠️ 史詩級過熱·無基之彈：年線乖離突破 15% 但景氣仍收縮，'
+                              '均值回歸壓力極大，嚴防多殺多崩盤。'
                               '全面出清高本夢比個股，啟動長線倉位停利，切勿追高。')
-                elif _sql_b >= 10:
-                    _sqc8 = '#d29922'
-                    _sqi8 = f'年線乖離 +{_sql_b:.1f}%（紅色警戒線）{_cli_note}'
-                    _sqc8t = ('🔴 觸及 10% 紅色警戒線，大盤嚴重過熱。'
-                              '停止放大槓桿，逢高分批減碼，準備鎖定波段利潤。')
                 elif _sql_b >= 0:
-                    _sqc8 = '#3fb950'
-                    _sqi8 = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭）{_cli_note}'
+                    _sqc8  = '#3fb950'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭）　{_cli_txt}'
                     _sqc8t = ('🟢 均線多頭發散，乖離率正常，可持股按原定計畫操作。'
                               '回歸個股財報與籌碼面選股，無需特別策略轉換。')
-                elif _sql_b >= -10:
-                    _sqc8 = '#8b949e'
-                    _sqi8 = f'年線乖離 {_sql_b:.1f}%（均線附近整理）{_cli_note}'
-                    _sqc8t = ('🟡 指數在年線附近整理，持股偏保守，等待方向確認後再布局。')
+                elif _cli_8 is not None and _cli_8 > 100:
+                    _sqc8  = '#58a6ff'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_cli_txt}（長線黃金坑）'
+                    _sqc8t = ('💎 景氣擴張中大盤超跌：CLI 顯示實體景氣向好，'
+                              '技術面短暫超賣帶來左側黃金坑機會，'
+                              '分批佈建具備 EPS 護城河的優質股，等待均值回歸。')
                 else:
-                    _sqc8 = '#58a6ff'
-                    _sqi8 = f'年線乖離 {_sql_b:.1f}%（長線黃金坑）{_cli_note}'
-                    _sqc8t = ('💎 非理性超跌，乖離率進入負值極端區，'
-                              '尋找具備 EPS 保護的錯殺股長線建倉。')
+                    _sqc8  = '#8b949e'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}%（均線整理·觀望）　{_cli_txt}'
+                    _sqc8t = ('🟡 指數在年線附近整理，景氣尚未明確擴張，'
+                              '持股偏保守，等待方向確認後再布局。')
                 st.markdown(teacher_conclusion('孫慶龍', _sqi8, _sqc8t, color=_sqc8), unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
