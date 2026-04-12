@@ -1659,6 +1659,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     cb1, cb2 = st.columns([2,5])
     with cb1:
         do_refresh = st.button('🔄 更新全部總經數據', key='cl_refresh', use_container_width=True)
+    # ── 使用者點了更新 → 立即清除舊燈號，避免誤導 ──
+    if do_refresh:
+        _tl_placeholder.info(
+            '⏳ **正在重新載入市場數據...**\n\n'
+            '燈號將在更新完成後顯示，請稍候。'
+        )
     with cb2:
         _now_ts = _tw_now_str()
         _last_ts = st.session_state.get('cl_ts', '尚未更新')
@@ -1926,63 +1932,120 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _fm_tok_m1 = _get_fm_token()
                 _start_m1 = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
 
-                # ── 路徑 0：央行統計資料庫 cpx.cbc.gov.tw（官方最源頭，EF01M01=M1B/M2 月資料）──
-                try:
-                    _cpx_r = _rq_m1.get(
-                        'https://cpx.cbc.gov.tw/API/DataAPI/Get',
-                        params={'FileName': 'EF01M01'},
-                        headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'},
-                        timeout=15, verify=False)
-                    print(f'[M1B/CPX] status={_cpx_r.status_code}')
-                    if _cpx_r.status_code == 200:
-                        _cpx_j = _cpx_r.json()
-                        # 結構：{"Header":..., "DataSet":[...], "Structure":...}
-                        _cpx_keys = list(_cpx_j.keys())[:8] if isinstance(_cpx_j, dict) else type(_cpx_j).__name__
-                        print(f'[M1B/CPX] keys={_cpx_keys}')
-                        _cpx_ds = (_cpx_j.get('DataSet') or _cpx_j.get('dataset') or
-                                   _cpx_j.get('data') or (_cpx_j if isinstance(_cpx_j, list) else []))
-                        if isinstance(_cpx_ds, dict):
-                            # DataSet 可能是 {"Series":[...]} 格式
-                            _cpx_ds = (_cpx_ds.get('Series') or _cpx_ds.get('series') or
-                                       list(_cpx_ds.values())[0] if _cpx_ds else [])
-                        print(f'[M1B/CPX] DataSet type={type(_cpx_ds).__name__} len={len(_cpx_ds) if hasattr(_cpx_ds,"__len__") else "?"}')
-                        if isinstance(_cpx_ds, list) and len(_cpx_ds) >= 13:
-                            _df_cpx = _pd_m1.DataFrame(_cpx_ds)
-                            print(f'[M1B/CPX] 欄位={list(_df_cpx.columns)[:12]}')
-                            # 尋找 M1B 欄（含 'M1B' 字串）
-                            _m1b_c = next((c for c in _df_cpx.columns if 'M1B' in str(c).upper()), None)
-                            # 尋找 M2 欄（精確='M2' 或包含'M2'但非M1B）
-                            _m2_c  = next((c for c in _df_cpx.columns
-                                           if str(c).strip().upper() == 'M2' or
-                                           ('M2' in str(c).upper() and 'M1' not in str(c).upper())), None)
-                            # 若有 YoY 欄直接用
-                            _m1b_yoy_c2 = next((c for c in _df_cpx.columns
-                                                if 'M1B' in str(c).upper() and
-                                                ('YOY' in str(c).upper() or '年增' in str(c) or '增率' in str(c))), None)
-                            _m2_yoy_c2  = next((c for c in _df_cpx.columns
-                                                if 'M2' in str(c).upper() and 'M1' not in str(c).upper() and
-                                                ('YOY' in str(c).upper() or '年增' in str(c) or '增率' in str(c))), None)
-                            print(f'[M1B/CPX] m1b={_m1b_c} m2={_m2_c} m1b_yoy={_m1b_yoy_c2} m2_yoy={_m2_yoy_c2}')
-                            if _m1b_yoy_c2 and _m2_yoy_c2:
-                                # 直接有 YoY 欄
-                                _m1b_v2 = _pd_m1.to_numeric(_df_cpx[_m1b_yoy_c2].astype(str).str.replace(',',''), errors='coerce').dropna()
-                                _m2_v2  = _pd_m1.to_numeric(_df_cpx[_m2_yoy_c2].astype(str).str.replace(',',''),  errors='coerce').dropna()
-                                if len(_m1b_v2) > 0 and len(_m2_v2) > 0:
-                                    _m1b_yoy_cx = round(float(_m1b_v2.iloc[-1]), 2)
-                                    _m2_yoy_cx  = round(float(_m2_v2.iloc[-1]),  2)
-                                    print(f'[M1B/CPX] ✅ YoY直讀 M1B={_m1b_yoy_cx:.2f}% M2={_m2_yoy_cx:.2f}%')
-                                    return {'m1b_yoy': _m1b_yoy_cx, 'm2_yoy': _m2_yoy_cx, 'source': 'CBC-cpx'}
-                            elif _m1b_c and _m2_c:
-                                # 用金額計算 YoY
-                                _m1b_v2 = _pd_m1.to_numeric(_df_cpx[_m1b_c].astype(str).str.replace(',',''), errors='coerce').dropna()
-                                _m2_v2  = _pd_m1.to_numeric(_df_cpx[_m2_c].astype(str).str.replace(',',''),  errors='coerce').dropna()
-                                if len(_m1b_v2) >= 13 and len(_m2_v2) >= 13:
-                                    _m1b_yoy_cx = round((_m1b_v2.iloc[-1]/_m1b_v2.iloc[-13]-1)*100, 2)
-                                    _m2_yoy_cx  = round((_m2_v2.iloc[-1] /_m2_v2.iloc[-13] -1)*100, 2)
-                                    print(f'[M1B/CPX] ✅ 計算YoY M1B={_m1b_yoy_cx:.2f}% M2={_m2_yoy_cx:.2f}%')
-                                    return {'m1b_yoy': _m1b_yoy_cx, 'm2_yoy': _m2_yoy_cx, 'source': 'CBC-cpx'}
-                except Exception as _cpx_e:
-                    print(f'[M1B/CPX] ❌ {_cpx_e}')
+                # ── 路徑 0：央行統計資料庫 cpx.cbc.gov.tw ──────────────────
+                # 依精確度排序嘗試多個 FileName：
+                #   EF17M01 = 貨幣總計數月底數（最直接含M1B/M2月底存量）
+                #   EF01M01 = 重要金融指標（含M1B/M2但混合12欄）
+                def _parse_cbc_ds(j, label):
+                    """解析 CBC API JSON，回傳含欄位名的 DataFrame 或 None"""
+                    if not isinstance(j, dict):
+                        return None
+                    # 同時支援 {Header,DataSet,Structure} 和 {meta,data} 兩種格式
+                    _meta = (j.get('meta') or j.get('Header') or j.get('header') or {})
+                    _ds   = (j.get('DataSet') or j.get('dataset') or
+                             j.get('data')    or (j if isinstance(j, list) else []))
+                    if isinstance(_ds, dict):
+                        _ds = (list(_ds.values())[0] if _ds else [])
+                    print(f'[M1B/{label}] meta={str(_meta)[:200]}')
+                    print(f'[M1B/{label}] ds_type={type(_ds).__name__} len={len(_ds) if hasattr(_ds,"__len__") else "?"}')
+                    if not isinstance(_ds, list) or len(_ds) < 13:
+                        return None
+                    print(f'[M1B/{label}] row0={str(_ds[0])[:200]}')
+                    # ── 提取欄位名 ───────────────────────────────────────
+                    _col_names = None
+                    if isinstance(_meta, dict):
+                        _flds = (_meta.get('fields') or _meta.get('columns') or
+                                 _meta.get('header') or _meta.get('cols'))
+                        if isinstance(_flds, list) and len(_flds) > 0:
+                            if isinstance(_flds[0], dict):
+                                _col_names = [f.get('label') or f.get('id') or f.get('name') or str(f) for f in _flds]
+                            elif isinstance(_flds[0], str):
+                                _col_names = _flds
+                    elif isinstance(_meta, list) and len(_meta) > 0:
+                        if isinstance(_meta[0], dict):
+                            _col_names = [f.get('label') or f.get('id') or f.get('name') or str(f) for f in _meta]
+                        elif isinstance(_meta[0], str):
+                            _col_names = _meta
+                    # 若首列全是字串 → 當作 header row
+                    if _col_names is None and isinstance(_ds[0], (list, tuple)):
+                        if all(isinstance(v, str) for v in _ds[0]):
+                            _col_names = list(_ds[0])
+                            _ds = _ds[1:]
+                            print(f'[M1B/{label}] 首列作欄位名: {_col_names[:8]}')
+                    import pandas as _pd_cb
+                    _df = _pd_cb.DataFrame(_ds)
+                    if _col_names and len(_col_names) == len(_df.columns):
+                        _df.columns = _col_names
+                    print(f'[M1B/{label}] 欄位={list(_df.columns)[:12]}')
+                    return _df
+
+                def _extract_yoy(_df, label, pd_mod):
+                    """從 DataFrame 找 M1B/M2 YoY 欄；先找欄名，再用數值範圍偵測"""
+                    # ① 欄名搜尋
+                    _m1b_yoy = next((c for c in _df.columns if 'M1B' in str(c).upper() and
+                                     any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY'))), None)
+                    _m2_yoy  = next((c for c in _df.columns if 'M2' in str(c).upper() and
+                                     'M1' not in str(c).upper() and
+                                     any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY'))), None)
+                    _m1b_lv  = next((c for c in _df.columns if 'M1B' in str(c).upper() and
+                                     not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY'))), None)
+                    _m2_lv   = next((c for c in _df.columns if str(c).strip().upper() in ('M2',) or
+                                     ('M2' in str(c).upper() and 'M1' not in str(c).upper() and
+                                      not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY')))), None)
+                    print(f'[M1B/{label}] m1b_yoy={_m1b_yoy} m2_yoy={_m2_yoy} m1b_lv={_m1b_lv} m2_lv={_m2_lv}')
+                    # ② 數值範圍偵測（百分比範圍 0.05~35% 之間的欄）
+                    if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
+                        _pct_cols = []
+                        for _ci in _df.columns:
+                            try:
+                                _v = pd_mod.to_numeric(
+                                    _df[_ci].astype(str).str.replace(',',''), errors='coerce').dropna()
+                                _med = float(_v.median())
+                                if len(_v) >= 12 and 0.05 < abs(_med) < 35:
+                                    _pct_cols.append(_ci)
+                            except: pass
+                        print(f'[M1B/{label}] 數值偵測YoY候選欄={_pct_cols[:8]}')
+                        if len(_pct_cols) >= 2:
+                            _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]  # 取最後兩個（通常是M1B/M2年增率）
+                            print(f'[M1B/{label}] 自動偵測: M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                    # ③ 有 YoY 欄 → 直接讀值
+                    if _m1b_yoy and _m2_yoy:
+                        _v1 = pd_mod.to_numeric(_df[_m1b_yoy].astype(str).str.replace(',',''), errors='coerce').dropna()
+                        _v2 = pd_mod.to_numeric(_df[_m2_yoy].astype(str).str.replace(',',''),  errors='coerce').dropna()
+                        if len(_v1) > 0 and len(_v2) > 0:
+                            return round(float(_v1.iloc[-1]),2), round(float(_v2.iloc[-1]),2), 'YoY直讀'
+                    # ④ 有存量欄 → 計算 YoY
+                    if _m1b_lv and _m2_lv:
+                        _v1 = pd_mod.to_numeric(_df[_m1b_lv].astype(str).str.replace(',',''), errors='coerce').dropna()
+                        _v2 = pd_mod.to_numeric(_df[_m2_lv].astype(str).str.replace(',',''),  errors='coerce').dropna()
+                        if len(_v1) >= 13 and len(_v2) >= 13:
+                            return (round((_v1.iloc[-1]/_v1.iloc[-13]-1)*100,2),
+                                    round((_v2.iloc[-1]/_v2.iloc[-13]-1)*100,2), '計算YoY')
+                    return None, None, None
+
+                _cpx_fnames = [
+                    ('EF17M01', '貨幣總計數月底數'),  # 最直接：M1A/M1B/M2月底存量+年增率
+                    ('EF01M01', '重要金融指標'),       # 備援
+                ]
+                for _fname, _fdesc in _cpx_fnames:
+                    try:
+                        _cpx_r = _rq_m1.get(
+                            'https://cpx.cbc.gov.tw/API/DataAPI/Get',
+                            params={'FileName': _fname},
+                            headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'},
+                            timeout=15, verify=False)
+                        print(f'[M1B/CPX] {_fname} status={_cpx_r.status_code}')
+                        if _cpx_r.status_code != 200:
+                            continue
+                        _df_cpx = _parse_cbc_ds(_cpx_r.json(), _fname)
+                        if _df_cpx is None:
+                            continue
+                        _m1b_yoy_v, _m2_yoy_v, _method = _extract_yoy(_df_cpx, _fname, _pd_m1)
+                        if _m1b_yoy_v is not None and _m2_yoy_v is not None:
+                            print(f'[M1B/CPX] ✅ {_fdesc}({_method}) M1B={_m1b_yoy_v:.2f}% M2={_m2_yoy_v:.2f}%')
+                            return {'m1b_yoy': _m1b_yoy_v, 'm2_yoy': _m2_yoy_v, 'source': f'CBC-{_fname}'}
+                    except Exception as _cpx_e:
+                        print(f'[M1B/CPX] {_fname} ❌ {_cpx_e}')
                 # FinMind 只接受 TaiwanSt... 開頭的 dataset，貨幣供給不在免費方案
                 if False and _fm_tok_m1:
                     try:
@@ -2093,9 +2156,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 except Exception as _imf_e:
                     print(f'[M1B/IMF] ❌ {_imf_e}')
 
-                # ── 路徑 3：CBC 舊 URL 備援（已知大多404，但仍保留以防萬一）──────
+                # ── 路徑 3：CBC 舊 URL 備援（已知大多404，cpx已在Path0處理）──────
                 _cbc_urls = [
-                    'https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EF01M01',  # 正式 API 第二次嘗試
                     'https://www.cbc.gov.tw/public/data/ms1.json',
                     'https://www.cbc.gov.tw/public/Attachment/ms1.json',
                 ]
