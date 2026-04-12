@@ -1659,6 +1659,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     cb1, cb2 = st.columns([2,5])
     with cb1:
         do_refresh = st.button('🔄 更新全部總經數據', key='cl_refresh', use_container_width=True)
+    # ── 使用者點了更新 → 立即清除舊燈號，避免誤導 ──
+    if do_refresh:
+        _tl_placeholder.info(
+            '⏳ **正在重新載入市場數據...**\n\n'
+            '燈號將在更新完成後顯示，請稍候。'
+        )
     with cb2:
         _now_ts = _tw_now_str()
         _last_ts = st.session_state.get('cl_ts', '尚未更新')
