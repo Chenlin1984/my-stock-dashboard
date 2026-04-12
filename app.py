@@ -2102,15 +2102,137 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 except Exception:
                     return None
 
-            with ThreadPoolExecutor(max_workers=2) as _exc2:
-                _fut_m1b  = _exc2.submit(_job_m1b)
-                _fut_bias = _exc2.submit(_job_bias)
-            try: _m1b_res  = _fut_m1b.result(timeout=30)
+            def _job_macro():
+                """總經拼圖 v4.0：NDC景氣燈號 / 外銷訂單 / ISM PMI / 核心CPI / VIX"""
+                import requests as _rq_mc, pandas as _pd_mc, io as _io_mc
+                _r = {}
+
+                # 1. VIX 時間序列（yfinance）
+                try:
+                    import yfinance as _yf_mc
+                    _vdf = _yf_mc.download('^VIX', period='1y', progress=False, auto_adjust=True)
+                    if _vdf is not None and isinstance(_vdf.columns, _pd_mc.MultiIndex):
+                        _vdf.columns = _vdf.columns.get_level_values(0)
+                    if _vdf is not None and len(_vdf) > 0:
+                        _vc = next((c for c in _vdf.columns if str(c).lower() in ('close','adj close','adjclose')), None)
+                        if _vc:
+                            _vix_s = _vdf[_vc].dropna()
+                            _r['vix'] = {
+                                'current': round(float(_vix_s.iloc[-1]), 1),
+                                'ma20': round(float(_vix_s.rolling(20).mean().iloc[-1]), 1) if len(_vix_s) >= 20 else round(float(_vix_s.iloc[-1]), 1),
+                                'dates': [str(d)[:10] for d in _vix_s.index[-60:]],
+                                'values': [round(float(v), 1) for v in _vix_s.values[-60:]],
+                            }
+                            print(f'[Macro/VIX] ✅ current={_r["vix"]["current"]}')
+                except Exception as _e: print(f'[Macro/VIX] ❌ {_e}')
+
+                # 2. US 核心 CPI YoY（FRED CPILFESL）
+                try:
+                    _cr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPILFESL',
+                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[Macro/CPI] status={_cr.status_code}')
+                    if _cr.status_code == 200:
+                        _cdf = _pd_mc.read_csv(_io_mc.StringIO(_cr.text))
+                        _cdf.columns = ['date', 'value']
+                        _cdf['value'] = _pd_mc.to_numeric(_cdf['value'], errors='coerce')
+                        _cdf = _cdf.dropna()
+                        if len(_cdf) >= 13:
+                            _cyoy = round((_cdf['value'].iloc[-1]/_cdf['value'].iloc[-13]-1)*100, 2)
+                            _r['us_core_cpi'] = {'yoy': _cyoy, 'date': str(_cdf['date'].iloc[-1])}
+                            print(f'[Macro/CPI] ✅ YoY={_cyoy:.2f}% date={_cdf["date"].iloc[-1]}')
+                except Exception as _e: print(f'[Macro/CPI] ❌ {_e}')
+
+                # 3. US ISM PMI（FRED NAPM）
+                try:
+                    _pr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
+                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[Macro/PMI] status={_pr.status_code}')
+                    if _pr.status_code == 200:
+                        _pdf = _pd_mc.read_csv(_io_mc.StringIO(_pr.text))
+                        _pdf.columns = ['date', 'value']
+                        _pdf['value'] = _pd_mc.to_numeric(_pdf['value'], errors='coerce')
+                        _pdf = _pdf.dropna()
+                        if len(_pdf) > 0:
+                            _r['ism_pmi'] = {
+                                'value': round(float(_pdf['value'].iloc[-1]), 1),
+                                'date': str(_pdf['date'].iloc[-1]),
+                                'dates': [str(d)[:10] for d in _pdf['date'].iloc[-24:]],
+                                'values': [round(float(v), 1) for v in _pdf['value'].iloc[-24:]],
+                            }
+                            print(f'[Macro/PMI] ✅ PMI={_r["ism_pmi"]["value"]} date={_r["ism_pmi"]["date"]}')
+                except Exception as _e: print(f'[Macro/PMI] ❌ {_e}')
+
+                # 4. NDC 景氣對策信號（台灣國發會官方 API）
+                try:
+                    _nr = _rq_mc.get('https://index.ndc.gov.tw/n/api/Signal',
+                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                    print(f'[Macro/NDC] status={_nr.status_code}')
+                    if _nr.status_code == 200:
+                        _nj = _nr.json()
+                        _nd = _nj if isinstance(_nj, list) else _nj.get('data', [])
+                        print(f'[Macro/NDC] type={type(_nd).__name__} len={len(_nd) if hasattr(_nd,"__len__") else "?"}')
+                        if isinstance(_nd, list) and len(_nd) > 0:
+                            _last = _nd[-1] if isinstance(_nd[-1], dict) else None
+                            if _last:
+                                print(f'[Macro/NDC] keys={list(_last.keys())[:10]}')
+                                _sc = (_last.get('score') or _last.get('Score') or _last.get('composite')
+                                       or _last.get('total') or _last.get('cyclicalScore') or None)
+                                _sig = (_last.get('signal') or _last.get('Signal') or _last.get('light')
+                                        or _last.get('color') or _last.get('cyclicalSignal') or None)
+                                _dn = (_last.get('date') or _last.get('Date') or _last.get('yearMonth')
+                                       or _last.get('period') or None)
+                                if _sc is not None:
+                                    _r['ndc_signal'] = {'score': float(_sc), 'signal': str(_sig) if _sig else None, 'date': str(_dn) if _dn else None}
+                                    print(f'[Macro/NDC] ✅ score={_sc} signal={_sig}')
+                                else:
+                                    print(f'[Macro/NDC] 找不到score欄位，last={dict(list(_last.items())[:6])}')
+                except Exception as _e: print(f'[Macro/NDC] ❌ {_e}')
+
+                # 5. 台灣外銷訂單 YoY（FinMind TaiwanExportOrders）
+                _fm_tok_mc = _get_fm_token()
+                if _fm_tok_mc:
+                    try:
+                        _start_ex = (datetime.date.today()-datetime.timedelta(days=420)).strftime('%Y-%m-%d')
+                        _er = _rq_mc.get('https://api.finmindtrade.com/api/v4/data',
+                                         params={'dataset': 'TaiwanExportOrders', 'start_date': _start_ex,
+                                                 'token': _fm_tok_mc}, timeout=15)
+                        _ej = _er.json()
+                        _ed = _ej.get('data') or []
+                        print(f'[Macro/Export] status={_ej.get("status")} rows={len(_ed)} detail={str(_ej.get("detail",""))[:60]}')
+                        if _ed:
+                            _edf = _pd_mc.DataFrame(_ed)
+                            print(f'[Macro/Export] 欄位={list(_edf.columns)[:8]}')
+                            _yoy_c = next((c for c in _edf.columns if 'yoy' in str(c).lower() or '年增' in str(c)), None)
+                            _val_c = next((c for c in _edf.columns if 'total' in str(c).lower() or '合計' in str(c) or 'value' in str(c).lower()), None)
+                            if _yoy_c:
+                                _eyoy = round(float(_pd_mc.to_numeric(_edf[_yoy_c], errors='coerce').dropna().iloc[-1]), 2)
+                                _r['tw_export'] = {'yoy': _eyoy, 'date': str(_edf['date'].iloc[-1] if 'date' in _edf.columns else '?')}
+                                print(f'[Macro/Export] ✅ YoY={_eyoy}%')
+                            elif _val_c:
+                                _edf[_val_c] = _pd_mc.to_numeric(_edf[_val_c], errors='coerce')
+                                _edf2 = _edf.dropna(subset=[_val_c])
+                                if len(_edf2) >= 13:
+                                    _eyoy2 = round((_edf2[_val_c].iloc[-1]/_edf2[_val_c].iloc[-13]-1)*100, 2)
+                                    _r['tw_export'] = {'yoy': _eyoy2, 'date': str(_edf2['date'].iloc[-1] if 'date' in _edf2.columns else '?')}
+                                    print(f'[Macro/Export] ✅ 計算YoY={_eyoy2}%')
+                    except Exception as _e: print(f'[Macro/Export] ❌ {_e}')
+
+                print(f'[Macro] 完成 keys={list(_r.keys())}')
+                return _r if _r else None
+
+            with ThreadPoolExecutor(max_workers=3) as _exc2:
+                _fut_m1b   = _exc2.submit(_job_m1b)
+                _fut_bias  = _exc2.submit(_job_bias)
+                _fut_macro = _exc2.submit(_job_macro)
+            try: _m1b_res   = _fut_m1b.result(timeout=30)
             except: _m1b_res = None; print('[並發] ⏰ M1B 超時')
-            try: _bias_res = _fut_bias.result(timeout=30)
+            try: _bias_res  = _fut_bias.result(timeout=30)
             except: _bias_res = None; print('[並發] ⏰ bias 超時')
-            if _m1b_res:  st.session_state['m1b_m2_info'] = _m1b_res
-            if _bias_res: st.session_state['bias_info']   = _bias_res
+            try: _macro_res = _fut_macro.result(timeout=40)
+            except: _macro_res = None; print('[並發] ⏰ Macro 超時')
+            if _m1b_res:   st.session_state['m1b_m2_info'] = _m1b_res
+            if _bias_res:  st.session_state['bias_info']   = _bias_res
+            if _macro_res: st.session_state['macro_info']  = _macro_res
 
             # ── 計算市場狀態（用已載入資料，不另外發請求）
             try:
@@ -3428,6 +3550,155 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # SECTION 八: 總經拼圖 v4.0 (景氣位階 × 前瞻需求 × 全球風險)
+    # ══════════════════════════════════════════════════════════════
+    st.markdown(section_header('八','🌐 總經拼圖 v4.0（景氣位階 × 前瞻需求 × 全球風險）','🌐'),unsafe_allow_html=True)
+
+    _macro_info = st.session_state.get('macro_info') or {}
+    _m8_ndc   = _macro_info.get('ndc_signal')
+    _m8_exp   = _macro_info.get('tw_export')
+    _m8_pmi   = _macro_info.get('ism_pmi')
+    _m8_cpi   = _macro_info.get('us_core_cpi')
+    _m8_vix   = _macro_info.get('vix')
+
+    # ── Row 1: NDC燈號 | 外銷訂單YoY | US ISM PMI ──────────
+    _s8c1 = st.columns(3)
+
+    with _s8c1[0]:
+        if _m8_ndc:
+            _sc8   = float(_m8_ndc.get('score', 0))
+            _nc8   = ('#f85149' if _sc8 >= 38 else '#d29922' if _sc8 >= 32 else
+                      '#3fb950' if _sc8 >= 23 else '#58a6ff')
+            _nl8   = ('🔴 紅燈 過熱' if _sc8 >= 38 else '🟡 黃紅燈 繁榮' if _sc8 >= 32 else
+                      '🟢 綠燈 穩定' if _sc8 >= 23 else '🔵 黃藍燈 趨緩' if _sc8 >= 17 else '🔵 藍燈 衰退')
+            _nd8   = f" ({_m8_ndc.get('date','')})" if _m8_ndc.get('date') else ''
+            st.markdown(kpi('NDC 景氣燈號', f'{_sc8:.0f} 分', f'{_nl8}{_nd8}', _nc8, '#0d1117'), unsafe_allow_html=True)
+        else:
+            st.markdown(kpi('NDC 景氣燈號', '待取得', '9分藍燈→45分紅燈', '#484f58', '#0d1117'), unsafe_allow_html=True)
+
+    with _s8c1[1]:
+        if _m8_exp:
+            _ey8 = _m8_exp.get('yoy', 0)
+            _ec8 = '#3fb950' if _ey8 > 0 else '#f85149'
+            _el8 = ('✅ 出口動能正成長，基本面有撐' if _ey8 > 0 else
+                    ('🔴 外銷連兩月衰退，基本面警示！' if _ey8 < -5 else '⚠️ 外銷轉弱，留意基本面背離'))
+            st.markdown(kpi('外銷訂單 YoY', f'{_ey8:+.1f}%', _el8, _ec8, '#0d1117'), unsafe_allow_html=True)
+        else:
+            st.markdown(kpi('外銷訂單 YoY', '待取得', '領先實際營收 1~2 月', '#484f58', '#0d1117'), unsafe_allow_html=True)
+
+    with _s8c1[2]:
+        if _m8_pmi:
+            _pv8 = _m8_pmi.get('value', 50)
+            _pc8 = '#3fb950' if _pv8 >= 50 else ('#d29922' if _pv8 >= 47 else '#f85149')
+            _pl8 = ('✅ 擴張（榮枯線以上）' if _pv8 >= 50 else
+                    ('⚠️ 輕微收縮，留意終端需求' if _pv8 >= 47 else '🔴 嚴重收縮，台股電子股承壓'))
+            _pd8 = f" ({_m8_pmi.get('date','')})" if _m8_pmi.get('date') else ''
+            st.markdown(kpi('US ISM PMI', f'{_pv8:.1f}', f'{_pl8}{_pd8}', _pc8, '#0d1117'), unsafe_allow_html=True)
+        else:
+            st.markdown(kpi('US ISM PMI', '待取得', '50為榮枯線', '#484f58', '#0d1117'), unsafe_allow_html=True)
+
+    # ── Row 2: 美國核心CPI | VIX 時間序列圖 ────────────────
+    _s8c2 = st.columns([1, 2])
+
+    with _s8c2[0]:
+        if _m8_cpi:
+            _cy8 = _m8_cpi.get('yoy', 0)
+            _cc8 = '#f85149' if _cy8 > 3.5 else ('#d29922' if _cy8 > 2.5 else '#3fb950')
+            _cl8 = ('🔴 通膨偏高，Fed升息壓力大' if _cy8 > 3.5 else
+                    ('⚠️ 通膨黏性，降息路徑放緩' if _cy8 > 2.5 else '✅ 通膨受控，降息可期'))
+            _cdate8 = f" ({_m8_cpi.get('date','')})" if _m8_cpi.get('date') else ''
+            st.markdown(kpi('美國核心CPI YoY', f'{_cy8:+.2f}%', f'{_cl8}{_cdate8}', _cc8, '#0d1117'), unsafe_allow_html=True)
+            st.caption('💡 Fed 目標值 = 2%。CPI > 3.5% 時升息預期升高，外資易從台股提款。')
+        else:
+            st.markdown(kpi('美國核心CPI YoY', '待取得', 'Fed 目標值 = 2%', '#484f58', '#0d1117'), unsafe_allow_html=True)
+
+    with _s8c2[1]:
+        if _m8_vix and _m8_vix.get('dates'):
+            _vcur8 = _m8_vix.get('current', 0)
+            _vma8  = _m8_vix.get('ma20', 0)
+            _vc8   = '#f85149' if _vcur8 >= 30 else ('#d29922' if _vcur8 >= 20 else '#3fb950')
+            _vl8   = ('🚨 恐慌衝頂，強制空手' if _vcur8 >= 30 else
+                      ('⚠️ 市場緊張，降低持倉' if _vcur8 >= 20 else '✅ 市場平靜'))
+            import plotly.graph_objects as _go8
+            _vfig8 = _go8.Figure()
+            _vfig8.add_trace(_go8.Scatter(
+                x=_m8_vix['dates'], y=_m8_vix['values'],
+                mode='lines', line=dict(color='#58a6ff', width=1.5),
+                fill='tozeroy', fillcolor='rgba(88,166,255,0.08)', name='VIX'))
+            _vfig8.add_hline(y=25, line_dash='dash', line_color='#d29922', opacity=0.6,
+                             annotation_text='25 警戒', annotation_font_color='#d29922')
+            _vfig8.add_hline(y=30, line_dash='dash', line_color='#f85149', opacity=0.6,
+                             annotation_text='30 危機', annotation_font_color='#f85149')
+            _vfig8.add_annotation(x=_m8_vix['dates'][-1], y=_vcur8,
+                                  text=f'<b>{_vcur8}</b>', showarrow=True, arrowhead=2,
+                                  font=dict(color=_vc8, size=12),
+                                  bgcolor='#0d1117', bordercolor=_vc8)
+            _vfig8.update_layout(
+                height=170, margin=dict(l=35, r=60, t=30, b=20),
+                paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+                font=dict(color='#8b949e', size=10), showlegend=False,
+                xaxis=dict(showgrid=False, color='#484f58'),
+                yaxis=dict(showgrid=True, gridcolor='#21262d', color='#484f58'),
+                title=dict(text=f'VIX 恐慌指數 {_vcur8}（MA20={_vma8}）— {_vl8}',
+                           font=dict(size=11, color=_vc8), x=0))
+            st.plotly_chart(_vfig8, use_container_width=True)
+        else:
+            st.markdown(kpi('VIX 恐慌指數', '待取得', '≥25警戒 / ≥30危機→強制空手', '#484f58', '#0d1117'), unsafe_allow_html=True)
+
+    # ── v4.0 總經否決權 ─────────────────────────────────────
+    _veto8 = []
+    if _m8_vix and _m8_vix.get('current', 0) >= 30:
+        _veto8.append(('🚨', f'VIX={_m8_vix["current"]} ≥ 30：全球流動性危機，無視所有技術面買訊，強制空手！', '#f85149'))
+    if _m8_pmi and _m8_pmi.get('value', 55) < 48:
+        _veto8.append(('⚠️', f'ISM PMI={_m8_pmi["value"]} < 48：終端需求急凍，若 SOX 仍漲為「無基之彈」，降低持股水位', '#d29922'))
+    if _m8_cpi and _m8_cpi.get('yoy', 0) > 4.0:
+        _veto8.append(('⚠️', f'核心CPI={_m8_cpi["yoy"]:.1f}% > 4%：通膨嚴峻，外資提款風險升高，注意匯率變動', '#d29922'))
+    if _m8_exp and _m8_exp.get('yoy', 0) < -5:
+        _veto8.append(('⚠️', f'外銷訂單 YoY={_m8_exp["yoy"]:.1f}%：連續衰退，股價與基本面嚴重背離，謹慎追高', '#d29922'))
+    _crisis_buy = _m8_ndc and _m8_ndc.get('score', 25) <= 16
+    if _crisis_buy:
+        _veto8.append(('💡', f'NDC燈號={_m8_ndc["score"]:.0f}分（藍燈）：實體景氣衰退但為左側交易黃金布局時機！低基期好股勇敢建倉', '#3fb950'))
+
+    if _veto8:
+        _has_veto = any(e[0] != '💡' for e in _veto8)
+        _exp_title = ('🚨 v4.0 總經否決權已觸發（展開看詳情）' if _has_veto else
+                      '💡 v4.0 危機入市訊號（展開看詳情）')
+        with st.expander(_exp_title, expanded=_has_veto):
+            for _icon8, _msg8, _col8 in _veto8:
+                st.markdown(
+                    f'<div style="border-left:3px solid {_col8};padding:6px 12px;'
+                    f'margin:4px 0;color:{_col8};font-size:13px;">{_icon8} {_msg8}</div>',
+                    unsafe_allow_html=True)
+    elif any([_m8_vix, _m8_pmi, _m8_cpi, _m8_ndc]):
+        st.success('✅ v4.0 總經否決權：無觸發 — 當前宏觀環境無系統性風險訊號')
+
+    # ── Section 八 教師結論 ─────────────────────────────────
+    with st.expander('📖 v4.0 總經拼圖結論', expanded=False):
+        _s8_lines = []
+        if _m8_ndc and _m8_ndc.get('score') is not None:
+            _sc8c = _m8_ndc['score']
+            if _sc8c >= 38:
+                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（紅燈）', '實體景氣過熱，大盤若乖離率同步偏高 → 啟動長線減碼', '#f85149'))
+            elif _sc8c <= 16:
+                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（藍燈）', '景氣衰退是左側交易最強買點 → 危機入市、分批建倉低基期個股', '#3fb950'))
+            else:
+                _s8_lines.append(('孫慶龍', f'NDC燈號 {_sc8c:.0f}分（{_nl8}）', '景氣正常區間，按籌碼面操作即可', '#8b949e'))
+        if _m8_pmi and _m8_vix:
+            _pv8c = _m8_pmi.get('value', 50)
+            _vc8c = _m8_vix.get('current', 15)
+            if _pv8c < 50 and _vc8c < 20:
+                _s8_lines.append(('弘爺', f'ISM PMI={_pv8c}（收縮）但 VIX={_vc8c}（平靜）', '需求面偏弱但市場不恐慌 → 等待 PMI 反轉確認才加碼', '#d29922'))
+            elif _pv8c >= 50 and _vc8c < 20:
+                _s8_lines.append(('弘爺', f'ISM PMI={_pv8c}（擴張）且 VIX={_vc8c}（平靜）', '美國終端需求健康 + 市場情緒穩定 → 台股電子股多頭環境確立', '#3fb950'))
+        for _t8, _i8, _c8, _col8 in _s8_lines:
+            st.markdown(teacher_conclusion(_t8, _i8, _c8, color=_col8), unsafe_allow_html=True)
+        if not _s8_lines:
+            st.info('總經數據載入後自動生成結論')
+
+    st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════
 # TAB 2: 個股深度分析 + 健康度評分
 # ══════════════════════════════════════════════════════════════
