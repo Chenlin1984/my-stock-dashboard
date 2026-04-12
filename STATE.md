@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: 持續修復中
-- **分支**: main（已同步 dev 分支所有修復，2532009）
-- **最新 commit**: `2532009` — STATE.md: 記錄Section七年線乖離修復
+- **進度**: v4.0 總經拼圖升級完成
+- **分支**: main（最新）
+- **最新 commit**: `7529317` — 加入DB.nomics作為M1B/CPI/PMI資料來源
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -59,6 +59,9 @@
 | `6a6ddb6` | **Section四ETF遺毒根除+期現貨背離矩陣**: 宏爺4象限(鎖單避險/雙殺/主升段/中性) + v5純股票%/現金%卡片(移除00679B/00720B) |
 | `556b01f` | **Section四宏爺公式改版**: 改用純期貨口數絕對門檻（≤-3萬/≤-1.5萬/微空/翻多），移除期現貨矩陣，容錯率最高 |
 | `33cb5a5` | **Section七根治**: 年線乖離MultiIndex展平(yfinance 1.2.x bug) + M1B FinMind判斷改data非空 + CBC多URL輪詢 |
+| `1ba663b` | **M1B FRED+IMF備援**: FRED MYAGM1/M2TWA189S + IMF DataMapper MANMM101/MABMM301 |
+| `c42daa6` | **Section八總經拼圖v4.0**: NDC景氣燈號/外銷訂單YoY/ISM PMI/核心CPI/VIX時間序列+v4.0總經否決權 |
+| `7529317` | **DB.nomics整合**: requirements加dbnomics + IMF/IFS TW M1B/M2 + OECD CLI備援(PMI) + US CPI備援 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -100,8 +103,10 @@
 - [x] Section四宏爺期現貨背離矩陣：4象限精準公式(鎖單避險/雙殺/主升段/中性) ✅
 - [x] Section四宏爺公式最終版：純期貨口數絕對門檻（≤-3萬強制防禦/≤-1.5萬收縮/微空持平/翻多積極）✅
 - [x] Section七年線乖離MultiIndex：yfinance 1.2.x MultiIndex展平+寬鬆欄位查找 ✅
-- [x] Section七M1B多路徑：FinMind改data非空判斷 + CBC三URL輪詢備援 ✅
-- [x] **main分支已同步**：dev分支20+commits全部合併至main並推送，Streamlit Cloud已觸發重新部署 ✅
+- [x] Section七M1B：FinMind改data非空判斷 + FRED(MYAGM1/M2TWA189S) + IMF DataMapper備援 ✅
+- [x] **Section八總經拼圖v4.0**：NDC景氣燈號/外銷訂單/ISM PMI/核心CPI/VIX時間序列圖 ✅
+- [x] **DB.nomics整合**：requirements.txt加入dbnomics + M1B(IMF/IFS TW) + CPI + PMI(OECD CLI)備援 ✅
+- [x] v4.0 總經否決權：VIX≥30強制空手 / PMI<48無基之彈 / CPI>4%外資提款 / 藍燈危機入市 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
 - [ ] 董監持股I6：FinMind免費版無資料，目前顯示N/A；如需啟用須升級付費版
 
