@@ -4,7 +4,7 @@
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
 - **進度**: v4.0 總經拼圖升級完成
 - **分支**: main（最新）
-- **最新 commit**: `7529317` — 加入DB.nomics作為M1B/CPI/PMI資料來源
+- **最新 commit**: `729036b` — 三項修復+v4.0完整結論公式
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -62,6 +62,7 @@
 | `1ba663b` | **M1B FRED+IMF備援**: FRED MYAGM1/M2TWA189S + IMF DataMapper MANMM101/MABMM301 |
 | `c42daa6` | **Section八總經拼圖v4.0**: NDC景氣燈號/外銷訂單YoY/ISM PMI/核心CPI/VIX時間序列+v4.0總經否決權 |
 | `7529317` | **DB.nomics整合**: requirements加dbnomics + IMF/IFS TW M1B/M2 + OECD CLI備援(PMI) + US CPI備援 |
+| `729036b` | **三項根治+v4.0結論**: VIX競態→直接HTTP API+5~90驗證 / FinMind無效dataset停用 / 宏爺VIX否決權+孫慶龍乖離×CLI矩陣 |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
