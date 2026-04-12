@@ -1993,25 +1993,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                      ('M2' in str(c).upper() and 'M1' not in str(c).upper() and
                                       not any(k in str(c) for k in ('年增','增率','YoY','yoy','YOY')))), None)
                     print(f'[M1B/{label}] m1b_yoy={_m1b_yoy} m2_yoy={_m2_yoy} m1b_lv={_m1b_lv} m2_lv={_m2_lv}')
-                    # ⑤ 大數值存量偵測（M2 定義上 > M1B > M1A，最大兩正值欄即 M2/M1B）
-                    # 優先於 pct 偵測，避免 EF01M01 pct 欄選錯；適用 EF17M01 純存量格式
-                    if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
-                        _ranked = []
-                        for _ci in _df.columns:
-                            try:
-                                _v = pd_mod.to_numeric(
-                                    _df[_ci].astype(str).str.replace(',',''), errors='coerce').dropna()
-                                _med = float(_v.median())
-                                if len(_v) >= 13 and _med > 100:  # 大正數 = 存量欄
-                                    _ranked.append((_med, _ci))
-                            except: pass
-                        _ranked.sort(reverse=True)
-                        print(f'[M1B/{label}] 大存量排序={[(round(m),c) for m,c in _ranked[:6]]}')
-                        if len(_ranked) >= 2:
-                            _m2_lv  = _ranked[0][1]   # 最大 = M2
-                            _m1b_lv = _ranked[1][1]   # 次大 = M1B
-                            print(f'[M1B/{label}] 大存量: M2={_m2_lv}(≈{round(_ranked[0][0])}) M1B={_m1b_lv}(≈{round(_ranked[1][0])})')
                     # ② 數值範圍偵測（百分比 0.05~35%，最後備援）
+                    # EF01M01: pct_cols[-2]='25.79'=M2(5.38%), pct_cols[-3]=M1B(7.12%) — 經 MacroMicro 確認
                     if not (_m1b_yoy and _m2_yoy) and not (_m1b_lv and _m2_lv):
                         _pct_cols = []
                         for _ci in _df.columns:
@@ -2023,12 +2006,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _pct_cols.append(_ci)
                             except: pass
                         try:
-                            _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols[:8]]
-                        except: _pct_dbg = _pct_cols[:8]
+                            _pct_dbg = [(c, round(float(pd_mod.to_numeric(_df[c].astype(str).str.replace(',',''), errors='coerce').dropna().iloc[-1]), 2)) for c in _pct_cols]
+                        except: _pct_dbg = _pct_cols
                         print(f'[M1B/{label}] pct候選欄值={_pct_dbg}')
-                        if len(_pct_cols) >= 2:
+                        if len(_pct_cols) >= 3:
+                            _m1b_yoy, _m2_yoy = _pct_cols[-3], _pct_cols[-2]
+                            print(f'[M1B/{label}] pct備援偵測(≥3欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                        elif len(_pct_cols) >= 2:
                             _m1b_yoy, _m2_yoy = _pct_cols[-2], _pct_cols[-1]
-                            print(f'[M1B/{label}] pct備援偵測: M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
+                            print(f'[M1B/{label}] pct備援偵測(2欄): M1B_YoY={_m1b_yoy} M2_YoY={_m2_yoy}')
                     # ③ 有 YoY 欄 → 直接讀值
                     if _m1b_yoy and _m2_yoy:
                         _v1 = pd_mod.to_numeric(_df[_m1b_yoy].astype(str).str.replace(',',''), errors='coerce').dropna()
@@ -2045,8 +2031,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     return None, None, None
 
                 _cpx_fnames = [
-                    ('EF17M01', '貨幣總計數月底數'),  # 最直接：M1A/M1B/M2月底存量+年增率
-                    ('EF01M01', '重要金融指標'),       # 備援
+                    ('EF01M01', '重要金融指標'),       # 確認: pct_cols[-2]=M2, pct_cols[-3]=M1B
+                    ('EF17M01', '貨幣總計數月底數'),  # 備援
                 ]
                 for _fname, _fdesc in _cpx_fnames:
                     try:
@@ -2388,7 +2374,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
 
-                # 4. NDC 景氣對策信號（台灣國發會官方 API，多 URL 輪詢 + Chrome headers）
+                # 4. NDC 景氣對策信號（台灣國發會官方 API，session暖機+多 URL 輪詢）
                 _ndc_hdrs = {
                     'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                                    'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -2398,6 +2384,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     'Referer': 'https://index.ndc.gov.tw/',
                     'Origin': 'https://index.ndc.gov.tw',
                 }
+                # 暖機：先 GET 首頁讓 server 設置 session cookie，再呼叫 API
+                try:
+                    _rq_mc.get('https://index.ndc.gov.tw/', headers=_ndc_hdrs,
+                               timeout=8, verify=False)
+                except Exception as _warm_e:
+                    print(f'[Macro/NDC] 暖機失敗(可繼續): {_warm_e}')
                 _ndc_urls = [
                     'https://index.ndc.gov.tw/n/api/Signal',
                     'https://index.ndc.gov.tw/n/api/signal',
@@ -2408,9 +2400,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 for _nu in _ndc_urls:
                     try:
                         _nr = _rq_mc.get(_nu, headers=_ndc_hdrs, timeout=12, verify=False)
-                        print(f'[Macro/NDC] {_nu.split("/")[-1]} status={_nr.status_code}')
+                        print(f'[Macro/NDC] {_nu.split("/")[-1]} status={_nr.status_code} len={len(_nr.content)}')
                         if _nr.status_code != 200:
                             continue
+                        if not _nr.content or len(_nr.content) < 2:
+                            print(f'[Macro/NDC] ⚠️ {_nu.split("/")[-1]}: 空回應，跳過')
+                            continue
+                        print(f'[Macro/NDC] raw={_nr.text[:120]}')
                         _nj = _nr.json()
                         _nd = _nj if isinstance(_nj, list) else _nj.get('data', _nj.get('Data', []))
                         print(f'[Macro/NDC] type={type(_nd).__name__} len={len(_nd) if hasattr(_nd,"__len__") else "?"}')
@@ -3978,39 +3974,164 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             else:
                 st.info('M1B/M2 數據載入後自動顯示宏爺資金動能判斷')
 
-            # ── 孫慶龍：BIAS240 × CLI 二維矩陣（v4.0 修訂版）────────
+            # ── 孫慶龍：BIAS240 × 外銷訂單 二維矩陣（v5.0）──────────────
             if _bias_info8:
-                _sql_b = _b240_8
-                _cli_txt = f'CLI={_cli_8:.1f}（{"擴張" if _cli_8 >= 100 else "收縮"}）' if _cli_8 is not None else 'CLI未知'
-                if _sql_b >= 15 and _cli_8 is not None and _cli_8 >= 100:
-                    _sqc8  = '#f85149'
-                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt}（資金狂熱·有基之彈）'
-                    _sqc8t = ('🔥 資金狂熱+景氣擴張=有基之彈：技術嚴重過熱且基本面支撐，'
-                              '可順勢持多，嚴設 ATR 動態停損。逢回不輕易止損，'
-                              '但切勿追漲加倉，靜待均值回歸後的修正。')
-                elif _sql_b >= 15:
-                    _sqc8  = '#f85149'
-                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt}（史詩級過熱·無基之彈）'
-                    _sqc8t = ('⚠️ 史詩級過熱·無基之彈：年線乖離突破 15% 但景氣仍收縮，'
-                              '均值回歸壓力極大，嚴防多殺多崩盤。'
-                              '全面出清高本夢比個股，啟動長線倉位停利，切勿追高。')
-                elif _sql_b >= 0:
-                    _sqc8  = '#3fb950'
-                    _sqi8  = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭）　{_cli_txt}'
-                    _sqc8t = ('🟢 均線多頭發散，乖離率正常，可持股按原定計畫操作。'
-                              '回歸個股財報與籌碼面選股，無需特別策略轉換。')
-                elif _cli_8 is not None and _cli_8 > 100:
-                    _sqc8  = '#58a6ff'
-                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_cli_txt}（長線黃金坑）'
-                    _sqc8t = ('💎 景氣擴張中大盤超跌：CLI 顯示實體景氣向好，'
-                              '技術面短暫超賣帶來左側黃金坑機會，'
-                              '分批佈建具備 EPS 護城河的優質股，等待均值回歸。')
+                _sql_b    = _b240_8
+                _exp_yoy8 = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
+                _exp_dt8  = _m8_exp.get('date', '') if _m8_exp else ''
+                if _exp_yoy8 is not None:
+                    _exp_txt8 = f'外銷訂單 YoY={_exp_yoy8:+.1f}%（{_exp_dt8}）'
+                    if _sql_b >= 15 and _exp_yoy8 >= 10:
+                        _sqc8  = '#f85149'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🚀 有基之彈'
+                        _sqc8t = ('🚀 有基之彈（主升段狂熱）：高估值由強勁出口基本面支撐，'
+                                  '資金面與基本面完美共振。順勢作多，但需以月線作為嚴格停損，'
+                                  '跌破月線即走，切勿因多頭情緒追漲加碼。')
+                    elif _sql_b >= 15 and _exp_yoy8 < 0:
+                        _sqc8  = '#f85149'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚠️ 無基之彈'
+                        _sqc8t = ('⚠️ 無基之彈（史詩級泡沫）：股價嚴重高估且出口動能衰退，'
+                                  '純粹資金炒作泡沫，均值回歸壓力極大。'
+                                  '全面出清高本夢比個股，啟動長線倉位停利，切勿追高。')
+                    elif _sql_b >= 15:  # Export 0~10%
+                        _sqc8  = '#d29922'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚡ 高估技術整理'
+                        _sqc8t = ('⚡ 技術嚴重過熱，出口尚可但未爆發：高位持多需謹慎，'
+                                  '嚴設 ATR 動態停損，逢高獲利了結部分倉位，'
+                                  '等待出口數據確認是否升為「有基之彈」格局。')
+                    elif _sql_b > 0 and _exp_yoy8 > 0:
+                        _sqc8  = '#3fb950'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🟢 趨勢多頭'
+                        _sqc8t = ('🟢 趨勢多頭（基本面支撐）：均線多頭發散且出口擴張，'
+                                  '可持股按原計畫操作，回歸個股財報與籌碼面選股，'
+                                  '等待更明確的突破訊號加碼。')
+                    elif _sql_b <= 0 and _exp_yoy8 > 0:
+                        _sqc8  = '#58a6ff'
+                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 💎 長線黃金坑'
+                        _sqc8t = ('💎 長線黃金坑（超跌買點）：大盤超跌至年線之下，'
+                                  '但出口正在成長，實體基本面有撐。'
+                                  '大膽重壓具備 EPS 支撐的低基期錯殺股，左側分批建倉。')
+                    elif _sql_b <= 0 and _exp_yoy8 <= 0:
+                        _sqc8  = '#8b949e'
+                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 📉 景氣寒冬'
+                        _sqc8t = ('📉 景氣寒冬（空頭格局）：技術面與基本面雙殺，'
+                                  '出口衰退且指數跌破年線，景氣收縮中。'
+                                  '多看少做，保留高比例現金，等待出口數據翻正再佈局。')
+                    else:
+                        _sqc8  = '#8b949e'
+                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 🟡 整理觀望'
+                        _sqc8t = '🟡 指數在年線附近整理，等待方向確認後再布局，持股偏保守。'
                 else:
-                    _sqc8  = '#8b949e'
-                    _sqi8  = f'年線乖離 {_sql_b:.1f}%（均線整理·觀望）　{_cli_txt}'
-                    _sqc8t = ('🟡 指數在年線附近整理，景氣尚未明確擴張，'
-                              '持股偏保守，等待方向確認後再布局。')
+                    # Export 無資料 → 降級用 CLI
+                    _cli_txt8 = (f'CLI={_cli_8:.1f}（{"擴張" if _cli_8 >= 100 else "收縮"}）'
+                                 if _cli_8 is not None else 'CLI未知')
+                    if _sql_b >= 15 and _cli_8 is not None and _cli_8 >= 100:
+                        _sqc8  = '#f85149'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·有基之彈）'
+                        _sqc8t = '🔥 技術嚴重過熱且 CLI 擴張，可順勢持多，嚴設月線停損。'
+                    elif _sql_b >= 15:
+                        _sqc8  = '#f85149'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·無基之彈）'
+                        _sqc8t = '⚠️ 史詩級過熱，外銷訂單無資料，謹慎追高，嚴防崩盤。'
+                    elif _sql_b >= 0:
+                        _sqc8  = '#3fb950'
+                        _sqi8  = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭） {_cli_txt8}'
+                        _sqc8t = '🟢 均線多頭，可持股操作，等待外銷訂單資料補充判斷。'
+                    elif _cli_8 is not None and _cli_8 > 100:
+                        _sqc8  = '#58a6ff'
+                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_cli_txt8}（CLI備援·黃金坑）'
+                        _sqc8t = '💎 CLI 擴張中大盤超跌，分批建倉低基期優質股。'
+                    else:
+                        _sqc8  = '#8b949e'
+                        _sqi8  = f'年線乖離 {_sql_b:.1f}%（整理·觀望） {_cli_txt8}'
+                        _sqc8t = '🟡 外銷訂單待取得，景氣尚未明確擴張，持股保守等待訊號。'
                 st.markdown(teacher_conclusion('孫慶龍', _sqi8, _sqc8t, color=_sqc8), unsafe_allow_html=True)
+
+            # ── ⚔️ 攻擊火力分級（三環公式 SSS/A/B）────────────────────
+            with st.expander('⚔️ 攻擊發動判定 — 三環公式 + 火力分級', expanded=True):
+                # 取得需要的變數
+                _li8      = st.session_state.get('li_latest')
+                _fut8     = None
+                if _li8 is not None and hasattr(_li8, 'empty') and not _li8.empty and '外資大小' in _li8.columns:
+                    try: _fut8 = float(_li8.iloc[-1].get('外資大小', 0))
+                    except: pass
+                _cl8d     = st.session_state.get('cl_data', {})
+                _inst8    = _cl8d.get('inst', {})
+                _fk8      = next((k for k in _inst8 if '外資' in k), None)
+                _fnet8    = _inst8.get(_fk8, {}).get('net', None) if _fk8 else None
+                _twii8    = tw_s.get('台股加權指數', {})
+                _twd8     = tw_s.get('新台幣匯率', {})
+                _sox8     = intl_s.get('費城半導體 SOX', {})
+                _nvda8    = tech_s.get('輝達 NVDA', {})
+                _exp_c    = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
+                _gap8c    = None
+                if (_m1b8_info and _m1b8_info.get('m1b_yoy') is not None and
+                        _m1b8_info.get('m2_yoy') is not None):
+                    try:
+                        _gap8c = round(float(_m1b8_info['m1b_yoy']) -
+                                       float(_m1b8_info['m2_yoy']), 2)
+                    except: pass
+
+                # 三環條件評估
+                _cA = _vix_now8 is not None and _vix_now8 < 20
+                _cB = _fut8 is not None and _fut8 > -15000
+                _cC = _exp_c is not None and _exp_c >= 10
+                _cD = _gap8c is not None and _gap8c >= 1.0
+                _cE = _fnet8 is not None and _fnet8 >= 100
+                _cF = (float(_twii8.get('pct') or 0) > 0 and
+                       float(_twd8.get('pct') or 0) < 0)
+                _cG = (float(_sox8.get('pct') or 0) >= 1.5 or
+                       float(_nvda8.get('pct') or 0) >= 2.0)
+
+                _ring1_pass = _cA and _cB
+                _ring2_cnt  = int(_cC) + int(_cD)
+                _ring3_cnt  = int(_cE) + int(_cF) + int(_cG)
+
+                def _cond_badge(ok, label):
+                    c = '#3fb950' if ok else '#484f58'
+                    return f'<span style="background:{c}22;border:1px solid {c};border-radius:4px;padding:2px 8px;font-size:12px;color:{c};margin:2px;">{label}</span>'
+
+                _r1_html = (_cond_badge(_cA, f'A VIX={_vix_now8:.1f}<20' if _vix_now8 else 'A VIX未知') + ' ' +
+                            _cond_badge(_cB, f'B 期貨={_fut8:,.0f}口' if _fut8 is not None else 'B 期貨未知'))
+                _r2_html = (_cond_badge(_cC, f'C 出口={_exp_c:+.1f}%' if _exp_c is not None else 'C 出口未知') + ' ' +
+                            _cond_badge(_cD, f'D M1B-M2={_gap8c:+.2f}%' if _gap8c is not None else 'D M1B-M2未知'))
+                _r3_html = (_cond_badge(_cE, f'E 外資={_fnet8:+.0f}億' if _fnet8 is not None else 'E 外資未知') + ' ' +
+                            _cond_badge(_cF, f'F 股匯雙漲' if _cF else 'F 股匯雙漲') + ' ' +
+                            _cond_badge(_cG, f'G SOX/NVDA點火'))
+
+                if not _ring1_pass:
+                    _atk_color = '#f85149'; _atk_grade = '🚫 禁止攻擊'
+                    _atk_pct = '持股 0~20%'
+                    _atk_txt = ('第一環未通過（VIX過高 或 外資重兵空單）：'
+                                '大環境有鬼，任何技術面突破均為誘多，嚴格停損保留現金。')
+                elif _ring2_cnt >= 2 and _ring3_cnt >= 2:
+                    _atk_color = '#f0e040'; _atk_grade = '🚀 SSS 級全面總攻'
+                    _atk_pct = '持股 80~100%'
+                    _atk_txt = ('三環齊備、資金面與基本面完美共振：天時地利人和。'
+                                '勇敢追擊強勢突破股，重壓半導體主流。')
+                elif _ring2_cnt >= 1 and _ring3_cnt >= 1:
+                    _atk_color = '#f85149'; _atk_grade = '🔥 A 級強勢進攻'
+                    _atk_pct = '持股 60~80%'
+                    _atk_txt = ('標準順風局：第二環（燃料）、第三環（點火）各至少一條通過。'
+                                '順勢佈局，汰弱留強，跌破 10MA 停損。')
+                elif _ring3_cnt >= 1:
+                    _atk_color = '#d29922'; _atk_grade = '🛡️ B 級試探性建倉'
+                    _atk_pct = '持股 30~50%'
+                    _atk_txt = ('大環境無足夠燃料，但短線有點火訊號。'
+                                '屬於「跌深反彈」或「區間震盪」，打帶跑策略，見好就收。')
+                else:
+                    _atk_color = '#8b949e'; _atk_grade = '⏸️ 暫不進攻'
+                    _atk_pct = '持股 30% 以下'
+                    _atk_txt = '三環條件均不足，等待更明確訊號，保守觀望。'
+
+                st.markdown(
+                    f'<div style="background:#0d1117;border:2px solid {_atk_color};border-radius:12px;padding:16px;margin:8px 0;">'
+                    f'<div style="font-size:18px;font-weight:900;color:{_atk_color};">{_atk_grade}</div>'
+                    f'<div style="font-size:14px;color:#c9d1d9;margin:4px 0;">{_atk_pct} — {_atk_txt}</div>'
+                    f'<div style="margin-top:10px;font-size:12px;color:#8b949e;">第一環（解除保險）：{_r1_html}<br>'
+                    f'第二環（確認燃料）：{_r2_html}<br>'
+                    f'第三環（點火訊號）：{_r3_html}</div>'
+                    f'</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
