@@ -1952,6 +1952,50 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _fm_m1_e:
                         print(f'[M1B/FM] ❌ {_fm_m1_e}')
 
+                # ── 路徑 1b：DB.nomics（IMF IFS，全球開源，無需Key，繞過封鎖）──
+                try:
+                    from dbnomics import fetch_series as _dbn_fetch
+                    import pandas as _pd_dbn
+                    # IMF IFS 台灣貨幣供給序列（試多個代碼）
+                    _dbn_m1_series = [
+                        'IMF/IFS/M.TW.FIMM_XDC_END_M',   # M1 end-of-period
+                        'IMF/IFS/M.TW.FM1L_XDC_END_M',
+                        'IMF/IFS/M.TW.FM1_XDC_END_M',
+                    ]
+                    _dbn_m2_series = [
+                        'IMF/IFS/M.TW.FMBM_XDC_END_M',   # Broad Money
+                        'IMF/IFS/M.TW.FM2_XDC_END_M',
+                    ]
+                    _df_dbn_m1 = _df_dbn_m2 = None
+                    for _sc in _dbn_m1_series:
+                        try:
+                            _tmp = _dbn_fetch(_sc)
+                            if _tmp is not None and len(_tmp) > 5:
+                                _df_dbn_m1 = _tmp; print(f'[M1B/DBN] M1 ✅ {_sc} rows={len(_tmp)}'); break
+                        except Exception as _se: print(f'[M1B/DBN] M1 ❌ {_sc}: {_se}')
+                    for _sc in _dbn_m2_series:
+                        try:
+                            _tmp = _dbn_fetch(_sc)
+                            if _tmp is not None and len(_tmp) > 5:
+                                _df_dbn_m2 = _tmp; print(f'[M1B/DBN] M2 ✅ {_sc} rows={len(_tmp)}'); break
+                        except Exception as _se: print(f'[M1B/DBN] M2 ❌ {_sc}: {_se}')
+                    if _df_dbn_m1 is not None and _df_dbn_m2 is not None:
+                        # dbnomics 返回的 DataFrame 含 'period' 與 'value' 欄位
+                        _vc_d = 'value'
+                        _m1s = _df_dbn_m1[['period',_vc_d]].dropna(subset=[_vc_d]).sort_values('period')
+                        _m2s = _df_dbn_m2[['period',_vc_d]].dropna(subset=[_vc_d]).sort_values('period')
+                        _m1s[_vc_d] = _pd_dbn.to_numeric(_m1s[_vc_d], errors='coerce')
+                        _m2s[_vc_d] = _pd_dbn.to_numeric(_m2s[_vc_d], errors='coerce')
+                        _m1s = _m1s.dropna(); _m2s = _m2s.dropna()
+                        print(f'[M1B/DBN] M1 len={len(_m1s)} M2 len={len(_m2s)} last_m1={_m1s["period"].iloc[-1] if len(_m1s) else "?"}')
+                        if len(_m1s) >= 13 and len(_m2s) >= 13:
+                            _m1b_yoy_d = round((_m1s[_vc_d].iloc[-1]/_m1s[_vc_d].iloc[-13]-1)*100, 2)
+                            _m2_yoy_d  = round((_m2s[_vc_d].iloc[-1]/_m2s[_vc_d].iloc[-13]-1)*100, 2)
+                            print(f'[M1B/DBN] ✅ M1B={_m1b_yoy_d:.2f}% M2={_m2_yoy_d:.2f}%')
+                            return {'m1b_yoy': _m1b_yoy_d, 'm2_yoy': _m2_yoy_d, 'source': 'DB.nomics'}
+                except Exception as _dbn_e:
+                    print(f'[M1B/DBN] ❌ {_dbn_e}')
+
                 # ── 路徑 2：FRED（聖路易聯邦儲備銀行，IMF 來源，無需 Key）──
                 try:
                     import io as _io_m1
@@ -2142,7 +2186,25 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             print(f'[Macro/CPI] ✅ YoY={_cyoy:.2f}% date={_cdf["date"].iloc[-1]}')
                 except Exception as _e: print(f'[Macro/CPI] ❌ {_e}')
 
-                # 3. US ISM PMI（FRED NAPM）
+                # 2b. DB.nomics 備援：US Core CPI（IMF IFS）
+                if 'us_core_cpi' not in _r:
+                    try:
+                        from dbnomics import fetch_series as _dbn_cpi
+                        # IMF IFS US CPI 序列
+                        for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:
+                            try:
+                                _cpi_dbn = _dbn_cpi(_cs)
+                                if _cpi_dbn is not None and len(_cpi_dbn) >= 13:
+                                    _cv = _pd_mc.to_numeric(_cpi_dbn['value'], errors='coerce').dropna()
+                                    if len(_cv) >= 13:
+                                        _cy_dbn = round((_cv.iloc[-1]/_cv.iloc[-13]-1)*100, 2)
+                                        _r['us_core_cpi'] = {'yoy': _cy_dbn, 'date': str(_cpi_dbn['period'].iloc[-1])}
+                                        print(f'[Macro/CPI/DBN] ✅ {_cs} YoY={_cy_dbn:.2f}%')
+                                        break
+                            except Exception as _ce: print(f'[Macro/CPI/DBN] ❌ {_cs}: {_ce}')
+                    except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
+
+                # 3. US ISM PMI（FRED NAPM → DB.nomics OECD CLI 備援）
                 try:
                     _pr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
                                      headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
@@ -2161,6 +2223,29 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             }
                             print(f'[Macro/PMI] ✅ PMI={_r["ism_pmi"]["value"]} date={_r["ism_pmi"]["date"]}')
                 except Exception as _e: print(f'[Macro/PMI] ❌ {_e}')
+
+                # 3b. DB.nomics 備援：OECD CLI（US，與PMI高度相關）
+                if 'ism_pmi' not in _r:
+                    try:
+                        from dbnomics import fetch_series as _dbn_pmi
+                        # OECD CLI (Composite Leading Indicators) for USA
+                        for _ps in ['OECD/MEI_CLI/LOLITOAA.USA.M', 'OECD/MEI_CLI/LOLITONO.USA.M']:
+                            try:
+                                _pmi_dbn = _dbn_pmi(_ps)
+                                if _pmi_dbn is not None and len(_pmi_dbn) > 5:
+                                    _pv = _pd_mc.to_numeric(_pmi_dbn['value'], errors='coerce').dropna()
+                                    if len(_pv) > 0:
+                                        _r['ism_pmi'] = {
+                                            'value': round(float(_pv.iloc[-1]), 1),
+                                            'date': str(_pmi_dbn['period'].iloc[-1]),
+                                            'dates': [str(d)[:10] for d in _pmi_dbn['period'].iloc[-24:]],
+                                            'values': [round(float(v), 1) for v in _pv.values[-24:]],
+                                            'is_oecd_cli': True,
+                                        }
+                                        print(f'[Macro/PMI/DBN] ✅ OECD CLI={_r["ism_pmi"]["value"]} ({_ps})')
+                                        break
+                            except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
+                    except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
 
                 # 4. NDC 景氣對策信號（台灣國發會官方 API）
                 try:
@@ -3591,11 +3676,14 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     with _s8c1[2]:
         if _m8_pmi:
             _pv8 = _m8_pmi.get('value', 50)
-            _pc8 = '#3fb950' if _pv8 >= 50 else ('#d29922' if _pv8 >= 47 else '#f85149')
-            _pl8 = ('✅ 擴張（榮枯線以上）' if _pv8 >= 50 else
-                    ('⚠️ 輕微收縮，留意終端需求' if _pv8 >= 47 else '🔴 嚴重收縮，台股電子股承壓'))
+            _is_cli = _m8_pmi.get('is_oecd_cli', False)
+            _pmi_title = 'OECD CLI (US)' if _is_cli else 'US ISM PMI'
+            _pmi_榮枯 = 100 if _is_cli else 50
+            _pc8 = '#3fb950' if _pv8 >= _pmi_榮枯 else ('#d29922' if _pv8 >= (_pmi_榮枯-3) else '#f85149')
+            _pl8 = ('✅ 擴張' if _pv8 >= _pmi_榮枯 else
+                    ('⚠️ 輕微收縮，留意終端需求' if _pv8 >= (_pmi_榮枯-3) else '🔴 嚴重收縮，台股電子股承壓'))
             _pd8 = f" ({_m8_pmi.get('date','')})" if _m8_pmi.get('date') else ''
-            st.markdown(kpi('US ISM PMI', f'{_pv8:.1f}', f'{_pl8}{_pd8}', _pc8, '#0d1117'), unsafe_allow_html=True)
+            st.markdown(kpi(_pmi_title, f'{_pv8:.1f}', f'{_pl8}{_pd8}', _pc8, '#0d1117'), unsafe_allow_html=True)
         else:
             st.markdown(kpi('US ISM PMI', '待取得', '50為榮枯線', '#484f58', '#0d1117'), unsafe_allow_html=True)
 
