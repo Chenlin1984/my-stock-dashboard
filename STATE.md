@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: v4.0 矩陣+M1B根治完成
-- **分支**: main（最新）
-- **最新 commit**: `b1a3feb` (dev) — M1B pct[-3]/-[2]根治+移除錯誤大存量偵測+EF01M01優先
+- **進度**: v5.0 孫慶龍BIAS×Export+攻擊火力分級+M1B根治
+- **分支**: main `66c0a4a`（已部署 Streamlit Cloud）
+- **最新 commit**: `e400ef7` (dev→main) — 孫慶龍v5.0+攻擊三環+NDC暖機+M1B pct[-3]根治
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -69,6 +69,8 @@
 | `ba11c14` | **孫慶龍BIAS240邏輯修正+宏爺M1B Gap**: 孫慶龍改為純BIAS240四段門檻（≥15%史詩/≥10%紅警/≥0%多頭/≥-10%整理/<-10%黃金坑），移除CLI條件閘；Section8新增宏爺M1B-M2 Gap三段公式 |
 | `df6b88f` | **四項根治**: M1B大存量偵測(median>100排序M2>M1B)根治MacroMicro不符 / 孫慶龍v4.0 BIAS240×CLI二維矩陣 / NDC景氣燈號Chrome頭+多URL / 外銷訂單改OECD MEI DB.nomics |
 | `b1a3feb` | **M1B/M2根本修正**: 移除錯誤大存量偵測(EF17M01子項目最大欄≠M2) / EF01M01調為第一優先 / pct偵測改用[-3]=M1B,[-2]=M2（MacroMicro確認pct[-2]=M2=5.38%）|
+| `e400ef7` | **孫慶龍v5.0+攻擊三環**: BIAS240×外銷訂單二維矩陣(有基之彈/無基之彈/長線黃金坑/景氣寒冬) / 攻擊火力分級SSS/A/B三環公式(VIX+期貨+Export+M1B-M2+外資+股匯+SOX) / NDC session暖機+空回應guard |
+| `66c0a4a` | **Merge to main**: 含全部上述修正，已部署 Streamlit Cloud |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -115,7 +117,9 @@
 - [x] **DB.nomics整合**：requirements.txt加入dbnomics + M1B(IMF/IFS TW) + CPI + PMI(OECD CLI)備援 ✅
 - [x] v4.0 總經否決權：VIX≥30強制空手 / PMI<48無基之彈 / CPI>4%外資提款 / 藍燈危機入市 ✅
 - [x] **防禦模式燈號誤顯**：點擊更新立即覆蓋舊快取燈號為載入中提示，防止強制防禦旗幟誤導 ✅
-- [ ] **M1B/CBC 最終驗證(v2)**：`b1a3feb` 移除大存量偵測，EF01M01優先pct[-3]/-[2]，待 Cloud log 確認 M1B≈7.12% M2≈5.38%
+- [ ] **M1B/CBC 最終驗證(v2)**：`b1a3feb`(已合併main)，待 Cloud log 確認 M1B≈7.12% M2≈5.38%
+- [ ] **孫慶龍v5.0+攻擊火力分級**：`e400ef7` 已部署，待 Cloud log 確認 Export=31.82% 觸發「有基之彈」，攻擊分級正確顯示
+- [ ] **NDC景氣燈號**：暖機+空回應guard已加入，待 Cloud log 確認是否取得數據
 - [x] **孫慶龍 BIAS240 邏輯Bug修正**：+13.9% 原誤顯「中性」，改為純BIAS240四段門檻，現正確觸發「紅色警戒線」 ✅
 - [x] **宏爺 M1B Gap 新增**：Section 8 新增 Gap≥1%=熱錢狂潮 / 0~1%=資金溫和 / <0%=資金退潮 三段公式 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
