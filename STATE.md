@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: v5.0 孫慶龍BIAS×Export+攻擊火力分級+M1B根治
-- **分支**: main `66c0a4a`（已部署 Streamlit Cloud）
-- **最新 commit**: `84f5045` (dev→main) — M1B pct[-4]確認根治(7.12%) + NDC Angular SPA封鎖略過
+- **進度**: v5.1 景氣燈號data.gov.tw+OECD CLI代理 + Section九總經AI五維度分析
+- **分支**: main `511dc64`（已部署 Streamlit Cloud）
+- **最新 commit**: `511dc64` (dev→main) — NDC data.gov.tw輪詢+CLI代理 + 總經AI投資決策分析(五維度)
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -73,6 +73,8 @@
 | `66c0a4a` | **Merge to main**: 含全部上述修正，已部署 Streamlit Cloud |
 | `54ce45f` | **M1B[-4]根治+NDC略過**: EF01M01 pct_cols[-4]=M1B(7.12%),-[2]=M2(5.38%)確認 / NDC Angular SPA確認封鎖，移除所有5URL改為clean skip |
 | `84f5045` | **Merge to main**: 含M1B[-4]根治+NDC略過，已部署 Streamlit Cloud |
+| `11aa5be` | **NDC data.gov.tw+CLI代理+Section九AI分析**: NDC改用data.gov.tw 3個resourceID輪詢 / OECD CLI自動映射景氣燈號分數代理 / KPI卡顯示「(OECD CLI代理)」標籤 / Section九總經AI投資決策分析五維度（①總經位階 ②建議配置 ③貨幣流向 ④美股動態 ⑤結論）|
+| `511dc64` | **Merge to main**: 含NDC代理+AI五維度，已部署 Streamlit Cloud |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -121,7 +123,8 @@
 - [x] **防禦模式燈號誤顯**：點擊更新立即覆蓋舊快取燈號為載入中提示，防止強制防禦旗幟誤導 ✅
 - [ ] **M1B/CBC 最終驗證(v3)**：`54ce45f` pct[-4]=M1B，待 Cloud log 確認 M1B=7.12% M2=5.38%
 - [ ] **孫慶龍v5.0+攻擊火力分級**：`e400ef7` 已部署，待 Cloud log 確認 Export=31.82% 觸發「有基之彈」，攻擊分級正確顯示
-- [x] **NDC景氣燈號**：Angular SPA 確認封鎖(403/HTML)，已移除所有blocked calls，改為clean skip ✅
+- [ ] **NDC景氣燈號 data.gov.tw**：`11aa5be` 已部署，待 Cloud log 確認 data.gov.tw 是否命中（3個resourceID）或退回 OECD CLI 代理
+- [x] **Section九 總經AI投資決策分析**：五維度（①總經位階 ②建議配置 ③貨幣流向 ④美股動態 ⑤結論）已部署 ✅
 - [x] **孫慶龍 BIAS240 邏輯Bug修正**：+13.9% 原誤顯「中性」，改為純BIAS240四段門檻，現正確觸發「紅色警戒線」 ✅
 - [x] **宏爺 M1B Gap 新增**：Section 8 新增 Gap≥1%=熱錢狂潮 / 0~1%=資金溫和 / <0%=資金退潮 三段公式 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
