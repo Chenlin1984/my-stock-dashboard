@@ -2913,16 +2913,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     idx_d = {k:v for k,v in intl.items() if k in ['道瓊工業 DJI','納斯達克 IXIC','費城半導體 SOX']}
     if idx_d:
         st.plotly_chart(multi_chart(idx_d,'美股三大指數標準化比較',norm=True,height=220),
-                        use_container_width=True, config={'displayModeBar':False})
+                        width='stretch', config={'displayModeBar':False})
     bc,dc = st.columns(2)
     with bc:
         if '10Y公債殖利率' in intl:
             st.plotly_chart(sparkline(intl['10Y公債殖利率'],'10Y公債殖利率','#f85149'),
-                            use_container_width=True,config={'displayModeBar':False})
+                            width='stretch',config={'displayModeBar':False})
     with dc:
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
-                            use_container_width=True,config={'displayModeBar':False})
+                            width='stretch',config={'displayModeBar':False})
     with st.expander('📖 宏爺 × 孫慶龍 結論（SOX/DXY/殖利率公式）', expanded=False):
         _expander_rows = []
         if _sox_pct is not None and _dxy_val is not None:
@@ -2994,13 +2994,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     with tw1:
         if '台股加權指數' in tw:
             st.plotly_chart(sparkline(tw['台股加權指數'],'台股加權指數','#58a6ff'),
-                            use_container_width=True,config={'displayModeBar':False})
+                            width='stretch',config={'displayModeBar':False})
     with tw2:
         try:
             otc = _fetch_otc_via_finmind(FINMIND_TOKEN)
             if otc is not None and not otc.empty:
                 st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
-                                use_container_width=True,config={'displayModeBar':False})
+                                width='stretch',config={'displayModeBar':False})
         except Exception: pass
     with st.expander('📖 宏爺 結論（股匯四象限）', expanded=False):
         st.caption('💡 台幣 USD/TWD 漲(>0)=台幣貶值，跌(<0)=台幣升值。資金面M1B-M2見Section七。')
@@ -3052,7 +3052,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _cached_label = '　⚠️ 快取資料' if _inst_is_cached else ''
             st.caption(f'三大法人現貨  {_inst_date_show}{_cached_label}  '
                        f'| 外資 {_f_net:+.1f}億  投信 {_t_net:+.1f}億  合計 {_total_net:+.1f}億')
-            st.plotly_chart(bar_chart_institutional(inst),use_container_width=True,config={'displayModeBar':False})
+            st.plotly_chart(bar_chart_institutional(inst),width='stretch',config={'displayModeBar':False})
             _mkt_ref = st.session_state.get('mkt_info',{})
             if abs(_f_net) > 5:
                 if _f_net >= 100:
@@ -3636,7 +3636,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         overlaying='y', side='right', range=[0, 100], showgrid=False),
             xaxis=dict(gridcolor='#21262d', tickformat='%m/%d'),
         )
-        st.plotly_chart(_fig_adl, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(_fig_adl, width='stretch', config={'displayModeBar': False})
 
         # ── ADL vs 加權指數 雙軸背離圖 ──────────────────────────
         _twii_data = tw.get('台股加權指數')
@@ -3680,7 +3680,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                gridcolor='rgba(0,0,0,0)', showgrid=False),
                     xaxis=dict(gridcolor='#21262d', tickformat='%m/%d'),
                 )
-                st.plotly_chart(_fig_div, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(_fig_div, width='stretch', config={'displayModeBar': False})
                 if _divergence:
                     st.error('⚠️ 背離警告：大盤指數上漲，但騰落線下跌！代表只有少數權值股在撐盤，市場廣度惡化，要注意風險！')
 
@@ -3840,19 +3840,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         with col: st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
     if tech:
         st.plotly_chart(multi_chart(tech,'科技巨頭標準化比較',norm=True,height=250),
-                        use_container_width=True,config={'displayModeBar':False})
+                        width='stretch',config={'displayModeBar':False})
         clrs=COLORS_7 if isinstance(COLORS_7,list) else list(COLORS_7.values())
         sp1=st.columns(4); sp2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
         for i,(col,name) in enumerate(zip(sp1,tc_list[:4])):
             with col:
                 if name in tech:
                     st.plotly_chart(sparkline(tech[name],name,clrs[i] if i<len(clrs) else '#58a6ff'),
-                                    use_container_width=True,config={'displayModeBar':False})
+                                    width='stretch',config={'displayModeBar':False})
         for i,(col,name) in enumerate(zip(sp2,tc_list[4:])):
             with col:
                 if name in tech:
                     st.plotly_chart(sparkline(tech[name],name,clrs[i+4] if i+4<len(clrs) else '#ffd700'),
-                                    use_container_width=True,config={'displayModeBar':False})
+                                    width='stretch',config={'displayModeBar':False})
     with st.expander('📖 宏爺 結論', expanded=False):
         _tsm = tech_s.get('台積電 ADR')
         _nvda = tech_s.get('輝達 NVDA')
@@ -4037,7 +4037,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 yaxis=dict(showgrid=True, gridcolor='#21262d', color='#484f58'),
                 title=dict(text=f'VIX 恐慌指數 {_vcur8}（MA20={_vma8}）— {_vl8}',
                            font=dict(size=11, color=_vc8), x=0))
-            st.plotly_chart(_vfig8, use_container_width=True)
+            st.plotly_chart(_vfig8, width='stretch')
         else:
             st.markdown(kpi('VIX 恐慌指數', '待取得', '≥25警戒 / ≥30危機→強制空手', '#484f58', '#0d1117'), unsafe_allow_html=True)
 
@@ -5408,7 +5408,7 @@ padding:12px 16px;margin:8px 0;">
                                     font=dict(color='white'),margin=dict(l=20,r=20,t=30,b=20),
                                     title=dict(text=f'{sid2} 近5年現金股利',font=dict(color='#ffd700',size=12)),
                                     yaxis=dict(gridcolor='#333'),xaxis=dict(gridcolor='#333'))
-                st.plotly_chart(fig_d,use_container_width=True,config={'displayModeBar':False})
+                st.plotly_chart(fig_d,width='stretch',config={'displayModeBar':False})
         else:
             st.warning('⚠️ 無配息記錄（成長股）— 建議改用本益比評估')
         # ── 357 動態建議 ──
@@ -5545,7 +5545,7 @@ padding:12px 16px;margin:8px 0;">
                     yaxis=dict(range=[_ymin_riv, _ymax_riv], gridcolor='#21262d'),
                     hovermode='x unified', showlegend=True,
                     legend=dict(orientation='h', y=1.08, x=0, font=dict(size=10)))
-                st.plotly_chart(_fig_riv, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(_fig_riv, width='stretch', config={'displayModeBar': False})
 
                 _cur_price_riv = float(_rclose_riv.dropna().iloc[-1]) if not _rclose_riv.dropna().empty else 0
                 _cur_zone = ('🟢 便宜區' if _cur_price_riv < _p7r else
@@ -5660,7 +5660,7 @@ padding:12px 16px;margin:8px 0;">
             if _rev2_cached:
                 st.caption('⚠️ 月營收使用快取資料（本次 API 未回應）')
             st.plotly_chart(plot_revenue_chart(rev2,sid2,name2),
-                            use_container_width=True,config={'displayModeBar':False})
+                            width='stretch',config={'displayModeBar':False})
         else:
             st.warning('⚠️ 月營收數據暫無（請確認 FINMIND_TOKEN 是否正確，或重新載入）')
             st.caption('💡 首次查詢需網路抓取，若持續失敗請檢查 Token 或稍後重試')
@@ -5668,7 +5668,7 @@ padding:12px 16px;margin:8px 0;">
             if _qtr2_cached:
                 st.caption('⚠️ 季財報使用快取資料（本次 API 未回應）')
             st.plotly_chart(plot_quarterly_chart(qtr2,sid2,name2),
-                            use_container_width=True,config={'displayModeBar':False})
+                            width='stretch',config={'displayModeBar':False})
         with st.expander('📖 孫慶龍 結論', expanded=True):
             if rev2 is not None and not rev2.empty and 'yoy' in rev2.columns:
                 _yoy_last3 = rev2['yoy'].dropna().tail(3).tolist()
@@ -6062,7 +6062,7 @@ padding:12px 16px;margin:8px 0;">
         st.markdown(teacher_conclusion('朱家泓', _fa, _fb_txt, _fc_txt), unsafe_allow_html=True)
         if df2 is not None and not df2.empty:
             fig_k = plot_combined_chart(df2, sid2, name2, show_ma_dict, k_line_type='還原K線' if t2_adjusted else '一般K線')
-            st.plotly_chart(fig_k, use_container_width=True,
+            st.plotly_chart(fig_k, width='stretch',
                             config={'displayModeBar':True,'displaylogo':False,
                                     'modeBarButtonsToRemove':['lasso2d','select2d']})
         else:
@@ -6129,7 +6129,7 @@ padding:12px 16px;margin:8px 0;">
                 font=dict(color='white',size=10), margin=dict(l=10,r=10,t=10,b=20),
                 xaxis=dict(gridcolor='#21262d'), yaxis=dict(gridcolor='#21262d',range=[0,105]),
                 showlegend=False)
-            st.plotly_chart(_fig_sh, use_container_width=True, config={'displayModeBar':False})
+            st.plotly_chart(_fig_sh, width='stretch', config={'displayModeBar':False})
             # 評分突變偵測（分數飆升≥20分）
             if len(_sh_health) >= 2 and _sh_health[-1] - _sh_health[-2] >= 20:
                 st.success(f'🚀 評分突變！健康度從 {_sh_health[-2]:.0f} → {_sh_health[-1]:.0f}（+{_sh_health[-1]-_sh_health[-2]:.0f}），可能是主升段起點！')
