@@ -1477,8 +1477,11 @@ with tab1_macro:
             'conf': _conf, 'regime': _regime,
         }
 
-    def _render_traffic_light(placeholder, tl):
-        """將計算結果回填到 placeholder（或顯示等待狀態）。"""
+    def _render_traffic_light(placeholder, tl, mkt_info=None):
+        """將計算結果回填到 placeholder（或顯示等待狀態）。
+        mkt_info: 選填，來自 market_regime() 的原始 dict，用以合併顯示市場評分與信號。
+        以較保守信號為主（traffic light 已含 defense/health 降級邏輯）。
+        """
         if tl is None:
             placeholder.info(
                 '⏳ **系統正在深度解析大盤與籌碼數據，請稍候...**\n\n'
@@ -1495,18 +1498,49 @@ with tab1_macro:
         _sat_color  = '#f85149' if tl['defense'] else '#58a6ff'
         _rem_color  = '#3fb950' if _sat_remain > _sat * 0.3 else ('#d29922' if _sat_remain > 0 else '#f85149')
 
+        # ── 整合 market_regime() 的輔助資訊 ──────────────────────
+        _mi      = mkt_info or {}
+        _mi_score  = _mi.get('score')
+        _mi_mx     = _mi.get('max_score', 4)
+        _mi_idx    = _mi.get('index_price', 0)
+        _mi_exp    = _mi.get('exposure_pct', '--')
+        _mi_sigs   = _mi.get('signals', [])
+        _mi_upd    = st.session_state.get('cl_ts', '')
+
+        _sigs_html = ''.join(
+            f'<span style="background:#21262d;border-radius:5px;padding:2px 7px;'
+            f'font-size:11px;color:#c9d1d9;margin-right:4px;">{s}</span>'
+            for s in _mi_sigs
+        )
+        _meta_line = ''
+        if _mi_score is not None:
+            _meta_line = (
+                f'<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;">'
+                f'<span style="font-size:12px;color:#8b949e;">評分 '
+                f'<b style="color:{tl["color"]};">{_mi_score}/{_mi_mx}</b></span>'
+                f'<span style="font-size:12px;color:#8b949e;">加權指數 '
+                f'<b style="color:#e6edf3;">{_mi_idx:,.0f}</b></span>'
+                f'<span style="font-size:12px;color:#8b949e;">建議持股 '
+                f'<b style="color:{tl["color"]};">{_mi_exp}</b></span>'
+                + (f'<span style="font-size:11px;color:#484f58;">更新 {_mi_upd}</span>'
+                   if _mi_upd else '')
+                + f'</div>'
+            )
+
         with placeholder.container():
-            # ── 紅綠燈主體 ─────────────────────────────────────
+            # ── 合併看板主體 ────────────────────────────────────
             st.markdown(f'''<div style="background:linear-gradient(135deg,#0a1628,#0d1f3c);
 border:3px solid {tl["color"]};border-radius:16px;padding:20px 24px;margin-bottom:12px;">
-<div style="display:flex;align-items:center;gap:16px;">
-  <div style="font-size:56px;line-height:1;">{tl["icon"]}</div>
-  <div>
+<div style="display:flex;align-items:flex-start;gap:16px;">
+  <div style="font-size:56px;line-height:1;flex-shrink:0;">{tl["icon"]}</div>
+  <div style="flex:1;min-width:0;">
     <div style="font-size:24px;font-weight:900;color:{tl["color"]};">{tl["label"]}</div>
     <div style="font-size:15px;color:#c9d1d9;margin-top:4px;">{tl["action"]}</div>
     <div style="font-size:12px;color:#8b949e;margin-top:2px;">{tl["sub"]}</div>
+    {f'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">{_sigs_html}</div>' if _sigs_html else ''}
+    {_meta_line}
   </div>
-  <div style="margin-left:auto;text-align:right;">
+  <div style="text-align:right;flex-shrink:0;">
     <div style="font-size:12px;color:#484f58;">綜合健康度</div>
     <div style="font-size:36px;font-weight:900;color:{tl["color"]};">{tl["health"]:.0f}</div>
     <div style="font-size:11px;color:#484f58;">/ 100分｜信心{tl["conf"]}%</div>
@@ -1571,7 +1605,7 @@ border-radius:12px;padding:14px;text-align:center;">
         _tm_cd_init  = st.session_state.get('cl_data', {})
         _tm_li_init  = st.session_state.get('li_latest')
         _tl_init     = _calc_traffic_light(_tm_mkt_init, _tm_jq_init, _tm_cd_init, _tm_li_init)
-        _render_traffic_light(_tl_placeholder, _tl_init)
+        _render_traffic_light(_tl_placeholder, _tl_init, _tm_mkt_init)
     else:
         # 無快取 or 快取過期 → 顯示等待狀態，不顯示誤導性燈號
         age_note = f'（上次更新 {_age_min:.0f} 分鐘前，已過期）' if _cl_ts_str and not _cache_fresh else '（尚無資料）'
@@ -2688,10 +2722,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     _mkt_info = st.session_state.get('mkt_info')
     if _mkt_info:
         _mkt_placeholder.empty()
-        with _mkt_placeholder.container():
-            render_market_overview(_mkt_info)
-            _upd = st.session_state.get('cl_ts', '未更新')
-            st.caption(f'大盤數據：yfinance ^TWII ｜ 外資：TWSE BFI82U ｜ 更新：{_upd}')
+        _mkt_placeholder.empty()  # 市場評分已整合至頂部紅綠燈看板，不重複顯示
 
 
     # ══════════════════════════════════════════════════════════════
@@ -2854,7 +2885,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.session_state.get('cl_data', {}),
         st.session_state.get('li_latest'),
     )
-    _render_traffic_light(_tl_placeholder, _tl_final)
+    _render_traffic_light(_tl_placeholder, _tl_final, st.session_state.get('mkt_info', {}))
     if _tl_final:
         st.session_state['defense_mode'] = _tl_final['defense']
         st.session_state['warroom_summary'] = {
