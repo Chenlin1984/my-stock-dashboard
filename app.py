@@ -1350,19 +1350,10 @@ def _build_llm_context(macro_info: dict) -> str:
 
 
 def _run_llm_analysis(macro_info: dict, news: list) -> dict:
-    """呼叫 Anthropic Claude API 進行總經研判，回傳解析後的 dict。
+    """呼叫 Gemini API 進行總經研判，回傳解析後的 dict。
+    使用既有的 gemini_call() 函數（支援 2.5-flash-lite/2.5-flash/2.0-flash 自動 fallback）。
     錯誤時回傳 {'error': '...'}，不拋出例外。
     """
-    try:
-        import anthropic as _ant
-    except ImportError:
-        return {'error': '請在 requirements.txt 加入 anthropic 並重新部署'}
-
-    _key = (st.secrets.get('ANTHROPIC_API_KEY', '')
-            or os.environ.get('ANTHROPIC_API_KEY', ''))
-    if not _key:
-        return {'error': 'ANTHROPIC_API_KEY 未設定\n請至 Streamlit Cloud → Settings → Secrets 加入：\nANTHROPIC_API_KEY = "sk-ant-..."'}
-
     _macro_str = _build_llm_context(macro_info)
     _news_lines = []
     for i, _nw in enumerate(news, 1):
@@ -1371,22 +1362,18 @@ def _run_llm_analysis(macro_info: dict, news: list) -> dict:
             _news_lines.append(f'   {_nw["summary"][:150]}')
     _news_str = '\n'.join(_news_lines) if _news_lines else '（無法取得今日新聞，請依量化數據判斷）'
 
-    _system = (
+    _prompt = (
         '你是一位管理百億規模的資深量化基金經理，擁有 20 年台股與全球宏觀投資經驗。'
-        '你的職責是整合量化總經指標與即時財經新聞，為台股投資人提供精確的戰術研判。'
-        '分析需立足於提供的數據事實，避免空泛描述。'
-        '所有輸出必須是合法 JSON，文字值使用繁體中文。'
-    )
-    _user = (
+        '任務：整合量化總經指標與即時財經新聞，為台股投資人提供精確的戰術研判。'
+        '分析需立足於提供的數據事實，避免空泛描述。\n\n'
         f'分析時間：{_tw_now_str()}（台北時間）\n\n'
         f'## 當前量化總經數據\n{_macro_str}\n\n'
         f'## 今日國際財經重大新聞\n{_news_str}\n\n'
-        '## 分析指令\n'
-        '請整合上述數據與新聞，輸出以下 JSON 格式的台股投資研判。\n'
-        '規則：stock_pct + cash_pct = 100；所有字串值使用繁體中文；\n'
-        'risk_level 根據 VIX 與新聞判斷：VIX≥30 或重大地緣政治風險 → high，'
-        'VIX 20~30 或通膨偏高 → medium，其餘 → low。\n\n'
-        '```json\n'
+        '## 輸出指令\n'
+        '請整合上述數據與新聞，輸出台股投資研判。\n'
+        '規則：① stock_pct + cash_pct = 100 ② 所有字串值使用繁體中文\n'
+        '③ risk_level：VIX≥30或重大地緣風險→high；VIX 20~30或通膨偏高→medium；其餘→low\n'
+        '只輸出 JSON，不要任何說明文字或 markdown 標記：\n'
         '{\n'
         '  "sentiment": "極度恐慌|警戒|中性|樂觀|極度狂熱",\n'
         '  "sentiment_reason": "市場情緒判定的核心依據（15字以內）",\n'
@@ -1397,30 +1384,24 @@ def _run_llm_analysis(macro_info: dict, news: list) -> dict:
         '  "risk_level": "high|medium|low",\n'
         '  "key_risk": "當前最大下行風險（20字以內）",\n'
         '  "opportunity": "當前最大投資機會（20字以內）"\n'
-        '}\n'
-        '```'
+        '}'
     )
+
+    _raw = gemini_call(_prompt, max_tokens=600)
+    print(f'[AI-LLM/Gemini] raw={_raw[:120]}')
+    if _raw.startswith('⚠️'):
+        return {'error': _raw}
     try:
-        _client = _ant.Anthropic(api_key=_key)
-        _msg = _client.messages.create(
-            model='claude-sonnet-4-6',
-            max_tokens=600,
-            system=_system,
-            messages=[{'role': 'user', 'content': _user}],
-        )
-        _text = _msg.content[0].text
-        print(f'[AI-LLM] tokens_in={_msg.usage.input_tokens} tokens_out={_msg.usage.output_tokens}')
-        _match = re.search(r'\{[\s\S]*\}', _text)
+        _match = re.search(r'\{[\s\S]*\}', _raw)
         if _match:
             _parsed = json.loads(_match.group())
-            # Ensure stock+cash=100
             _s = int(_parsed.get('stock_pct', 50))
             _parsed['stock_pct'] = max(0, min(100, _s))
             _parsed['cash_pct']  = 100 - _parsed['stock_pct']
             return _parsed
-        return {'error': f'JSON 解析失敗，原始回應：{_text[:100]}'}
+        return {'error': f'JSON 解析失敗，原始回應：{_raw[:100]}'}
     except Exception as _le:
-        print(f'[AI-LLM] ❌ {_le}')
+        print(f'[AI-LLM/Gemini] ❌ {_le}')
         return {'error': str(_le)[:150]}
 
 
@@ -4519,7 +4500,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 '整合即時國際財經新聞（RSS）與當前量化總經數據，'
                 '由 Claude AI 進行總體經濟戰況深度研判，輸出持股建議與操作方針。'
                 '<br><span style="color:#484f58;">需設定 Streamlit Secrets：'
-                '<code>ANTHROPIC_API_KEY = "sk-ant-..."</code></span></div>',
+                '<code>GEMINI_API_KEY = "AIza..."</code></span></div>',
                 unsafe_allow_html=True)
         with _llm_hdr_c2:
             _do_llm = st.button('🔄 執行 AI 研判', key='btn_run_llm',
