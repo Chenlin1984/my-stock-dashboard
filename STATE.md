@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.5 | main `5e0fb48` | dev `205b4a7`
-- **最新異動**: SyntaxError 4604修復 + ADL index-0 falsy bug修復
+- **版本**: v5.6 | main `e472fd7` | dev `7125bcd`
+- **最新異動**: st.plotly_chart use_container_width→width='stretch' 批次替換（18處）
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -28,16 +28,22 @@
 - Section 九：總經 AI 五維度規則分析（位階/配置/貨幣流向/美股/結論）
 - Section 十：AI 總經戰情總結（Gemini LLM × RSS 新聞 × 8欄 JSON）
 
-## 🐞 待驗證（需 Cloud log 確認）
-- [ ] M1B=7.12% / M2=5.38%：pct_cols[-4][-2] 確認（`54ce45f`）
-- [ ] NDC data.gov.tw 3個resourceID 是否命中，或退回 OECD CLI 代理
-- [ ] 孫慶龍「有基之彈」：Export=31.82% 確認觸發（`e400ef7`）
+## 🔒 長期已知限制（持續中）
+- TWSE BFI82U / 融資 IP 封鎖 → FinMind 備援正常
+- NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
+- st.dataframe / st.button 的 use_container_width 待 Streamlit 官方明確後再處理
 
-## ✅ 已修復（v5.4–v5.5）
+## ✅ 已修復（v5.4–v5.6）
 - `calc_fundamental_score` list/hasattr 防呆（`5b314c8`）
 - duplicate `_li_log()` 死碼 7 行清除（`2ca50e2`）
 - SyntaxError L4604：f-string 混用隱式/顯式串接（`21c80f2`）
 - ADL `_ui/_di` index-0 falsy bug → `is not None`（`205b4a7`）
+- st.plotly_chart `use_container_width` → `width='stretch'` 18處（`7125bcd`）
+
+## ✅ Cloud log 驗證確認
+- M1B=7.12% / M2=5.38% ✓
+- NDC data.gov.tw 全404 → OECD CLI代理=19分 ✓
+- Export=31.82% ✓
 
 ## 🔒 長期已知限制
 - TWSE IP 封鎖 → 全部走 FinMind/openapi 備援
