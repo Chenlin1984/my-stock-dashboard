@@ -34,6 +34,13 @@ _STOCK_LOGIC = """
 - VCP 突破：量縮整理後放量突破為進場訊號
 - 大盤狀態：空頭格局下個股先降倉至 20% 以下
 - 籌碼：外資/投信持續買超 ≥3 日為多頭信號
+
+【個股 JSON 輸出規範 — 嚴格對應以下四個面向】
+- "summary"       → ① 目前技術面評價：一句話（≤25字）定調多空強弱
+- "action_advice" → ② 具體進場條件（含觸發價格或指標條件）
+                     ③ 停損價位設定（明確說出停損價或均線）
+- "precautions"   → ④ 風控建議（倉位控制、市場狀態注意事項）
+                     + 其他當前主要隱憂（≤1條）
 """
 
 _ETF_LOGIC = """
@@ -107,7 +114,7 @@ def _list_html(items, bullet_color: str) -> str:
     return ''.join(rows)
 
 
-def _render_cards(parsed: dict) -> None:
+def _render_cards(parsed: dict, ctx_type: str = 'stock') -> None:
     summary  = parsed.get('summary', '⚠️ 分析結果不完整')
     actions  = parsed.get('action_advice', [])
     risks    = parsed.get('precautions', [])
@@ -115,24 +122,32 @@ def _render_cards(parsed: dict) -> None:
     bg, border, text = _color_from_summary(summary)
 
     # ── Card 1：戰情總結（全寬）────────────────────────────────
+    card1_label = '① 目前技術面評價' if ctx_type == 'stock' else '📊 AI 戰情總結'
     st.markdown(
         f'<div style="background:{bg};border:2px solid {border};border-radius:12px;'
         f'padding:20px 26px;margin:14px 0 10px;">'
         f'<div style="font-size:10px;font-weight:700;color:#8b949e;letter-spacing:2px;'
-        f'text-transform:uppercase;margin-bottom:8px;">📊 AI 戰情總結</div>'
+        f'text-transform:uppercase;margin-bottom:8px;">{card1_label}</div>'
         f'<div style="font-size:20px;font-weight:900;color:{text};line-height:1.4;">{summary}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
     # ── Cards 2 & 3：並排────────────────────────────────────────
+    if ctx_type == 'stock':
+        left_label  = '② 具體進場條件 ／ ③ 停損設定'
+        right_label = '④ 風控建議 ／ 注意事項'
+    else:
+        left_label  = '💡 具體投資建議'
+        right_label = '⚠️ 風險與注意事項'
+
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown(
             f'<div style="background:#0a1a0e;border:1px solid #238636;border-radius:10px;'
             f'padding:18px 20px;min-height:150px;">'
             f'<div style="font-size:10px;font-weight:700;color:#3fb950;letter-spacing:2px;'
-            f'margin-bottom:14px;">💡 具體投資建議</div>'
+            f'margin-bottom:14px;">{left_label}</div>'
             f'{_list_html(actions, "#3fb950")}'
             f'</div>',
             unsafe_allow_html=True,
@@ -142,7 +157,7 @@ def _render_cards(parsed: dict) -> None:
             f'<div style="background:#1a1200;border:1px solid #9e6a03;border-radius:10px;'
             f'padding:18px 20px;min-height:150px;">'
             f'<div style="font-size:10px;font-weight:700;color:#d29922;letter-spacing:2px;'
-            f'margin-bottom:14px;">⚠️ 風險與注意事項</div>'
+            f'margin-bottom:14px;">{right_label}</div>'
             f'{_list_html(risks, "#d29922")}'
             f'</div>',
             unsafe_allow_html=True,
@@ -213,4 +228,4 @@ def render_unified_decision(gemini_fn, context: dict) -> None:
                 st.rerun()
 
     if _saved:
-        _render_cards(_saved)
+        _render_cards(_saved, ctx_type=ctx_type)

@@ -6192,39 +6192,6 @@ padding:12px 16px;margin:8px 0;">
         except Exception as _ce:
             pass
 
-        # ── Tab2 底部 AI 分析 ──────────────────────────────────────
-        st.markdown('---')
-        st.markdown('#### 🤖 個股 AI 投資決策分析')
-        _t2_ai_key = f't2_ai_{sid2}'
-        _t2_ai_cached = st.session_state.get(_t2_ai_key, '')
-        if _t2_ai_cached:
-            st.markdown(_t2_ai_cached)
-            if st.button('🔄 重新生成', key='t2_ai_regen'):
-                st.session_state.pop(_t2_ai_key, None)
-                st.rerun()
-        else:
-            if st.button('🤖 生成完整AI分析', key='t2_ai_gen', type='primary'):
-                _t2_trend = ('多頭排列' if df2 is not None and 'MA20' in df2.columns and 'MA100' in df2.columns
-                             and price2 > float(df2['MA20'].iloc[-1]) > float(df2['MA100'].iloc[-1])
-                             else '空頭/整理')
-                _t2_prompt = (
-                    f"你是宏爺+孫慶龍的AI助手，以台灣股市實戰語氣分析 {sid2}({name2})：\n"
-                    f"現價={price2:.2f} 健康度={health2:.0f}分 RSI={rsi2} KD=K{k2}/D{d2}\n"
-                    f"趨勢={_t2_trend} 量比={vr2} IBS={ibs2}\n"
-                    f"大盤：{st.session_state.get('mkt_info',{}).get('regime','neutral')}\n\n"
-                    f"請依序回答（每段不超過50字）：\n"
-                    f"① 目前技術面評價（一句話）\n"
-                    f"② 具體進場條件\n"
-                    f"③ 停損價位設定\n"
-                    f"④ 風控建議"
-                )
-                with st.spinner('AI分析中...'):
-                    _t2_result = gemini_call(_t2_prompt, max_tokens=400)
-                st.session_state[_t2_ai_key] = _t2_result
-                st.markdown(_t2_result)
-            else:
-                st.caption('點擊上方按鈕生成此股 AI 投資決策分析')
-
         # ── 統一投資決策分析模組 ──────────────────────────────
         _regime2 = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
         _rev_yoy_list = []
