@@ -1443,19 +1443,25 @@ with tab1_macro:
             try: _leek = float(li_latest.iloc[-1].get('韭菜指數', 50))
             except: pass
 
+        _regime  = _mkt.get('regime', 'neutral')
         _defense = (_score < 2 and abs(_fut_net) > 30000 and _fut_net < 0)
         _health  = round(_jqavg * 0.4 + min(_score / 5 * 100, 100) * 0.4 + (20 if _fnet > 0 else 0), 1)
 
+        # Regime 為主要驅動，_defense / _health<40 為強制覆蓋（緊急防禦）
         if _defense or _health < 40:
-            _color = '#f85149'; _icon = '🔴'; _label = '紅燈｜強制防禦'
-            _action = '⛔ 大環境極度惡劣，系統已啟動資金保護機制'
+            _color = '#f85149'; _icon = '🔴'; _label = '空頭防禦｜降低部位'
+            _action = '⛔ 大環境惡化，系統已啟動資金保護機制'
             _sub    = '建議持有現金或僅定期定額核心 ETF，禁止追買任何個股'
-        elif _health >= 70 and not _defense and _leek < 40:
-            _color = '#3fb950'; _icon = '🟢'; _label = '綠燈｜積極買進'
+        elif _regime == 'bull':
+            _color = '#3fb950'; _icon = '🟢'; _label = '多頭市場｜積極操作'
             _action = '✅ 市場健康，籌碼乾淨，可積極尋找強勢標的'
             _sub    = '建議衛星資金（30%）可佈局高分股，核心ETF（70%）持續定投'
+        elif _regime in ('caution', 'bear'):
+            _color = '#f85149'; _icon = '🔴'; _label = '保守防禦｜縮減部位'
+            _action = '⛔ 市場走弱，建議縮減持股比例，等待多頭確認'
+            _sub    = '縮減衛星倉位，僅維持核心 ETF 定投，避免新開倉'
         else:
-            _color = '#d29922'; _icon = '🟡'; _label = '黃燈｜持有觀望'
+            _color = '#d29922'; _icon = '🟡'; _label = '震盪整理｜謹慎觀望'
             _action = '⚠️ 市場處於整理期，謹慎操作，降低部位'
             _sub    = '持有現有倉位觀望，不追高，等待更明確信號'
 
@@ -1468,7 +1474,7 @@ with tab1_macro:
             'action': _action, 'sub': _sub, 'health': _health,
             'defense': _defense, 'score': _score, 'jqavg': _jqavg,
             'leek': _leek, 'fnet': _fnet, 'fk': _fk, 'fut_net': _fut_net,
-            'conf': _conf,
+            'conf': _conf, 'regime': _regime,
         }
 
     def _render_traffic_light(placeholder, tl):
