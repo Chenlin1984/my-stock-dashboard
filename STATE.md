@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.3 | main `5b715ec` | branch `18f4b0c`
-- **最新異動**: 紅綠燈標示對齊 Regime ✅
+- **版本**: v6.4 | main `5b715ec` | branch `716eed1`
+- **最新異動**: 紅綠燈 + 市場概覽合併為單一看板 ✅
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -34,6 +34,12 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 已修復（v6.4）
+- 紅綠燈 + 市場概覽合併為單一看板（`716eed1`）：
+  - `_render_traffic_light()` 新增 `mkt_info` 參數，整合市場評分、指數、建議持股、信號 badges、更新時間
+  - 原 `render_market_overview()` 卡片抑制（`_mkt_placeholder.empty()`），資訊不重複
+  - 保守優先：defense/health<40 可降級 regime → 兩者不再矛盾
 
 ## ✅ 已修復（v6.3）
 - 紅綠燈標示與 Regime 對齊（`18f4b0c`）：
