@@ -1272,6 +1272,158 @@ if _mkt_top or _jq_top:
         f'<span style="font-size:11px;color:#484f58;margin-left:auto;">更新：{_ts_top}</span>'
         f'</div>', unsafe_allow_html=True)
 
+# ══════════════════════════════════════════════════════════════
+# AI 總經戰情 — 新聞抓取 + LLM 研判 工具函數
+# ══════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_macro_news(n: int = 5) -> list:
+    """抓取全球總經財經新聞（Google News RSS → Yahoo Finance RSS → Reuters RSS）
+    使用 feedparser 解析 RSS，失敗時回傳空串列，不影響主程式。
+    ttl=1800：每 30 分鐘自動更新一次快取。
+    """
+    try:
+        import feedparser as _fp, html as _h, re as _re2
+    except ImportError:
+        print('[AI-News] ⚠️ feedparser 未安裝，跳過新聞抓取')
+        return []
+
+    _feeds = [
+        ('Google News',  'https://news.google.com/rss/search'
+                         '?q=stock+market+economy+fed+interest+rate'
+                         '&hl=en-US&gl=US&ceid=US:en'),
+        ('Yahoo Finance','https://finance.yahoo.com/news/rssindex'),
+        ('Reuters Biz',  'https://feeds.reuters.com/reuters/businessNews'),
+        ('CNBC Economy', 'https://search.cnbc.com/rs/search/combinedcms/view.xml'
+                         '?partnerId=wrss01&id=20910258'),
+    ]
+    _out = []
+    for _src, _url in _feeds:
+        try:
+            _fd = _fp.parse(_url)
+            for _e in _fd.entries:
+                _title = _h.unescape(_e.get('title', '')).strip()
+                _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
+                _summ  = _re2.sub(r'<[^>]+>', '', _summ)[:300].strip()
+                _pub   = str(_e.get('published', ''))[:16]
+                if _title:
+                    _out.append({'title': _title, 'summary': _summ,
+                                 'source': _src, 'published': _pub})
+                if len(_out) >= n:
+                    break
+            print(f'[AI-News/{_src}] ✅ 累計 {len(_out)} 則')
+        except Exception as _ne:
+            print(f'[AI-News/{_src}] ❌ {_ne}')
+        if len(_out) >= n:
+            break
+    return _out[:n]
+
+
+def _build_llm_context(macro_info: dict) -> str:
+    """將 session_state 中的量化總經數據格式化為純文字供 LLM 使用"""
+    _vix = macro_info.get('vix') or {}
+    _exp = macro_info.get('tw_export') or {}
+    _pmi = macro_info.get('ism_pmi') or {}
+    _cpi = macro_info.get('us_core_cpi') or {}
+    _ndc = macro_info.get('ndc_signal') or {}
+    _mi  = st.session_state.get('m1b_m2_info') or {}
+    _bi  = st.session_state.get('bias_info') or {}
+    _lines = []
+    if _vix.get('current'):
+        _lines.append(f'• VIX 恐慌指數：{_vix["current"]} (MA20={_vix.get("ma20","N/A")})')
+    if _exp.get('yoy') is not None:
+        _lines.append(f'• 台灣外銷訂單 YoY：{_exp["yoy"]:+.1f}%  ({_exp.get("date","")})')
+    if _pmi.get('value') is not None:
+        _lbl = 'OECD CLI' if _pmi.get('is_oecd_cli') else 'ISM PMI'
+        _lines.append(f'• {_lbl}：{_pmi["value"]}  ({_pmi.get("date","")})')
+    if _cpi.get('yoy') is not None:
+        _lines.append(f'• 美國核心 CPI YoY：{_cpi["yoy"]:+.1f}%  ({_cpi.get("date","")})')
+    if _ndc.get('score') is not None:
+        _proxy_lbl = '（OECD CLI 代理估算）' if _ndc.get('_is_proxy') else ''
+        _lines.append(f'• NDC 景氣燈號分數：{_ndc["score"]:.0f}/45{_proxy_lbl}')
+    if _mi.get('m1b_yoy') is not None and _mi.get('m2_yoy') is not None:
+        _gap = round(float(_mi['m1b_yoy']) - float(_mi['m2_yoy']), 2)
+        _lines.append(f'• 台灣 M1B={_mi["m1b_yoy"]:.1f}%  M2={_mi["m2_yoy"]:.1f}%  Gap={_gap:+.2f}%')
+    if _bi.get('bias_240') is not None:
+        _lines.append(f'• 台股大盤年線乖離率 BIAS240：{_bi["bias_240"]:+.1f}%')
+    return '\n'.join(_lines) if _lines else '（量化數據載入中，請先點擊更新總經拼圖）'
+
+
+def _run_llm_analysis(macro_info: dict, news: list) -> dict:
+    """呼叫 Anthropic Claude API 進行總經研判，回傳解析後的 dict。
+    錯誤時回傳 {'error': '...'}，不拋出例外。
+    """
+    try:
+        import anthropic as _ant
+    except ImportError:
+        return {'error': '請在 requirements.txt 加入 anthropic 並重新部署'}
+
+    _key = (st.secrets.get('ANTHROPIC_API_KEY', '')
+            or os.environ.get('ANTHROPIC_API_KEY', ''))
+    if not _key:
+        return {'error': 'ANTHROPIC_API_KEY 未設定\n請至 Streamlit Cloud → Settings → Secrets 加入：\nANTHROPIC_API_KEY = "sk-ant-..."'}
+
+    _macro_str = _build_llm_context(macro_info)
+    _news_lines = []
+    for i, _nw in enumerate(news, 1):
+        _news_lines.append(f'{i}. [{_nw["source"]}] {_nw["title"]}')
+        if _nw.get('summary'):
+            _news_lines.append(f'   {_nw["summary"][:150]}')
+    _news_str = '\n'.join(_news_lines) if _news_lines else '（無法取得今日新聞，請依量化數據判斷）'
+
+    _system = (
+        '你是一位管理百億規模的資深量化基金經理，擁有 20 年台股與全球宏觀投資經驗。'
+        '你的職責是整合量化總經指標與即時財經新聞，為台股投資人提供精確的戰術研判。'
+        '分析需立足於提供的數據事實，避免空泛描述。'
+        '所有輸出必須是合法 JSON，文字值使用繁體中文。'
+    )
+    _user = (
+        f'分析時間：{_tw_now_str()}（台北時間）\n\n'
+        f'## 當前量化總經數據\n{_macro_str}\n\n'
+        f'## 今日國際財經重大新聞\n{_news_str}\n\n'
+        '## 分析指令\n'
+        '請整合上述數據與新聞，輸出以下 JSON 格式的台股投資研判。\n'
+        '規則：stock_pct + cash_pct = 100；所有字串值使用繁體中文；\n'
+        'risk_level 根據 VIX 與新聞判斷：VIX≥30 或重大地緣政治風險 → high，'
+        'VIX 20~30 或通膨偏高 → medium，其餘 → low。\n\n'
+        '```json\n'
+        '{\n'
+        '  "sentiment": "極度恐慌|警戒|中性|樂觀|極度狂熱",\n'
+        '  "sentiment_reason": "市場情緒判定的核心依據（15字以內）",\n'
+        '  "macro_reading": "整合數據與新聞的總經現況精煉解讀（50字以內）",\n'
+        '  "stock_pct": 建議持股水位整數,\n'
+        '  "cash_pct": 建議現金水位整數,\n'
+        '  "action": "一句話具體操作方針，含理由（35字以內）",\n'
+        '  "risk_level": "high|medium|low",\n'
+        '  "key_risk": "當前最大下行風險（20字以內）",\n'
+        '  "opportunity": "當前最大投資機會（20字以內）"\n'
+        '}\n'
+        '```'
+    )
+    try:
+        _client = _ant.Anthropic(api_key=_key)
+        _msg = _client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=600,
+            system=_system,
+            messages=[{'role': 'user', 'content': _user}],
+        )
+        _text = _msg.content[0].text
+        print(f'[AI-LLM] tokens_in={_msg.usage.input_tokens} tokens_out={_msg.usage.output_tokens}')
+        _match = re.search(r'\{[\s\S]*\}', _text)
+        if _match:
+            _parsed = json.loads(_match.group())
+            # Ensure stock+cash=100
+            _s = int(_parsed.get('stock_pct', 50))
+            _parsed['stock_pct'] = max(0, min(100, _s))
+            _parsed['cash_pct']  = 100 - _parsed['stock_pct']
+            return _parsed
+        return {'error': f'JSON 解析失敗，原始回應：{_text[:100]}'}
+    except Exception as _le:
+        print(f'[AI-LLM] ❌ {_le}')
+        return {'error': str(_le)[:150]}
+
+
 with tab1_macro:
     # ════════════════════════════════════════════════════════
     # 【模組一】紅綠燈決策儀表板（st.empty 佔位符修復版）
@@ -4353,6 +4505,145 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'<div style="font-size:14px;font-weight:900;color:{_ai5_clr};">{_ai5_icon}</div>'
             f'<div style="font-size:12px;color:#c9d1d9;margin-top:6px;line-height:1.6;">{_ai5_txt}</div>'
             f'</div>', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # SECTION 十: 🤖 AI 總經戰情總結（新聞 × 量化數據 × Claude LLM）
+    # ══════════════════════════════════════════════════════════════
+    st.markdown(section_header('十', '🤖 AI 總經戰情總結', '🤖'), unsafe_allow_html=True)
+
+    with st.expander('🤖 AI 總經戰情總結 — 即時新聞 × 量化數據 × Claude 深度研判', expanded=True):
+        _llm_hdr_c1, _llm_hdr_c2 = st.columns([4, 1])
+        with _llm_hdr_c1:
+            st.markdown(
+                '<div style="font-size:12px;color:#8b949e;padding:4px 0;">'
+                '整合即時國際財經新聞（RSS）與當前量化總經數據，'
+                '由 Claude AI 進行總體經濟戰況深度研判，輸出持股建議與操作方針。'
+                '<br><span style="color:#484f58;">需設定 Streamlit Secrets：'
+                '<code>ANTHROPIC_API_KEY = "sk-ant-..."</code></span></div>',
+                unsafe_allow_html=True)
+        with _llm_hdr_c2:
+            _do_llm = st.button('🔄 執行 AI 研判', key='btn_run_llm',
+                                use_container_width=True, type='primary')
+
+        _llm_res  = st.session_state.get('ai_analysis_result')
+        _llm_news = st.session_state.get('ai_analysis_news', [])
+        _llm_ts   = st.session_state.get('ai_analysis_ts', '')
+
+        # ── 觸發分析 ─────────────────────────────────────────
+        if _do_llm:
+            with st.spinner('📡 正在抓取財經新聞 + 呼叫 Claude AI 分析中（約 15~30 秒）…'):
+                _llm_news = _fetch_macro_news(5)
+                _llm_res  = _run_llm_analysis(_macro_info, _llm_news)
+                st.session_state['ai_analysis_result'] = _llm_res
+                st.session_state['ai_analysis_news']   = _llm_news
+                st.session_state['ai_analysis_ts']     = _tw_now_str()
+                _llm_ts = st.session_state['ai_analysis_ts']
+
+        # ── 渲染結果 ─────────────────────────────────────────
+        if _llm_res and 'error' not in _llm_res:
+            # 風險色系
+            _rl = _llm_res.get('risk_level', 'medium')
+            _risk_clr = {'high': '#f85149', 'medium': '#d29922', 'low': '#3fb950'}.get(_rl, '#8b949e')
+            _risk_txt = {'high': '高風險', 'medium': '中等風險', 'low': '低風險'}.get(_rl, '未知')
+
+            # 情緒色系
+            _sent = _llm_res.get('sentiment', '中性')
+            _sent_clr = {
+                '極度恐慌': '#f85149', '警戒': '#d29922', '中性': '#8b949e',
+                '樂觀': '#3fb950',     '極度狂熱': '#f0e040',
+            }.get(_sent, '#8b949e')
+
+            _spct = int(_llm_res.get('stock_pct', 50))
+            _cpct = int(_llm_res.get('cash_pct', 50))
+
+            # ── 主卡片 ───────────────────────────────────────
+            st.markdown(
+                f'<div style="background:#0d1117;border:2px solid {_risk_clr};'
+                f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
+                # 頂部：情緒 + 風險等級
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'flex-wrap:wrap;gap:8px;margin-bottom:12px;">'
+                f'<div>'
+                f'<span style="font-size:11px;color:#484f58;">市場情緒</span><br>'
+                f'<span style="font-size:20px;font-weight:900;color:{_sent_clr};">{_sent}</span>'
+                f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
+                f'{_llm_res.get("sentiment_reason","")}</span>'
+                f'</div>'
+                f'<div style="text-align:right;">'
+                f'<span style="background:{_risk_clr}22;border:1px solid {_risk_clr};'
+                f'border-radius:20px;padding:4px 14px;font-size:12px;'
+                f'font-weight:700;color:{_risk_clr};">{_risk_txt}</span>'
+                f'<div style="font-size:10px;color:#484f58;margin-top:4px;">'
+                f'分析時間：{_llm_ts}</div>'
+                f'</div>'
+                f'</div>'
+                # 總經解讀
+                f'<div style="background:#161b22;border-radius:8px;padding:12px;margin-bottom:12px;">'
+                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">📊 總經現況解讀</div>'
+                f'<div style="font-size:13px;color:#c9d1d9;line-height:1.6;">'
+                f'{_llm_res.get("macro_reading","")}</div>'
+                f'</div>'
+                # 持股水位 + 操作方針
+                f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
+                f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;padding:12px;text-align:center;">'
+                f'<div style="font-size:10px;color:#484f58;">建議持股水位</div>'
+                f'<div style="font-size:28px;font-weight:900;color:{_risk_clr};">{_spct}<span style="font-size:14px;">%</span></div>'
+                f'<div style="font-size:10px;color:#8b949e;">現金 {_cpct}%</div>'
+                f'</div>'
+                f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
+                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">⚔️ 最終作戰指令</div>'
+                f'<div style="font-size:14px;font-weight:700;color:#e6edf3;line-height:1.5;">'
+                f'{_llm_res.get("action","")}</div>'
+                f'</div>'
+                f'</div>'
+                # 風險 vs 機會
+                f'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
+                f'<div style="flex:1;min-width:150px;">'
+                f'<span style="font-size:10px;color:#f85149;">⚠️ 最大風險</span><br>'
+                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("key_risk","")}</span>'
+                f'</div>'
+                f'<div style="flex:1;min-width:150px;">'
+                f'<span style="font-size:10px;color:#3fb950;">💡 最大機會</span><br>'
+                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("opportunity","")}</span>'
+                f'</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True)
+
+            # ── 新聞來源展示 ──────────────────────────────────
+            if _llm_news:
+                with st.expander(f'📰 本次分析引用的 {len(_llm_news)} 則財經新聞', expanded=False):
+                    for _nw in _llm_news:
+                        st.markdown(
+                            f'<div style="border-left:2px solid #21262d;padding:6px 12px;margin:4px 0;">'
+                            f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
+                            f'<div style="font-size:10px;color:#484f58;">'
+                            f'{_nw["source"]}  {_nw.get("published","")}</div>'
+                            + (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">{_nw["summary"][:120]}…</div>'
+                               if _nw.get('summary') else '')
+                            f'</div>',
+                            unsafe_allow_html=True)
+
+        elif _llm_res and 'error' in _llm_res:
+            st.error(f'❌ AI 研判失敗：{_llm_res["error"]}')
+        else:
+            # 尚未執行 — 顯示說明卡
+            st.markdown(
+                '<div style="background:#0d1117;border:1px dashed #30363d;'
+                'border-radius:12px;padding:24px;text-align:center;margin:8px 0;">'
+                '<div style="font-size:32px;margin-bottom:8px;">🤖</div>'
+                '<div style="font-size:15px;font-weight:700;color:#c9d1d9;margin-bottom:8px;">'
+                '點擊「執行 AI 研判」開始分析</div>'
+                '<div style="font-size:12px;color:#8b949e;line-height:1.8;max-width:480px;margin:0 auto;">'
+                'AI 將自動：<br>'
+                '① 從 Google News / Yahoo Finance / Reuters 抓取最新 5 則財經新聞<br>'
+                '② 讀取當前儀表板所有量化總經數據（VIX、M1B、外銷訂單等）<br>'
+                '③ 呼叫 Claude AI 進行整合研判，輸出持股建議與操作方針<br>'
+                '<span style="color:#484f58;font-size:11px;">'
+                '預計耗時 15~30 秒，結果快取至下次手動刷新</span>'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
