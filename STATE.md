@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.3 | main `5e0fb48` | dev `claude/analyze-test-coverage-070Kf`
-- **最新異動**: calc_fundamental_score list防呆根治 + STATE重建
+- **版本**: v5.4 | main `5e0fb48` | dev `2ca50e2`
+- **最新異動**: 死碼清除（duplicate _li_log 7行）
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -32,6 +32,10 @@
 - [ ] M1B=7.12% / M2=5.38%：pct_cols[-4][-2] 確認（`54ce45f`）
 - [ ] NDC data.gov.tw 3個resourceID 是否命中，或退回 OECD CLI 代理
 - [ ] 孫慶龍「有基之彈」：Export=31.82% 確認觸發（`e400ef7`）
+
+## ✅ 已修復（v5.4）
+- `calc_fundamental_score` list/hasattr 防呆（`5b314c8`）
+- duplicate `_li_log()` 死碼 7 行清除（`2ca50e2`）
 
 ## 🔒 長期已知限制
 - TWSE IP 封鎖 → 全部走 FinMind/openapi 備援
