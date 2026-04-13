@@ -2,9 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.7 | main `c26e4ef` | branch `a612537`
-- **最新異動**: ETF AI 存股決策模組 + etf_dashboard.py 棄用警告排毒
-- **Context**: 已 /compact（v5.7 全段核心決策已保留）
+- **版本**: v5.8 | main `19823a5` | branch `a50bcf6`
+- **最新異動**: 移除重複 `_etf_ai_single`（無 session_state，結果消失），保留 `_etf_ai_hokei`
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -34,6 +33,9 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 已修復（v5.8）
+- ETF Tab⑥ 重複 AI 區塊：移除 `_etf_ai_single`（結果不持久），保留 `_etf_ai_hokei`（`a50bcf6`）
 
 ## ✅ 已修復（v5.4–v5.7）
 - `calc_fundamental_score` list/hasattr 防呆（`5b314c8`）
