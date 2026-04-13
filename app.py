@@ -4595,12 +4595,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     for _nw in _llm_news:
                         st.markdown(
                             f'<div style="border-left:2px solid #21262d;padding:6px 12px;margin:4px 0;">'
-                            f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
-                            f'<div style="font-size:10px;color:#484f58;">'
-                            f'{_nw["source"]}  {_nw.get("published","")}</div>'
+                            + f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
+                            + f'<div style="font-size:10px;color:#484f58;">'
+                            + f'{_nw["source"]}  {_nw.get("published","")}</div>'
                             + (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">{_nw["summary"][:120]}…</div>'
                                if _nw.get('summary') else '')
-                            f'</div>',
+                            + '</div>',
                             unsafe_allow_html=True)
 
         elif _llm_res and 'error' in _llm_res:
