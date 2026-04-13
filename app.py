@@ -42,6 +42,7 @@ from etf_dashboard import (
     render_data_health, render_sector_heatmap,
 )
 from ai_engine import generate_daily_report
+from unified_decision import render_unified_decision
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
     safe_float, find_value_by_alias, classify_missing_data,
@@ -6223,6 +6224,37 @@ padding:12px 16px;margin:8px 0;">
                 st.markdown(_t2_result)
             else:
                 st.caption('點擊上方按鈕生成此股 AI 投資決策分析')
+
+        # ── 統一投資決策分析模組 ──────────────────────────────
+        _regime2 = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+        _rev_yoy_list = []
+        if rev2 is not None and not rev2.empty and 'yoy' in rev2.columns:
+            _rev_yoy_list = [
+                f'{row["date"] if "date" in rev2.columns else i}: {row["yoy"]:+.1f}%'
+                for i, row in rev2.tail(3).iterrows()
+                if not pd.isna(row.get('yoy', float('nan')))
+            ]
+        _vcp_ok2 = bool(vcp2 and isinstance(vcp2, dict) and vcp2.get('signal'))
+        _ma_above2 = {}
+        if df2 is not None and not df2.empty:
+            for _mn, _mc in [('20MA', 'MA20'), ('60MA', 'MA60'), ('240MA', 'MA240')]:
+                if _mc in df2.columns:
+                    _ma_above2[_mn] = price2 > float(df2[_mc].iloc[-1])
+        render_unified_decision(gemini_call, {
+            'type': 'stock',
+            'id':   sid2,
+            'data': {
+                '股票':          f'{name2} ({sid2})',
+                '現價':          price2,
+                '健康度評分':    f'{health2:.0f}/100',
+                'RSI':           rsi2,
+                'KD':            f'K:{k2} D:{d2}',
+                'VCP突破訊號':   _vcp_ok2,
+                '股價在均線之上': _ma_above2,
+                '月營收YoY近3月': _rev_yoy_list or 'N/A',
+                '大盤狀態':      _regime2,
+            },
+        })
 
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════

@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.8 | main `19823a5` | branch `a50bcf6`
-- **最新異動**: 移除重複 `_etf_ai_single`（無 session_state，結果消失），保留 `_etf_ai_hokei`
+- **版本**: v5.9 | main `f405c1f` | branch `90cc198`
+- **最新異動**: ETF AI 全面修復：session_state gate + 結果持久化（三頁簽 + 兩 AI 函數）
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -33,6 +33,14 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 已修復（v5.9）
+- ETF AI 全面修復（`90cc198`）：
+  - `render_etf_single`：`etf_s_active` session_state gate（ticker 變更自動重置）
+  - `render_etf_portfolio`：`etf_p_active` session_state gate
+  - `render_etf_backtest`：`etf_bt_active` session_state gate
+  - `_etf_ai_portfolio`：`etf_ai_p_result` 持久化 + 清除按鈕
+  - `_etf_ai_backtest`：`etf_ai_bt_result` 持久化 + 清除按鈕
 
 ## ✅ 已修復（v5.8）
 - ETF Tab⑥ 重複 AI 區塊：移除 `_etf_ai_single`（結果不持久），保留 `_etf_ai_hokei`（`a50bcf6`）
