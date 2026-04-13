@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.7 | main `pending` | dev `pending`
+- **版本**: v5.7 | main `c26e4ef` | dev `bb7dcb5`
 - **最新異動**: ETF AI 存股決策模組 + etf_dashboard.py 棄用警告排毒
 
 ## 🛠️ 核心檔案
