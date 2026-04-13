@@ -39,7 +39,6 @@ def fetch_etf_price(ticker: str, period: str = '5y') -> pd.DataFrame:
         st.error(f'❌ 無法取得 {ticker} 價格：{e}')
         return pd.DataFrame()
 
-
 @st.cache_data(ttl=3600)
 def fetch_etf_dividends(ticker: str) -> pd.Series:
     """取得 ETF 歷史配息"""
@@ -52,7 +51,6 @@ def fetch_etf_dividends(ticker: str) -> pd.Series:
     except Exception:
         return pd.Series(dtype=float)
 
-
 @st.cache_data(ttl=3600)
 def fetch_etf_info(ticker: str) -> dict:
     """取得 ETF 基本資訊（費用率/Beta/AUM）"""
@@ -60,7 +58,6 @@ def fetch_etf_info(ticker: str) -> dict:
         return yf.Ticker(ticker).info or {}
     except Exception:
         return {}
-
 
 # ═══════════════════════════════════════════════════════════════
 # 計算函式
@@ -78,7 +75,6 @@ def calc_current_yield(df: pd.DataFrame, divs: pd.Series) -> float:
     except Exception:
         return 0.0
 
-
 def calc_total_return_1y(df: pd.DataFrame, divs: pd.Series) -> float:
     """近1年含息總報酬率(%)"""
     if df.empty:
@@ -94,7 +90,6 @@ def calc_total_return_1y(df: pd.DataFrame, divs: pd.Series) -> float:
         return round((p_end - p_start + div_sum) / p_start * 100, 2)
     except Exception:
         return 0.0
-
 
 def calc_avg_yield(df: pd.DataFrame, divs: pd.Series, years: int = 5) -> float:
     """近N年平均殖利率（孫慶龍7%公式）"""
@@ -116,7 +111,6 @@ def calc_avg_yield(df: pd.DataFrame, divs: pd.Series, years: int = 5) -> float:
         return round(sum(result) / len(result), 2) if result else 0.0
     except Exception:
         return 0.0
-
 
 def check_vcp_signal(df: pd.DataFrame) -> dict:
     """春哥 VCP 波幅收縮偵測"""
@@ -156,7 +150,6 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
     except Exception:
         pass
     return r
-
 
 @st.cache_data(ttl=7200, show_spinner=False)
 def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.DataFrame":
@@ -339,7 +332,6 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
 
     return _pd_etfnav.DataFrame()
 
-
 def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> dict:
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
     核心原則：NAV 與市價必須來自同一日，避免跨來源日期錯位。
@@ -389,7 +381,6 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
         import traceback as _tb_p; print(f'[折溢價] 錯誤: {_ep}'); _tb_p.print_exc()
     return {'nav': None, 'price': None, 'premium_pct': None, 'warning': False}
 
-
 def calc_tracking_error(df: pd.DataFrame, bench_df: pd.DataFrame) -> float:
     """追蹤誤差 = std(ETF日報酬 - 基準日報酬) × √252 × 100"""
     try:
@@ -405,7 +396,6 @@ def calc_tracking_error(df: pd.DataFrame, bench_df: pd.DataFrame) -> float:
     except Exception:
         return None
 
-
 def calc_mdd(df: pd.DataFrame) -> float:
     """最大回撤 MDD(%)"""
     try:
@@ -414,7 +404,6 @@ def calc_mdd(df: pd.DataFrame) -> float:
         return round(float(((close - roll_max) / roll_max * 100).min()), 2)
     except Exception:
         return None
-
 
 def calc_cagr(df: pd.DataFrame) -> float:
     """年化報酬率 CAGR(%)"""
@@ -431,7 +420,6 @@ def calc_cagr(df: pd.DataFrame) -> float:
     except Exception:
         return 0.0
 
-
 def calc_sharpe(df: pd.DataFrame, rf: float = 5.33) -> float:
     """夏普值（年化，rf預設5.33% FEDFUNDS）"""
     try:
@@ -444,13 +432,11 @@ def calc_sharpe(df: pd.DataFrame, rf: float = 5.33) -> float:
     except Exception:
         return 0.0
 
-
 def auto_detect_benchmark(ticker: str) -> str:
     t = ticker.upper()
     if t.endswith('.TW') or t.endswith('.TWO'):
         return '0050.TW'
     return '^GSPC'
-
 
 # ═══════════════════════════════════════════════════════════════
 # UI 輔助元件
@@ -477,7 +463,6 @@ padding:10px 16px;margin-bottom:14px;">
 <div style="font-size:13px;margin-top:6px;">{alloc_html}</div>
 </div>''', unsafe_allow_html=True)
 
-
 def _colored_box(text: str, color: str = 'green') -> None:
     """統一彩色提示框"""
     cfg = {
@@ -491,7 +476,6 @@ def _colored_box(text: str, color: str = 'green') -> None:
         f'<div style="background:{bg};border:1px solid {brd};border-radius:8px;'
         f'padding:10px 14px;margin:6px 0;">{text}</div>',
         unsafe_allow_html=True)
-
 
 def _teacher_conclusion(teacher: str, indicator_val: str, conclusion: str,
                         action: str = '', color: str | None = None) -> None:
@@ -518,7 +502,6 @@ def _teacher_conclusion(teacher: str, indicator_val: str, conclusion: str,
         f'<span style="color:#8b949e;font-size:11px;">{_action_str}</span>'
         f'</div>',
         unsafe_allow_html=True)
-
 
 def _plot_etf_chart(df: pd.DataFrame, ticker: str,
                     benchmark: str, bench_df: pd.DataFrame) -> None:
@@ -557,7 +540,6 @@ def _plot_etf_chart(df: pd.DataFrame, ticker: str,
     )
     st.plotly_chart(fig, width='stretch')
 
-
 def _plot_correlation(corr: pd.DataFrame) -> None:
     """相關係數熱力圖"""
     labels = list(corr.columns)
@@ -575,7 +557,6 @@ def _plot_correlation(corr: pd.DataFrame) -> None:
         paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
     )
     st.plotly_chart(fig, width='stretch')
-
 
 def _render_bias(df: pd.DataFrame, ticker: str) -> None:
     """BIAS 乖離率：(Close - MAn) / MAn × 100%，顯示 MA20/MA60/MA120"""
@@ -623,7 +604,6 @@ def _render_bias(df: pd.DataFrame, ticker: str) -> None:
                 paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
             )
             st.plotly_chart(fig, width='stretch')
-
 
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑥：單一 ETF 深度診斷
@@ -906,7 +886,6 @@ def render_etf_single(gemini_fn=None):
         },
     })
 
-
 def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
     """ETF AI 存股決策總結 — 買跌不買漲（左側交易）鐵血紀律"""
     import re as _re, json as _json
@@ -1004,7 +983,6 @@ def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
             st.session_state.pop(_sess_key, None)
             st.rerun()
 
-
 # ETF → GICS 類股對照（僅涵蓋常見 ETF，未知 ETF 歸入「其他」）
 _ETF_SECTOR_MAP = {
     'XLK': '資訊科技', 'QQQ': '資訊科技', '00631L.TW': '資訊科技',
@@ -1024,7 +1002,6 @@ _ETF_SECTOR_MAP = {
     '00878.TW': '高股息', '00713.TW': '高股息', '0056.TW': '高股息',
     'GLD': '黃金/原物料', 'IAU': '黃金/原物料',
 }
-
 
 def _check_sector_exposure(rows: list, total_value: float) -> None:
     """計算各 GICS 類股曝險，標記超過 30% 的集中風險"""
@@ -1051,7 +1028,6 @@ def _check_sector_exposure(rows: list, total_value: float) -> None:
                 f'建議分散至其他類股或降低持倉', 'red')
     else:
         _colored_box('✅ 所有類股曝險均在 30% 以內，產業分散度良好', 'green')
-
 
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑦：ETF 組合配置與動態再平衡引擎
@@ -1408,7 +1384,6 @@ def render_etf_portfolio(gemini_fn=None):
         },
     })
 
-
 def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
     with st.expander('🤖 AI 組合評斷（展開）', expanded=False):
         row_txt = '\n'.join(
@@ -1445,7 +1420,6 @@ def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
             if st.button('🔄 清除', key='etf_ai_p_clear'):
                 st.session_state.pop('etf_ai_p_result', None)
                 st.rerun()
-
 
 def _render_monte_carlo(port_val: pd.Series, initial: float, ann_vol: float,
                         n_paths: int = 10_000, n_days: int = 252) -> None:
@@ -1512,7 +1486,6 @@ def _render_monte_carlo(port_val: pd.Series, initial: float, ann_vol: float,
         st.caption(f'模擬條件：{n_paths:,} 路徑，日均報酬 μ={mu_daily*100:.4f}%，σ={sig_daily*100:.3f}%（基於歷史資料）⚠️ 僅供參考')
     except Exception as e:
         st.warning(f'蒙地卡羅模擬失敗：{e}')
-
 
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑧：ETF 歷史回測與績效視覺化
@@ -1755,7 +1728,6 @@ def render_etf_backtest(gemini_fn=None):
         },
     })
 
-
 def _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime):
     with st.expander('🤖 AI 回測評斷（展開）', expanded=False):
         w_txt  = ' | '.join(f'{t}: {w*100:.0f}%' for t, w in weights.items())
@@ -1789,7 +1761,6 @@ def _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime):
             if st.button('🔄 清除', key='etf_ai_bt_clear'):
                 st.session_state.pop('etf_ai_bt_result', None)
                 st.rerun()
-
 
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑨：ETF AI 綜合評斷
@@ -1922,7 +1893,6 @@ def render_etf_ai(gemini_fn=None):
             else:
                 st.warning(answer or 'AI 回傳為空')
 
-
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑩：資料健診儀表板
 # ═══════════════════════════════════════════════════════════════
@@ -1944,12 +1914,10 @@ _HEALTH_ETF_US = ['SPY', 'QQQ', 'BND', 'GLD', 'TLT']
 # 台股指標 ETF
 _HEALTH_ETF_TW = ['0050.TW', '00878.TW', '00713.TW', '0056.TW', '00929.TW']
 
-
 def _check_icon(ok: bool, warn: bool = False) -> str:
     if ok:    return '✅'
     if warn:  return '⚠️'
     return '❌'
-
 
 def _check_etf_health(ticker: str) -> dict:
     """對單一 ETF 執行資料抓取健診"""
@@ -1983,7 +1951,6 @@ def _check_etf_health(ticker: str) -> dict:
         pass
     return result
 
-
 def render_data_health():
     st.markdown('### 🔎 資料健診儀表板')
     st.caption('掃描全系統資料源狀態，確認每個資料均有真實抓取，避免沙盒/空值假象。')
@@ -1999,7 +1966,7 @@ def render_data_health():
             ok = checker(val)
             if ok:
                 if key == 'mkt_info':
-                    note = f'regime={val.get("regime")} score={val.get("score")}' 
+                    note = f'regime={val.get("regime")} score={val.get("score")}'
                 elif key == 'li_latest':
                     note = f'{len(val)} 筆指標，最新={str(val.index[-1].date()) if hasattr(val.index[-1], "date") else val.index[-1]}' if not val.empty else '空表'
                 elif key == 'etf_single_data':
@@ -2115,7 +2082,6 @@ def render_data_health():
         st.success('✅ ETF 分析結果已清除')
         st.rerun()
 
-
 # ═══════════════════════════════════════════════════════════════
 # Tab ⑪：產業熱力圖
 # ═══════════════════════════════════════════════════════════════
@@ -2151,7 +2117,6 @@ _TW_SECTORS = {
 
 _PERIOD_MAP = {'1日': '5d', '5日': '1mo', '1月': '3mo', '3月': '6mo'}
 
-
 @st.cache_data(ttl=1800)
 def _fetch_sector_returns(tickers: tuple, period: str) -> dict:
     """批次抓取類股漲跌幅，回傳 {ticker: pct_change}"""
@@ -2176,7 +2141,6 @@ def _fetch_sector_returns(tickers: tuple, period: str) -> dict:
     except Exception as e:
         st.warning(f'類股資料抓取部分失敗：{e}')
     return result
-
 
 def _build_treemap_data(sectors: dict, returns: dict, market: str) -> go.Figure:
     """建立 Plotly Treemap 熱力圖"""
@@ -2234,7 +2198,6 @@ def _build_treemap_data(sectors: dict, returns: dict, market: str) -> go.Figure:
         paper_bgcolor='#0d1117',
     )
     return fig
-
 
 def render_sector_heatmap():
     st.markdown('### 🗺️ 產業熱力圖')

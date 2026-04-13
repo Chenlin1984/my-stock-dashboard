@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.0 | main `b7b9c3f` | branch `731b384`
-- **最新異動**: 新增 `unified_decision.py` 統一投資決策分析模組，注入個股/ETF/組合/回測四個 Tab
+- **版本**: v6.2 | main `5b715ec` | branch `ce2d34a`
+- **最新異動**: 代碼淨化與收尾完成 ✅
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -34,6 +34,19 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 代碼淨化與收尾完成（v6.2）
+- 自動掃描 6 個核心 .py，選出最高污染目標（`ce2d34a`）：
+  - `etf_dashboard.py`: 2300 → 2263 行（-37 超空行）
+  - `scoring_engine.py`: 1224 → 1201 行（-23 超空行）
+- 所有 print() 確認為生產 logging（Cloud log 依賴），保留
+- .bak 備份已建立，語法驗證 4 檔全通過
+
+## ✅ 已修復（v6.1）
+- 個股 Tab 重複 AI 區塊整合（`2bf14a0`）：
+  - 刪除舊 `_t2_ai_key` 區塊（33 行）
+  - `unified_decision.py` 個股模式對齊 ①②③④ 四面向
+  - Card1=①技術面評價 / Card2=②進場③停損 / Card3=④風控
 
 ## ✅ 新增功能（v6.0）
 - `unified_decision.py` 統一投資決策分析模組（`731b384`）：
