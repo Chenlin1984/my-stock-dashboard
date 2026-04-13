@@ -569,6 +569,11 @@ def calc_vcp(df, n_swings=3):
 def calc_fundamental_score(qtr_df, yearly_df, avg_div):
     """基本面四維評分：獲利/成長/股利/估值，各 0-3 分"""
     import pandas as _pd_fs
+    # 防呆：list 或非 DataFrame 型別 → 視為無資料
+    if isinstance(qtr_df, list) or not hasattr(qtr_df, 'empty'):
+        qtr_df = None
+    if isinstance(yearly_df, list) or not hasattr(yearly_df, 'empty'):
+        yearly_df = None
     result = {
         'profit':   {'score':0,'max':3,'label':'獲利','checks':[]},
         'growth':   {'score':0,'max':3,'label':'成長','checks':[]},
