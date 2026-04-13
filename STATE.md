@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.6 | main `e472fd7` | dev `7125bcd`
-- **最新異動**: st.plotly_chart use_container_width→width='stretch' 批次替換（18處）
+- **版本**: v5.7 | main `pending` | dev `pending`
+- **最新異動**: ETF AI 存股決策模組 + etf_dashboard.py 棄用警告排毒
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -31,14 +31,17 @@
 ## 🔒 長期已知限制（持續中）
 - TWSE BFI82U / 融資 IP 封鎖 → FinMind 備援正常
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
-- st.dataframe / st.button 的 use_container_width 待 Streamlit 官方明確後再處理
+- st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
+- ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
 
-## ✅ 已修復（v5.4–v5.6）
+## ✅ 已修復（v5.4–v5.7）
 - `calc_fundamental_score` list/hasattr 防呆（`5b314c8`）
 - duplicate `_li_log()` 死碼 7 行清除（`2ca50e2`）
 - SyntaxError L4604：f-string 混用隱式/顯式串接（`21c80f2`）
 - ADL `_ui/_di` index-0 falsy bug → `is not None`（`205b4a7`）
-- st.plotly_chart `use_container_width` → `width='stretch'` 18處（`7125bcd`）
+- app.py `use_container_width` → `width='stretch'` 18處（`7125bcd`）
+- etf_dashboard.py `use_container_width` → `width='stretch'` 7處（排毒）
+- ETF Tab⑥ AI 存股決策總結模組（BIAS240＋KD＋Gemini）（`a28fc34`）
 
 ## ✅ Cloud log 驗證確認
 - M1B=7.12% / M2=5.38% ✓
