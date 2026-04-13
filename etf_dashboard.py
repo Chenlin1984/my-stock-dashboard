@@ -554,7 +554,7 @@ def _plot_etf_chart(df: pd.DataFrame, ticker: str,
         yaxis=dict(title='漲幅 (%)', ticksuffix='%', zeroline=True,
                    zerolinecolor='#444', zerolinewidth=1),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def _plot_correlation(corr: pd.DataFrame) -> None:
@@ -573,7 +573,7 @@ def _plot_correlation(corr: pd.DataFrame) -> None:
         margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def _render_bias(df: pd.DataFrame, ticker: str) -> None:
@@ -621,7 +621,7 @@ def _render_bias(df: pd.DataFrame, ticker: str) -> None:
                 yaxis_title='BIAS %', margin=dict(l=0, r=0, t=20, b=0),
                 paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1386,7 +1386,7 @@ def render_etf_portfolio(gemini_fn=None):
             margin=dict(l=0, r=0, t=32, b=0),
             yaxis_title='配息金額（元）',
         )
-        st.plotly_chart(_fig_div, use_container_width=True)
+        st.plotly_chart(_fig_div, width='stretch')
     else:
         st.info('⏳ 配息資料無法取得（可能為非配息型ETF或yfinance資料限制）')
 
@@ -1492,7 +1492,7 @@ def _render_monte_carlo(port_val: pd.Series, initial: float, ann_vol: float,
             paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
             legend=dict(orientation='h', yanchor='bottom', y=1.01),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         st.caption(f'模擬條件：{n_paths:,} 路徑，日均報酬 μ={mu_daily*100:.4f}%，σ={sig_daily*100:.3f}%（基於歷史資料）⚠️ 僅供參考')
     except Exception as e:
         st.warning(f'蒙地卡羅模擬失敗：{e}')
@@ -1624,7 +1624,7 @@ def render_etf_backtest(gemini_fn=None):
         paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
         legend=dict(orientation='h', yanchor='bottom', y=1.01),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # ── 年化績效指標 ──────────────────────────────────────────
     st.markdown('#### 🏆 年化績效指標')
@@ -2230,7 +2230,7 @@ def render_sector_heatmap():
     # ── Treemap 主圖 ──────────────────────────────────────────
     market_label = '美股 GICS' if is_us else '台股類股'
     fig = _build_treemap_data(sectors, returns, market_label)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # ── 數值排行表（補充用）──────────────────────────────────
     st.markdown(f'#### 📊 {market_label} 類股漲跌排行（{period_label}）')
