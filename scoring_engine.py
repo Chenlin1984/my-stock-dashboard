@@ -18,7 +18,6 @@ except ImportError:
         'bear':    {'trend':0.15,'momentum':0.10,'chip':0.15,'volume':0.15,'risk':0.25,'fundamental':0.20},
     }
 
-
 # ── 1. 趨勢分數 ───────────────────────────────────────────────
 def calc_trend_score(df) -> float:
     """
@@ -57,7 +56,6 @@ def calc_trend_score(df) -> float:
     if ma60 > 0 and ma120 > 0 and ma60 > ma120: score += 1  # MA60>MA120
 
     return round(score / total * 100, 1)
-
 
 # ── 2. 動能分數 (§5.3 優化版：Sharpe-like 波動調整後報酬) ────
 def calc_momentum_score(df) -> float:
@@ -100,7 +98,6 @@ def calc_momentum_score(df) -> float:
     total_raw = rsi_score + sharpe_score + atr_score  # 最高 6 分
     return round(min(total_raw / 6 * 100, 100), 1)
 
-
 def momentum_signal(df) -> bool:
     """
     主力動能篩選訊號（§5.3）
@@ -120,7 +117,6 @@ def momentum_signal(df) -> bool:
         and latest['volume'] > latest.get('VOL20', 0)
     )
 
-
 # ── 3. 籌碼分數 (§5.4) ────────────────────────────────────────
 def chip_score(foreign_buy, trust_buy=0, dealer_buy=0) -> int:
     """
@@ -133,7 +129,6 @@ def chip_score(foreign_buy, trust_buy=0, dealer_buy=0) -> int:
     if trust_buy   > 0: score += 2
     if dealer_buy  > 0: score += 1
     return score
-
 
 def calc_chip_score(df, foreign_buy=None, trust_buy=None, dealer_buy=None) -> float:
     """
@@ -154,7 +149,6 @@ def calc_chip_score(df, foreign_buy=None, trust_buy=None, dealer_buy=None) -> fl
             raw = chip_score(float(fb or 0), float(tb or 0), float(db or 0))
             return round(raw / 5 * 100, 1)
     return 50.0  # 無籌碼資料 → 中性（不加分不扣分）
-
 
 # ── 4. 量價分數 ───────────────────────────────────────────────
 def calc_volume_score(df) -> float:
@@ -183,7 +177,6 @@ def calc_volume_score(df) -> float:
         score += 1
 
     return round(score / total * 100, 1)
-
 
 # ── 5. 風險分數 ───────────────────────────────────────────────
 def calc_risk_score(df) -> float:
@@ -226,7 +219,6 @@ def calc_risk_score(df) -> float:
 
     return round(min(score / total * 100, 100), 1)
 
-
 # ── 核心：多因子加權評分 (§5.2) ───────────────────────────────
 def stock_score(trend, momentum, chip, volume_score, risk_score,
                fundamental_score=50.0, regime: str = 'neutral') -> float:
@@ -252,8 +244,6 @@ def stock_score(trend, momentum, chip, volume_score, risk_score,
         risk_score        * w['risk']        +
         fundamental_score * w['fundamental'],
         1)
-
-
 
 # ── RS 相對強度（Relative Strength）─────────────────────────
 def calc_rs_score(df, df_index=None, period=250):
@@ -384,7 +374,6 @@ def score_single_stock(df, stock_id='', stock_name='', **kwargs) -> dict:
         'vcp_atr_label': vcp_atr['label'],
     }
 
-
 def rank_stocks(results: list) -> list:
     """
     對多檔股票評分結果排序（高分在前）
@@ -431,7 +420,6 @@ def calc_fundamental_score(revenue_df=None, yoy_months: int = 3) -> float:
         return round(min(score / total * 100, 100), 1)
     except:
         return 50.0
-
 
 # ── 獲利品質得分 (SQ) ────────────────────────────────────────
 def calc_quality_score(quarterly_df=None) -> dict:
@@ -504,7 +492,6 @@ def calc_quality_score(quarterly_df=None) -> dict:
                 'gm_level': round(gm_level, 1)}
     except Exception:
         return _empty
-
 
 # ── 前瞻成長動能分數 (FGMS) ────────────────────────────────
 def calc_forward_momentum_score(quarterly_df=None, bs_cf_df=None,
@@ -691,7 +678,6 @@ def calc_forward_momentum_score(quarterly_df=None, bs_cf_df=None,
     except Exception as _ef:
         print(f'[FGMS] 計算失敗: {_ef}')
         return _empty
-
 
 # ── 基本面先行指標細項（6 指標）────────────────────────────
 def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> list:
@@ -951,7 +937,6 @@ def calc_leading_indicators_detail(rev_df=None, qtr_df=None, bs_cf_df=None) -> l
 
     return results
 
-
 # ── ATR 動態停損計算 ────────────────────────────────────────
 def calc_atr_stop(df, entry_price: float, multiplier: float = 1.5) -> dict:
     """
@@ -978,7 +963,6 @@ def calc_atr_stop(df, entry_price: float, multiplier: float = 1.5) -> dict:
     except:
         return {'stop_loss': round(entry_price * 0.92, 2),
                 'atr': None, 'stop_pct': 8.0, 'method': 'fixed_8pct'}
-
 
 # ── 時間停損判斷 ────────────────────────────────────────────
 def check_time_stop(entry_price: float, current_price: float,
@@ -1026,7 +1010,6 @@ def check_vcp_atr_filter(df) -> dict:
         result['label'] = '計算失敗'
     return result
 
-
 # ── 券資比軋空加分 ─────────────────────────────────────────
 def calc_short_squeeze_bonus(short_ratio: float = 0.0,
                               inst_consecutive_buy: int = 0) -> dict:
@@ -1047,7 +1030,6 @@ def calc_short_squeeze_bonus(short_ratio: float = 0.0,
         label = f'⚠️ 高券資比{short_ratio*100:.0f}%，法人連買天數不足'
     return {'bonus': bonus, 'label': label, 'short_ratio': short_ratio,
             'inst_consecutive_buy': inst_consecutive_buy}
-
 
 # ════════════════════════════════════════════════════════════
 # 模組二：大師級量化選股因子（v3.2 新增）
@@ -1071,7 +1053,6 @@ def check_contract_liability_surge(cl_current, cl_prev_year, paid_in_capital) ->
     elif yoy > 15:
         result['label'] = '📈 合約負債成長中'
     return result
-
 
 def check_bollinger_squeeze(df) -> dict:
     """
@@ -1105,7 +1086,6 @@ def check_bollinger_squeeze(df) -> dict:
         result['label'] = '🔵 帶寬收縮中（蓄勢待發）'
     return result
 
-
 def check_fake_breakout(df) -> dict:
     """
     假突破過濾（爆量長上影線 = 主力出貨）
@@ -1128,7 +1108,6 @@ def check_fake_breakout(df) -> dict:
         result['is_fake'] = True
         result['label'] = '☠️ 異常量假突破警告（主力出貨）'
     return result
-
 
 def check_relative_strength(df, df_index=None, days=5) -> dict:
     """
@@ -1155,7 +1134,6 @@ def check_relative_strength(df, df_index=None, days=5) -> dict:
     result['label'] = f'💪 強勢股（{beats}/{days}天超大盤）' if beats >= 3 else f'弱勢（{beats}/{days}天）'
     return result
 
-
 def calc_rr_ratio(entry_price, stop_loss, target_price=None) -> dict:
     """
     盈虧比計算（Reward/Risk Ratio）
@@ -1177,7 +1155,6 @@ def calc_rr_ratio(entry_price, stop_loss, target_price=None) -> dict:
         'risk_amt': round(risk, 2),
         'label': f'盈虧比 {rr:.1f}:1' + ('✅' if passed else ' ❌(<2不顯示)'),
     }
-
 
 def calculate_position_size(total_capital_twd: float,
                              entry_price: float,
