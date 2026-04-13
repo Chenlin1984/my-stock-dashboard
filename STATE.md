@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: v5.1 景氣燈號data.gov.tw+OECD CLI代理 + Section九總經AI五維度分析
-- **分支**: main `511dc64`（已部署 Streamlit Cloud）
-- **最新 commit**: `511dc64` (dev→main) — NDC data.gov.tw輪詢+CLI代理 + 總經AI投資決策分析(五維度)
+- **進度**: v5.2 Section十 AI總經戰情總結（RSS新聞 + Claude LLM研判）
+- **分支**: main `f7431fb`（已部署 Streamlit Cloud）
+- **最新 commit**: `f7431fb` (dev→main) — Section十 AI戰情總結：feedparser RSS新聞+Claude Sonnet LLM 8欄JSON研判
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -75,6 +75,8 @@
 | `84f5045` | **Merge to main**: 含M1B[-4]根治+NDC略過，已部署 Streamlit Cloud |
 | `11aa5be` | **NDC data.gov.tw+CLI代理+Section九AI分析**: NDC改用data.gov.tw 3個resourceID輪詢 / OECD CLI自動映射景氣燈號分數代理 / KPI卡顯示「(OECD CLI代理)」標籤 / Section九總經AI投資決策分析五維度（①總經位階 ②建議配置 ③貨幣流向 ④美股動態 ⑤結論）|
 | `511dc64` | **Merge to main**: 含NDC代理+AI五維度，已部署 Streamlit Cloud |
+| `65cff8e` | **Section十 AI總經戰情總結**: _fetch_macro_news(feedparser RSS 4源) + _run_llm_analysis(claude-sonnet-4-6，8欄JSON) + UI主卡片(情緒/持股%/作戰指令/風險機會) + 新聞來源expander + 說明卡；需設定ANTHROPIC_API_KEY Secrets；requirements新增feedparser+anthropic |
+| `f7431fb` | **Merge to main**: 含AI總經戰情總結，已部署 Streamlit Cloud |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
@@ -125,6 +127,8 @@
 - [ ] **孫慶龍v5.0+攻擊火力分級**：`e400ef7` 已部署，待 Cloud log 確認 Export=31.82% 觸發「有基之彈」，攻擊分級正確顯示
 - [ ] **NDC景氣燈號 data.gov.tw**：`11aa5be` 已部署，待 Cloud log 確認 data.gov.tw 是否命中（3個resourceID）或退回 OECD CLI 代理
 - [x] **Section九 總經AI投資決策分析**：五維度（①總經位階 ②建議配置 ③貨幣流向 ④美股動態 ⑤結論）已部署 ✅
+- [x] **Section十 AI總經戰情總結（LLM）**：RSS新聞抓取(feedparser)+claude-sonnet-4-6分析+8欄JSON+主卡片UI 已部署 ✅
+- [ ] **ANTHROPIC_API_KEY**：需在 Streamlit Cloud → Settings → Secrets 設定，否則 AI 研判顯示 key 未設定提示
 - [x] **孫慶龍 BIAS240 邏輯Bug修正**：+13.9% 原誤顯「中性」，改為純BIAS240四段門檻，現正確觸發「紅色警戒線」 ✅
 - [x] **宏爺 M1B Gap 新增**：Section 8 新增 Gap≥1%=熱錢狂潮 / 0~1%=資金溫和 / <0%=資金退潮 三段公式 ✅
 - [ ] calc_fundamental_score 'list' object has no attribute 'empty'：另一個潛在 bug，待追蹤
