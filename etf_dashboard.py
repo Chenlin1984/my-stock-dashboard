@@ -642,7 +642,10 @@ def render_etf_single(gemini_fn=None):
     if not benchmark:
         benchmark = auto_detect_benchmark(ticker)
 
-    if not st.button('🔍 開始診斷', key='etf_s_btn', use_container_width=True):
+    if st.button('🔍 開始診斷', key='etf_s_btn', use_container_width=True):
+        st.session_state['etf_s_active'] = ticker
+
+    if st.session_state.get('etf_s_active') != ticker:
         st.info('💡 輸入 ETF 代號後點擊「開始診斷」')
         return
 
@@ -654,6 +657,7 @@ def render_etf_single(gemini_fn=None):
 
     if df.empty:
         st.error(f'❌ 找不到 {ticker}，請確認代號（台灣ETF需加 .TW）')
+        st.session_state.pop('etf_s_active', None)
         return
 
     etf_name = info.get('longName') or info.get('shortName') or ticker
@@ -1045,7 +1049,10 @@ def render_etf_portfolio(gemini_fn=None):
                               key='etf_p_input', label_visibility='collapsed')
     tolerance = st.slider('再平衡容忍偏離度（%）', 1, 15, 5, key='etf_p_tol')
 
-    if not st.button('📊 計算組合', key='etf_p_btn', use_container_width=True):
+    if st.button('📊 計算組合', key='etf_p_btn', use_container_width=True):
+        st.session_state['etf_p_active'] = True
+
+    if not st.session_state.get('etf_p_active'):
         st.info('💡 填入組合後點擊「計算組合」')
         return
 
@@ -1390,9 +1397,17 @@ def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
             with st.spinner('AI 分析中...'):
                 result = gemini_fn(prompt, max_tokens=900)
             if result and not result.startswith('⚠️'):
-                st.markdown(result)
+                st.session_state['etf_ai_p_result'] = result
+                st.rerun()
             else:
+                st.session_state['etf_ai_p_result'] = None
                 st.warning(result or 'AI 回傳為空')
+        _p_saved = st.session_state.get('etf_ai_p_result')
+        if _p_saved:
+            st.markdown(_p_saved)
+            if st.button('🔄 清除', key='etf_ai_p_clear'):
+                st.session_state.pop('etf_ai_p_result', None)
+                st.rerun()
 
 
 def _render_monte_carlo(port_val: pd.Series, initial: float, ann_vol: float,
@@ -1480,7 +1495,10 @@ def render_etf_backtest(gemini_fn=None):
     initial = col_i.number_input('初始資金（元）', value=100000,
                                   step=10000, key='etf_bt_init')
     col_b.markdown('<br>', unsafe_allow_html=True)
-    if not col_b.button('🚀 開始回測', key='etf_bt_btn', use_container_width=True):
+    if col_b.button('🚀 開始回測', key='etf_bt_btn', use_container_width=True):
+        st.session_state['etf_bt_active'] = True
+
+    if not st.session_state.get('etf_bt_active'):
         st.info('💡 設定組合與期間後點擊「開始回測」')
         return
 
@@ -1709,9 +1727,17 @@ def _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime):
             with st.spinner('AI 分析中...'):
                 result = gemini_fn(prompt, max_tokens=900)
             if result and not result.startswith('⚠️'):
-                st.markdown(result)
+                st.session_state['etf_ai_bt_result'] = result
+                st.rerun()
             else:
+                st.session_state['etf_ai_bt_result'] = None
                 st.warning(result or 'AI 回傳為空')
+        _bt_saved = st.session_state.get('etf_ai_bt_result')
+        if _bt_saved:
+            st.markdown(_bt_saved)
+            if st.button('🔄 清除', key='etf_ai_bt_clear'):
+                st.session_state.pop('etf_ai_bt_result', None)
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
