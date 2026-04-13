@@ -8,6 +8,7 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 from datetime import timedelta
+from unified_decision import render_unified_decision
 
 # ── 總經連動配置建議表 ────────────────────────────────────────
 MACRO_ALLOC = {
@@ -887,6 +888,24 @@ def render_etf_single(gemini_fn=None):
     if gemini_fn:
         _etf_ai_hokei(gemini_fn, ticker, etf_name, cur_yield, _bias240_ai, _kv_ai, _dv_ai)
 
+    # ── 統一投資決策分析模組 ──────────────────────────────────
+    render_unified_decision(gemini_fn, {
+        'type': 'etf',
+        'id':   ticker,
+        'data': {
+            'ETF':              f'{etf_name} ({ticker})',
+            '現金殖利率':        f'{cur_yield:.2f}%',
+            '近5年平均殖利率':   f'{avg_yield:.2f}%',
+            '近1年含息總報酬':   f'{total_ret:.2f}%',
+            '年線乖離率BIAS240': f'{_bias240_ai:+.2f}%' if _bias240_ai is not None else 'N/A（< 240日）',
+            'KD': (f'K:{_kv_ai:.1f} D:{_dv_ai:.1f}' if _kv_ai is not None else 'N/A'),
+            'VCP突破':           vcp.get('signal', False) if isinstance(vcp, dict) else False,
+            '折溢價率':          f'{prem["premium_pct"]}%' if prem.get("premium_pct") is not None else 'N/A',
+            '追蹤誤差':          f'{te:.2f}%' if te is not None else 'N/A',
+            '大盤狀態':          regime,
+        },
+    })
+
 
 def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
     """ETF AI 存股決策總結 — 買跌不買漲（左側交易）鐵血紀律"""
@@ -1371,6 +1390,24 @@ def render_etf_portfolio(gemini_fn=None):
     if gemini_fn:
         _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct)
 
+    # ── 統一投資決策分析模組 ──────────────────────────────────
+    render_unified_decision(gemini_fn, {
+        'type': 'portfolio',
+        'id':   'etf_portfolio',
+        'data': {
+            '組合明細': [
+                {'ETF': r['ticker'],
+                 '目標%': r['target_pct'],
+                 '實際%': r['actual_pct'],
+                 '偏離%': round(r['deviation'], 1)}
+                for r in rows
+            ],
+            '壓力測試損失(S&P500跌20%)': f'{loss_pct:.1f}%',
+            '再平衡筆數':                len(rebal_actions),
+            '大盤狀態':                  regime,
+        },
+    })
+
 
 def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
     with st.expander('🤖 AI 組合評斷（展開）', expanded=False):
@@ -1703,6 +1740,20 @@ def render_etf_backtest(gemini_fn=None):
 
     if gemini_fn:
         _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime)
+
+    # ── 統一投資決策分析模組 ──────────────────────────────────
+    render_unified_decision(gemini_fn, {
+        'type': 'portfolio',
+        'id':   'etf_backtest',
+        'data': {
+            '組合權重':   {t: f'{w*100:.0f}%' for t, w in weights.items()},
+            'CAGR':       f'{cagr:.2f}%',
+            'Sharpe比率': round(sharpe, 2),
+            '最大回撤MDD': f'{mdd:.1f}%',
+            '年化波動率':  f'{vol:.2f}%',
+            '大盤狀態':    regime,
+        },
+    })
 
 
 def _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime):
