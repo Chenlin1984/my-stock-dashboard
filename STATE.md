@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **環境**: Streamlit Cloud + GitHub (Python 3.14)
-- **進度**: v5.2 Section十 AI總經戰情總結（RSS新聞 + Claude LLM研判）
-- **分支**: main `f7431fb`（已部署 Streamlit Cloud）
-- **最新 commit**: `f7431fb` (dev→main) — Section十 AI戰情總結：feedparser RSS新聞+Claude Sonnet LLM 8欄JSON研判
+- **進度**: v5.3 Section十 AI總經戰情總結改用 gemini_call()（移除 anthropic 依賴）
+- **分支**: main `9237f0d`（已部署 Streamlit Cloud）
+- **最新 commit**: `9237f0d` (dev→main) — Section十改用既有 gemini_call()，移除 anthropic 套件，GEMINI_API_KEY
 
 ## 🛠️ 檔案結構與核心組件
 - `app.py`: Streamlit 主程式（台股 AI 戰情室）
@@ -77,6 +77,8 @@
 | `511dc64` | **Merge to main**: 含NDC代理+AI五維度，已部署 Streamlit Cloud |
 | `65cff8e` | **Section十 AI總經戰情總結**: _fetch_macro_news(feedparser RSS 4源) + _run_llm_analysis(claude-sonnet-4-6，8欄JSON) + UI主卡片(情緒/持股%/作戰指令/風險機會) + 新聞來源expander + 說明卡；需設定ANTHROPIC_API_KEY Secrets；requirements新增feedparser+anthropic |
 | `f7431fb` | **Merge to main**: 含AI總經戰情總結，已部署 Streamlit Cloud |
+| `edb36fa` | **Section十改用 gemini_call()**: 移除 anthropic import/套件，_run_llm_analysis 改用既有 gemini_call() (2.5-flash-lite→2.5-flash→2.0-flash fallback)，UI提示改為 GEMINI_API_KEY |
+| `9237f0d` | **Merge to main**: Section十 Gemini版，已部署 Streamlit Cloud |
 
 ## 🐞 已確認根本原因
 - **Python 3.14 SSL**: `www.twse.com.tw` 憑證缺少 Subject Key Identifier → 全面 SSL 驗證失敗
