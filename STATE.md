@@ -2,8 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.7 | main `c26e4ef` | dev `bb7dcb5`
+- **版本**: v5.7 | main `c26e4ef` | branch `a612537`
 - **最新異動**: ETF AI 存股決策模組 + etf_dashboard.py 棄用警告排毒
+- **Context**: 已 /compact（v5.7 全段核心決策已保留）
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
