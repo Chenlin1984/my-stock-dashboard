@@ -1967,14 +1967,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.session_state.pop('adl_debug_msg', None)
             # [v8] 先行指標：強制 reload + UI 進度顯示
             df_li_a   = None
-            _li_ph    = st.empty()
             _li_tok   = _get_fm_token() or FINMIND_TOKEN or os.environ.get('FINMIND_TOKEN','')
-            _li_lines = []
-            def _li_log(msg):
-                import sys
-                print(f'[先行指標] {msg}', flush=True)
-                _li_lines.append(msg)
-                _li_ph.info('📡 先行指標載入中…\n' + '\n'.join(_li_lines[-5:]))
             _li_ph    = st.empty()
             _li_lines = []
             def _li_log(msg):
