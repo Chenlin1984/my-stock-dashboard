@@ -879,45 +879,9 @@ def render_etf_single(gemini_fn=None):
         'premium': prem, 'te': te, 'regime': regime,
     }
 
-    # ── AI 大師評斷 ───────────────────────────────────────────
-    if gemini_fn:
-        _etf_ai_single(gemini_fn, ticker, etf_name, cur_yield,
-                       avg_yield, total_ret, vcp, prem, te, regime)
-
     # ── AI ETF 存股決策總結 ───────────────────────────────────
     if gemini_fn:
         _etf_ai_hokei(gemini_fn, ticker, etf_name, cur_yield, _bias240_ai, _kv_ai, _dv_ai)
-
-
-def _etf_ai_single(gemini_fn, ticker, name, cur_yield, avg_yield,
-                   total_ret, vcp, prem, te, regime):
-    with st.expander('🤖 AI 大師評斷（展開）', expanded=False):
-        prompt = (
-            f"你是專業ETF投資顧問，嚴格依據以下數據分析，每項不超過200字，"
-            f"條列式，禁止憑空捏造未提供的數據:\n\n"
-            f"ETF：{name} ({ticker})\n"
-            f"總經市場狀態：{regime}\n"
-            f"近1年含息總報酬：{total_ret:.2f}%\n"
-            f"現金殖利率（近12M）：{cur_yield:.2f}%\n"
-            f"近5年平均殖利率：{avg_yield:.2f}%\n"
-            f"VCP突破訊號：{'是' if vcp['signal'] else '否'}"
-            f"（50MA:{vcp['above_ma50']}, 200MA:{vcp['above_ma200']}, 量能:{vcp['vol_confirm']}）\n"
-            f"折溢價率：{prem['premium_pct'] if prem['premium_pct'] is not None else 'N/A'}%\n"
-            f"追蹤誤差：{te if te is not None else 'N/A'}%\n\n"
-            f"請輸出：\n"
-            f"1.【郭俊宏評斷】本金侵蝕風險判斷\n"
-            f"2.【孫慶龍評斷】目前估值位置（特價/合理/昂貴）\n"
-            f"3.【春哥評斷】技術面切入時機\n"
-            f"4.【綜合行動建議】買進/觀望/減碼（一句話+具體理由）\n"
-            f"⚠️ 僅供學術研究，非投資建議"
-        )
-        if st.button('🤖 生成 AI 評斷', key='etf_ai_s_btn'):
-            with st.spinner('AI 分析中...'):
-                result = gemini_fn(prompt, max_tokens=900)
-            if result and not result.startswith('⚠️'):
-                st.markdown(result)
-            else:
-                st.warning(result or 'AI 回傳為空，請確認 API Key')
 
 
 def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
