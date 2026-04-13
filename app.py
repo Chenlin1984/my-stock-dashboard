@@ -3787,7 +3787,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _rows = _tbl.get('data', [])
                             _ui = next((i for i,f in enumerate(_flds) if '漲家' in f and '停' not in f), None)
                             _di = next((i for i,f in enumerate(_flds) if '跌家' in f and '停' not in f), None)
-                            if _ui and _di and _rows:
+                            if _ui is not None and _di is not None and _rows:
                                 _up_v = int(str(_rows[-1][_ui]).replace(',',''))
                                 _dn_v = int(str(_rows[-1][_di]).replace(',',''))
                                 if _up_v + _dn_v > 50:
