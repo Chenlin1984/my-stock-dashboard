@@ -1967,14 +1967,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.session_state.pop('adl_debug_msg', None)
             # [v8] 先行指標：強制 reload + UI 進度顯示
             df_li_a   = None
-            _li_ph    = st.empty()
             _li_tok   = _get_fm_token() or FINMIND_TOKEN or os.environ.get('FINMIND_TOKEN','')
-            _li_lines = []
-            def _li_log(msg):
-                import sys
-                print(f'[先行指標] {msg}', flush=True)
-                _li_lines.append(msg)
-                _li_ph.info('📡 先行指標載入中…\n' + '\n'.join(_li_lines[-5:]))
             _li_ph    = st.empty()
             _li_lines = []
             def _li_log(msg):
@@ -3794,7 +3787,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _rows = _tbl.get('data', [])
                             _ui = next((i for i,f in enumerate(_flds) if '漲家' in f and '停' not in f), None)
                             _di = next((i for i,f in enumerate(_flds) if '跌家' in f and '停' not in f), None)
-                            if _ui and _di and _rows:
+                            if _ui is not None and _di is not None and _rows:
                                 _up_v = int(str(_rows[-1][_ui]).replace(',',''))
                                 _dn_v = int(str(_rows[-1][_di]).replace(',',''))
                                 if _up_v + _dn_v > 50:
@@ -4602,12 +4595,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     for _nw in _llm_news:
                         st.markdown(
                             f'<div style="border-left:2px solid #21262d;padding:6px 12px;margin:4px 0;">'
-                            f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
-                            f'<div style="font-size:10px;color:#484f58;">'
-                            f'{_nw["source"]}  {_nw.get("published","")}</div>'
+                            + f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
+                            + f'<div style="font-size:10px;color:#484f58;">'
+                            + f'{_nw["source"]}  {_nw.get("published","")}</div>'
                             + (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">{_nw["summary"][:120]}…</div>'
                                if _nw.get('summary') else '')
-                            f'</div>',
+                            + '</div>',
                             unsafe_allow_html=True)
 
         elif _llm_res and 'error' in _llm_res:
