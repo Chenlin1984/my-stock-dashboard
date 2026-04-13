@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v5.9 | main `f405c1f` | branch `90cc198`
-- **最新異動**: ETF AI 全面修復：session_state gate + 結果持久化（三頁簽 + 兩 AI 函數）
+- **版本**: v6.0 | main `b7b9c3f` | branch `731b384`
+- **最新異動**: 新增 `unified_decision.py` 統一投資決策分析模組，注入個股/ETF/組合/回測四個 Tab
 
 ## 🛠️ 核心檔案
 | 檔案 | 職責 |
@@ -16,6 +16,7 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `etf_dashboard.py` | ETF 診斷/組合/回測/AI 四子頁 |
 | `ai_engine.py` | 個股 Gemini AI 分析 |
+| `unified_decision.py` | 統一投資決策分析模組（stock/etf/portfolio 三模式 3-Card UI）|
 
 ## ✅ 已上線功能（截至 v5.3）
 - Section 一：國際市場（SOX×DXY 四象限、10Y殖利率三區間）
@@ -33,6 +34,14 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 新增功能（v6.0）
+- `unified_decision.py` 統一投資決策分析模組（`731b384`）：
+  - 萬用 LLM Prompt：自動路由 stock / etf / portfolio 三套分析邏輯
+  - JSON 輸出：`summary`（戰情總結）+ `action_advice`（具體建議）+ `precautions`（風險警示）
+  - 3-Card UI：全寬戰情總結（多空自動變色）+ 並排建議/風險卡片
+  - session_state 持久化 + 清除按鈕，每個 context_id 獨立
+  - 注入 4 個 Tab：個股 Tab2 / ETF 單支 / ETF 組合 / ETF 回測
 
 ## ✅ 已修復（v5.9）
 - ETF AI 全面修復（`90cc198`）：
