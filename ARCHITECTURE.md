@@ -330,4 +330,279 @@ app.py      ✓    ✓    ✓    ✓    ✓    ✓
 
 ---
 
-<!-- Step 3, 4 將於後續步驟補充 -->
+## 3. 資料流向
+
+### 3.1 全域 Session State 架構
+
+`st.session_state` 是全站各 Tab 的共用記憶體，所有資料載入後寫入此處，避免重複抓取。
+
+```
+                       st.session_state（全站共用）
+  ┌────────────────────────────────────────────────────────────┐
+  │  mkt_info          市場多空評分 dict（regime / score / signals）│
+  │  jingqi_info       旌旗均值（有幾% 股票站在均線上）            │
+  │  cl_data           每日總覽資料（inst / margin / adl / tw / intl）│
+  │  cl_ts             上次更新時間戳（判斷快取是否新鮮）           │
+  │  li_latest         先行指標 DataFrame（期貨/PCR/韭菜指數）      │
+  │  m1b_m2_info       M1B-M2 Gap + 趨勢方向                      │
+  │  bias_info         年線乖離率 BIAS240                          │
+  │  defense_mode      bool（全站 AI 衛星訊號是否鎖定）             │
+  │  warroom_summary   戰情總結 dict（供 Section 10 AI 總結使用）    │
+  │  total_capital_twd 使用者設定的總資金（NT$）                    │
+  │  satellite_used    衛星資金已使用量                             │
+  └────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 3.2 流程一：個股分析
+
+**觸發**：使用者在「🔬 台股」Tab 輸入股票代號並點擊查詢。
+
+```
+使用者輸入
+  股票代號 (sid)
+  分析週期 (days)
+       │
+       ▼
+┌──────────────────────────────────┐
+│  L1 · data_loader                │
+│  StockDataLoader.fetch()         │
+│  ├─ yfinance：OHLCV 日K線        │
+│  ├─ TWSE T86 / TPEx：三大法人     │
+│  └─ FinMind：法人備援             │
+│                                  │
+│  輸出：df_price (DataFrame)       │
+│        df_inst  (DataFrame)       │
+└──────────┬───────────────────────┘
+           │
+    ┌──────▼──────┐    ┌──────────────────────────────────────┐
+    │ L2·scoring  │    │  L2 · v4_strategy_engine              │
+    │  engine     │    │  V4StrategyEngine(df, df_macro, shares)│
+    │             │    │  ├─ check_macro_veto()                 │
+    │ calc_*()    │    │  │   VIX + 外資期貨 → 紅黃綠燈限倉      │
+    │ 趨勢/動能/   │    │  └─ calc_relative_chips()             │
+    │ 籌碼/量價/   │    │      外資佔流通股比 / 投信佔流通股比     │
+    │ 風險/基本面  │    └──────────────────────────────────────┘
+    │             │
+    │  輸出：      │    ┌──────────────────────────────────────┐
+    │  score dict │    │  L2 · v5_modules                      │
+    │  (0~100)    │    │  ├─ calc_relative_strength()  RS Z-Score│
+    └──────┬──────┘    │  ├─ calc_valuation_zone()    估值區間   │
+           │           │  └─ detect_bollinger_breakout() 突破訊號 │
+           │           └──────────────────────────────────────┘
+           │                        │
+           └────────────┬───────────┘
+                        ▼
+          ┌─────────────────────────┐
+          │  L3 · market_strategy   │
+          │  market_regime()        │
+          │                         │
+          │  輸入：指數/均線/外資/廣度│
+          │  輸出：regime dict       │
+          │   ├─ regime: bull/neutral│
+          │   │          caution/bear│
+          │   ├─ score: 0~5         │
+          │   └─ exposure_pct       │
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │  L4 · chart_plotter     │
+          │  plot_combined_chart()  │
+          │  ├─ K 線 + 均線         │
+          │  ├─ 成交量              │
+          │  ├─ 外資/投信/自營子圖   │
+          │  └─ 融資餘額            │
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │  L5 · ai_engine         │
+          │  analyze_stock_trend()  │
+          │  fetch_news_summary()   │
+          │                         │
+          │  + unified_decision     │
+          │  render_unified_        │
+          │  decision()             │
+          │  → 3-Card JSON UI       │
+          │  (①技術②進場③停損④風控) │
+          └─────────────────────────┘
+
+最終輸出：個股分析頁（K線圖 + 評分雷達 + AI 決策三卡）
+```
+
+**關鍵資料轉換節點**：
+
+| 節點 | 輸入型別 | 輸出型別 | 備註 |
+|------|---------|---------|------|
+| `StockDataLoader.fetch()` | `str`（代號）, `int`（天數） | `DataFrame` | yfinance + TWSE/FinMind 合併 |
+| `score_single_stock()` | `DataFrame`, 法人資料 | `dict`（各因子分數） | 所有分數正規化至 0–100 |
+| `market_regime()` | 指數價/均線/外資/ADL | `dict`（regime + score） | 寫入 `session_state['mkt_info']` |
+| `_build_prompt()` | context `dict` | `str`（完整 Prompt） | 路由至 `_STOCK_LOGIC` |
+
+---
+
+### 3.3 流程二：ETF 分析
+
+**觸發**：使用者在「🏦 ETF」Tab 輸入代號並點擊「開始診斷」。
+
+```
+使用者輸入
+  ETF 代號 (ticker)
+       │
+       ▼
+┌──────────────────────────────────────────────┐
+│  L4 · etf_dashboard · render_etf_single()    │
+│                                              │
+│  並行抓取（ThreadPoolExecutor）：              │
+│  ├─ fetch_etf_price()     ← yfinance 日K      │
+│  ├─ fetch_etf_nav_history() ← 基金公司 API     │
+│  ├─ fetch_etf_dividends()  ← 歷史配息紀錄      │
+│  └─ fetch_etf_info()       ← 基本資料/規模      │
+│                                              │
+│  輸出：price_df / nav_df / div_df / info_dict │
+└─────────────────┬────────────────────────────┘
+                  │
+    ┌─────────────▼──────────────────────────────────┐
+    │  指標計算層（純函式，無外部 I/O）                  │
+    │                                                │
+    │  calc_current_yield()    現金殖利率              │
+    │  calc_avg_yield()        近 3 年平均殖利率        │
+    │  calc_premium_discount() 折溢價率（市價/NAV-1）   │
+    │  calc_tracking_error()   追蹤誤差（vs 指數）      │
+    │  calc_mdd()              最大回撤                │
+    │  calc_cagr()             年化報酬率              │
+    │  calc_sharpe()           Sharpe Ratio           │
+    │  check_vcp_signal()      VCP 波動收縮訊號         │
+    │  _render_bias()          BIAS240 年線乖離率       │
+    └─────────────┬──────────────────────────────────┘
+                  │
+    ┌─────────────▼──────────────────────────────────┐
+    │  AI 決策（選用）                                 │
+    │                                                │
+    │  unified_decision · render_unified_decision()  │
+    │  context type = 'etf'                          │
+    │  data = { 殖利率 / BIAS240 / KD / 折溢價 / 大盤 }│
+    │                                                │
+    │  → Gemini Prompt（_ETF_LOGIC 左側交易鐵血紀律）  │
+    │  → JSON → 3-Card UI                            │
+    └────────────────────────────────────────────────┘
+
+ETF 組合子頁（render_etf_portfolio）額外流程：
+  使用者輸入多支 ETF + 持倉比例
+       │
+       ├─ 相關係數矩陣計算 → 熱力圖
+       ├─ 組合績效回測（CAGR / Sharpe / MDD）
+       ├─ _render_monte_carlo()：蒙地卡羅模擬（1000 次路徑）
+       └─ _etf_ai_portfolio()：組合 AI 評斷
+
+ETF 回測子頁（render_etf_backtest）額外流程：
+  使用者選擇策略 + 時間範圍
+       │
+       └─ backtest_engine · run_backtest()
+            └─ walk_forward_test() → 績效統計 → _etf_ai_backtest()
+```
+
+---
+
+### 3.4 流程三：每日市場總覽
+
+**觸發**：使用者點擊「🔄 更新全部總經數據」。
+
+```
+點擊更新按鈕
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│  並發任務（ThreadPoolExecutor，6 個 worker）               │
+│                                                          │
+│  _job_intl()   yfinance 國際指數（SOX/DJI/DXY/10Y）        │
+│  _job_tw()     yfinance 台股指數（^TWII/匯率）              │
+│  _job_tech()   yfinance 科技股（NVDA/TSMC/AAPL…）          │
+│  _job_inst()   daily_checklist · fetch_institutional()    │
+│                  └─ TWSE BFI82U → FinMind 備援             │
+│  _job_margin() daily_checklist · fetch_margin_balance()   │
+│                  └─ TWSE MI_MARGN                         │
+│  _job_adl()    daily_checklist · fetch_adl()              │
+│                  └─ FinMind TaiwanStockMarketValue         │
+└──────────────────────┬───────────────────────────────────┘
+                       │（全部完成後合併）
+                       ▼
+         ┌─────────────────────────┐
+         │  leading_indicators     │
+         │  build_leading_fast()   │
+         │  ├─ TAIFEX 外資期貨淨部位 │
+         │  ├─ 選擇權 PCR           │
+         │  └─ 韭菜指數             │
+         └────────────┬────────────┘
+                      │
+         ┌────────────▼────────────┐
+         │  market_strategy        │
+         │  market_regime()        │
+         │                         │
+         │  輸入（5 個評分維度）：   │
+         │  ① 指數 vs MA60/MA120   │
+         │  ② 外資現貨淨買賣        │
+         │  ③ ADL 廣度指標          │
+         │  ④ 均線斜率方向          │
+         │  ⑤ 成交量 vs 20日均量    │
+         │                         │
+         │  輸出：mkt_info dict     │
+         │   regime / score /       │
+         │   label / exposure_pct  │
+         └────────────┬────────────┘
+                      │
+         ┌────────────▼────────────┐
+         │  app.py                 │
+         │  _calc_traffic_light()  │
+         │                         │
+         │  主要驅動：regime        │
+         │  緊急覆蓋：defense /     │
+         │           health < 40   │
+         │                         │
+         │  輸出：tl dict           │
+         │   icon / label /         │
+         │   color / action / sub  │
+         │   health / conf          │
+         └────────────┬────────────┘
+                      │
+         ┌────────────▼────────────┐
+         │  _render_traffic_light()│
+         │  + mkt_info（合併看板）  │
+         │                         │
+         │  渲染：                  │
+         │  ① 主燈號 + 操作建議     │
+         │  ② 市場評分/指數/持股%   │
+         │  ③ 信號 badges           │
+         │  ④ 核心/衛星資金看板     │
+         │  ⑤ 衛星資金使用進度條    │
+         └─────────────────────────┘
+                      │
+                      ▼
+          後續 Section 渲染（順序執行）：
+          Section 一  國際市場（SOX×DXY 四象限）
+          Section 二  台股大盤（股匯四象限/ADL）
+          Section 三  籌碼（外資/融資門檻）
+          Section 四  期現貨（期貨口數）
+          Section 七  M1B-M2 Gap + BIAS240
+          Section 八  總經拼圖（VIX/NDC/CPI/OECD CLI）
+          Section 九  總經 AI 五維度規則分析
+          Section 十  AI 總結（Gemini × RSS 新聞）
+```
+
+---
+
+### 3.5 資料新鮮度管理
+
+| 快取機制 | 適用資料 | 有效期 | 過期策略 |
+|---------|---------|-------|---------|
+| `@st.cache_data(ttl=3600)` | 個股 OHLCV、法人、先行指標 | 60 分鐘 | Streamlit 自動失效，重新抓取 |
+| `@st.cache_data(ttl=1800)` | 每日大盤資料（BFI82U / ADL） | 30 分鐘 | 同上 |
+| `session_state['cl_ts']` | 最後更新時間戳 | 30 分鐘 | 超過後燈號顯示「等待中」，拒絕渲染過期數據 |
+| `session_state['_last_inst']` | 三大法人備援快取 | 當次 session | 頁面重新整理後清除 |
+| process-level `dict` | TWSE T86 / TPEx 當日資料 | 程序生命週期 | 僅限同一 Python 程序，Cloud 重啟後清除 |
+
+> **防誤判設計**：燈號渲染前先比對 `cl_ts` 與當前時間。若快取超過 30 分鐘，`_tl_placeholder` 顯示「燈號等待中（已過期）」，不渲染過時的多空訊號，避免誤導投資決策。
+
+---
+
+<!-- Step 4 將於後續步驟補充 -->
