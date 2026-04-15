@@ -605,4 +605,407 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 
 ---
 
-<!-- Step 4 將於後續步驟補充 -->
+## 4. 核心函式 I/O 定義
+
+> 本節按分層列出各模組的核心公開函式。格式統一為：函式簽名（無實作）、輸入參數、回傳值、副作用。
+
+---
+
+### 4.1 L1 資料層
+
+#### `data_loader.py`
+
+---
+
+**`_get_t86_day(ds)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `ds: str` — 日期字串，格式 `YYYYMMDD` |
+| 輸出 | `dict` — `{ '外資': int, '投信': int, '自營商': int }`（單位：仟元），抓取失敗回傳 `{}` |
+| 副作用 | 無；結果寫入 process-level `_t86_cache` dict |
+| 備援 | TWSE T86 失敗時由 `_fetch_finmind_inst_raw()` 接手 |
+
+---
+
+**`StockDataLoader.fetch(stock_id, days)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `stock_id: str` — 台股代號（如 `'2330'`）；`days: int` — 回溯天數 |
+| 輸出 | `tuple[DataFrame, DataFrame]` — `(df_price, df_inst)` |
+| `df_price` | 欄位：`Date / Open / High / Low / Close / Volume`（日頻，按日期升序） |
+| `df_inst` | 欄位：`Date / 外資 / 投信 / 自營商`（單位：張，正買負賣） |
+| 副作用 | `@st.cache_data(ttl=3600)` 快取；TWSE/TPEx → FinMind 備援自動切換 |
+
+---
+
+**`fetch_institutional(date_str)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `date_str: str` — 查詢日期 `YYYYMMDD`（預設當日） |
+| 輸出 | `tuple[dict, str]` — `(inst_dict, source_label)` |
+| `inst_dict` | `{ '外資及陸資(不含外資自營商)': { 'buy': int, 'sell': int, 'net': int }, ... }` |
+| `source_label` | 資料來源標籤（`'TWSE BFI82U'` 或 `'FinMind'`） |
+| 副作用 | 無 |
+
+---
+
+**`fetch_margin_balance(date_str)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `date_str: str` — 查詢日期 |
+| 輸出 | `tuple[float|None, str]` — `(margin_billion, source_label)` |
+| `margin_billion` | 全市場融資餘額（單位：億元）；無資料時回傳 `None` |
+| 副作用 | 無 |
+
+---
+
+#### `leading_indicators.py`
+
+---
+
+**`build_leading_fast(days, token)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `days: int` — 回溯天數（建議 7–14）；`token: str` — FinMind API Token |
+| 輸出 | `DataFrame \| None` — 欄位：`Date / 外資大小 / PCR / 韭菜指數 / ...`；無資料時回傳 `None` |
+| 副作用 | `@st.cache_data(ttl=3600)` 快取；結果存入 `session_state['li_latest']` |
+| 用途 | 每日總覽快速版；ETF 多空判斷輸入來源 |
+
+---
+
+**`finmind_get(dataset, data_id, start_ymd, end_ymd, token)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `dataset: str` — FinMind 資料集代號；`data_id: str` — 標的代號；`start/end_ymd: str` — 日期範圍 `YYYYMMDD` |
+| 輸出 | `DataFrame` — 原始 FinMind JSON 轉換結果；失敗回傳空 DataFrame |
+| 副作用 | 無；HTTP 錯誤時 `print('[FinMind] ❌ ...')` 至 Cloud log |
+
+---
+
+**`taifex_pcr(start_ymd, end_ymd)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `start_ymd, end_ymd: str` — 日期範圍 `YYYYMMDD` |
+| 輸出 | `DataFrame` — 欄位：`Date / PCR_OI / PCR_Volume`（Put/Call 比） |
+| 副作用 | TAIFEX POST 請求；失敗時回傳空 DataFrame |
+
+---
+
+### 4.2 L2 評分層
+
+#### `scoring_engine.py`
+
+---
+
+**`score_single_stock(df, stock_id, stock_name, **kwargs)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `df: DataFrame` — 個股 OHLCV；`stock_id / stock_name: str`；`kwargs`：`foreign_buy / trust_buy / dealer_buy: int`、`revenue_df / quarterly_df: DataFrame` |
+| 輸出 | `dict` — 完整評分結果（見下表） |
+| 副作用 | 無（純函式） |
+
+輸出 dict 結構：
+
+| 鍵 | 型別 | 說明 |
+|----|------|------|
+| `total` | `float` | 綜合總分 0–100 |
+| `trend` | `float` | 趨勢分 0–100 |
+| `momentum` | `float` | 動能分 0–100 |
+| `chip` | `float` | 籌碼分 0–100 |
+| `volume` | `float` | 量價分 0–100 |
+| `risk` | `float` | 風險分 0–100（分越高風險越低） |
+| `fundamental` | `float` | 基本面分 0–100 |
+| `grade` | `str` | 評級 `'A+'/'A'/'B'/'C'/'D'` |
+| `momentum_signal` | `bool` | VCP 突破訊號 |
+| `vcp` | `dict` | VCP 詳細結果（見 `check_vcp_atr_filter`） |
+
+---
+
+**`calc_trend_score(df)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `df: DataFrame` — 需含 `Close / High / Low`（≥120 筆） |
+| 輸出 | `float` — 趨勢分 0–100 |
+| 邏輯摘要 | MA5>MA20>MA60>MA120 完整多頭排列=100；每跌破一條均線扣分；價格在年線上方加分 |
+
+---
+
+**`check_vcp_atr_filter(df)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `df: DataFrame` — 需含 `High / Low / Close / Volume`（≥60 筆） |
+| 輸出 | `dict` — `{ 'signal': bool, 'stage': int, 'contraction': float, 'volume_dry': bool, 'breakout': bool, 'message': str }` |
+| 說明 | `stage`：收縮次數（0–3）；`contraction`：最新波幅（越小越好）；`volume_dry`：成交量是否低於 50 日均量 50% |
+
+---
+
+**`calc_atr_stop(df, entry_price, multiplier)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `df: DataFrame`；`entry_price: float`；`multiplier: float`（預設 `config.ATR_MULTIPLIER=1.5`） |
+| 輸出 | `dict` — `{ 'stop_price': float, 'atr': float, 'distance_pct': float }` |
+| 說明 | `stop_price = entry_price - ATR × multiplier`；`distance_pct`：停損距離佔進場價百分比 |
+
+---
+
+#### `v4_strategy_engine.py`
+
+---
+
+**`V4StrategyEngine.check_macro_veto()`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | 無（使用 `self.df_macro`：需含 `vix / futures_net / pcr`） |
+| 輸出 | `dict` — `{ 'light': 'red'|'yellow'|'green', 'max_position': float, 'reason': str }` |
+| 燈號邏輯 | 🔴 red（VIX>25 或外資期貨空單>20,000口）→ max_position ≤ 20%；🟡 yellow（VIX>20 或>10,000口）→ ≤ 50%；🟢 green → ≤ 100% |
+
+---
+
+**`V4StrategyEngine.calc_relative_chips(days)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `days: int` — 計算週期（預設 60） |
+| 輸出 | `dict` — `{ 'foreign_ratio': float, 'trust_ratio': float, 'foreign_trend': str, 'trust_trend': str }` |
+| 說明 | `foreign_ratio` = 外資近 N 日累積買超 ÷ 發行股數（%）；`trend`：`'accumulate'/'distribute'/'neutral'` |
+
+---
+
+#### `v5_modules.py`
+
+---
+
+**`calc_relative_strength(df_stock, df_market, periods)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `df_stock / df_market: DataFrame`（需含 `Close`）；`periods: list[int]`（預設 `[20, 60, 120]`） |
+| 輸出 | `dict` — `{ 'rs_20': float, 'rs_60': float, 'rs_120': float, 'z_score': float, 'label': str }` |
+| 說明 | `rs_N = 個股 N 日報酬 - 大盤 N 日報酬`；`z_score`：三週期 RS 的標準化分數；`label`：`'強勢'/'中性'/'弱勢'` |
+
+---
+
+**`calc_valuation_zone(price, eps_ttm, bvps, pb_target)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `price: float`；`eps_ttm: float`（近 12 月 EPS）；`bvps: float`（每股淨值）；`pb_target: float`（目標 P/B，預設 1.5） |
+| 輸出 | `dict` — `{ 'pe': float, 'pb': float, 'zone': 'cheap'|'fair'|'rich', 'target_price': float }` |
+| 說明 | `zone` 判斷：P/E<15 且 P/B<1 → cheap；P/E>25 或 P/B>2 → rich；其餘 → fair |
+
+---
+
+**`analyze_fundamental_leading(cl_now, cl_prev, capex_now, capex_prev, equity)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `cl_now / cl_prev: float` — 本季/上季合約負債；`capex_now / capex_prev: float` — 本季/上季資本支出；`equity: float` — 實收資本額 |
+| 輸出 | `dict` — `{ 'cl_qoq': float, 'capex_ratio': float, 'dragon_signal': bool, 'message': str }` |
+| 說明 | `cl_qoq>20% 且 capex_ratio>0.8` → `dragon_signal=True`（龍多股訊號） |
+
+---
+
+### 4.3 L3 策略層
+
+#### `market_strategy.py`
+
+---
+
+**`market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio, ma60_prev, ma120_prev, vol_today, avg_vol_20)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | 全部為 `float`；`foreign_buy`：外資現貨淨買超（億元，正買負賣）；`ad_ratio`：ADL 廣度（0–100%） |
+| 輸出 | `dict`（mkt_info） — 見下表 |
+| 副作用 | 無（純函式）；呼叫方負責寫入 `session_state['mkt_info']` |
+
+輸出 dict 完整欄位：
+
+| 鍵 | 型別 | 說明 |
+|----|------|------|
+| `regime` | `str` | `'bull' / 'neutral' / 'caution' / 'bear'` |
+| `score` | `int` | 0–5（五個維度各 1 分） |
+| `max_score` | `int` | 固定為 `5` |
+| `label` | `str` | UI 顯示標籤（含 emoji） |
+| `color` | `str` | 十六進位色碼 |
+| `exposure_pct` | `str` | 建議持股比例（如 `'80%'`） |
+| `signals` | `list[str]` | 觸發的加分條件文字清單 |
+| `bullrun` | `bool` | 是否進入強多頭（score=5） |
+| `index_price` | `float` | 傳入的大盤指數 |
+| `ma60 / ma120` | `float` | 傳入的均線值 |
+
+---
+
+**`portfolio_exposure(regime)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `regime: str` — `'bull' / 'neutral' / 'caution' / 'bear'` |
+| 輸出 | `float` — 建議股票曝險比例（`0.80 / 0.50 / 0.30 / 0.20`） |
+| 副作用 | 無 |
+
+---
+
+#### `risk_control.py`
+
+---
+
+**`RiskController.position_size(price, weight)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `price: float`（股價）；`weight: float`（目標佔衛星資金比例，0–1） |
+| 輸出 | `dict` — `{ 'shares': int, 'lots': int, 'cost': float, 'pct_of_portfolio': float }` |
+| 限制 | 單檔不超過 `config.MAX_POSITION_PER_STOCK`（10%）；受 `RiskController.max_stock_budget` 上限約束 |
+
+---
+
+**`RiskController.check_exit(stock_id, buy_price, current_price)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `stock_id: str`；`buy_price / current_price: float` |
+| 輸出 | `dict` — `{ 'action': 'stop_loss'|'trailing'|'hold', 'reason': str, 'pnl_pct': float }` |
+| 邏輯 | 優先檢查固定停損（-8%）→ 再檢查追蹤停利（峰值回落 7%，且已獲利 3%）→ 否則 hold |
+
+---
+
+**`trailing_stop_trigger(buy_price, peak_price, current_price, trail_pct, min_profit_pct)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `buy_price / peak_price / current_price: float`；`trail_pct: float`（預設 `0.07`）；`min_profit_pct: float`（預設 `0.03`） |
+| 輸出 | `bool` — `True` 表示觸發追蹤停利，應賣出 |
+| 條件 | `current_price ≤ peak_price × (1 - trail_pct)` 且 `peak_price ≥ buy_price × (1 + min_profit_pct)` |
+
+---
+
+### 4.4 L5 AI 層
+
+#### `unified_decision.py`
+
+---
+
+**`render_unified_decision(gemini_fn, context)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `gemini_fn: Callable[[str, int], str]` — Gemini API 回呼函式；`context: dict` — 見下表 |
+| 輸出 | `None`（直接渲染至 Streamlit） |
+| 副作用 | 寫入 `session_state[f'unified_{type}_{id}']`；呼叫 `st.rerun()` 觸發畫面更新 |
+
+`context` dict 格式：
+
+| 鍵 | 型別 | 說明 |
+|----|------|------|
+| `type` | `str` | `'stock' / 'etf' / 'portfolio'` |
+| `id` | `str` | 唯一識別字（如 `'2330'` / `'0050'` / `'portfolio'`） |
+| `data` | `dict` | 傳給 LLM 的結構化數據（自由欄位，依 type 不同而異） |
+
+---
+
+**`_build_prompt(context)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `context: dict`（同上） |
+| 輸出 | `str` — 完整 Prompt 字串（`_BASE_RULES` + 型別路由邏輯 + JSON 化 data） |
+| 路由 | `type='stock'` → `_STOCK_LOGIC`；`type='etf'` → `_ETF_LOGIC`；`type='portfolio'` → `_PORTFOLIO_LOGIC` |
+
+---
+
+**`_render_cards(parsed, ctx_type)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `parsed: dict` — Gemini 回傳的 JSON（需含 `summary / action_advice / precautions`）；`ctx_type: str` |
+| 輸出 | `None`（渲染 3 張卡片至 Streamlit） |
+| Card 1 | 全寬主卡：`summary`（依 🟢/🟡/🔴 自動變色） |
+| Card 2 | 左欄：`action_advice`（股票模式標籤：②進場③停損；其他模式：具體建議） |
+| Card 3 | 右欄：`precautions`（股票模式標籤：④風控；其他模式：風險警示） |
+
+---
+
+#### `ai_engine.py`
+
+---
+
+**`analyze_stock_trend(api_key, stock_id, stock_name, df, fundamental_summary)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `api_key: str`；`stock_id / stock_name: str`；`df: DataFrame`（OHLCV）；`fundamental_summary: str`（選填） |
+| 輸出 | `str` — Gemini 生成的趨勢分析文字（Markdown 格式） |
+| 副作用 | 無；API 失敗時回傳 `'⚠️ ...'` 開頭的錯誤訊息 |
+| Fallback | `gemini-2.5-flash-lite` → `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite` |
+
+---
+
+**`generate_daily_report(api_key, market_info, top_stocks, risk_alerts)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `api_key: str`；`market_info: dict`（regime/score）；`top_stocks: list[dict]`；`risk_alerts: list[str]` |
+| 輸出 | `str` — 每日市場摘要（300 字內，含多空評估與今日重點） |
+| 副作用 | 無 |
+
+---
+
+### 4.5 app.py 核心協調函式
+
+---
+
+**`_calc_traffic_light(mkt_info, jingqi_info, cl_data, li_latest)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `mkt_info: dict`（`market_regime()` 輸出）；`jingqi_info: dict`（旌旗均值）；`cl_data: dict`（每日總覽）；`li_latest: DataFrame \| None` |
+| 輸出 | `dict \| None` — `None` 表示資料不足；否則見下表 |
+| 保守優先 | `_defense=True` 或 `_health<40` → 強制紅燈（覆蓋 regime） |
+
+輸出 dict 欄位：
+
+| 鍵 | 型別 | 說明 |
+|----|------|------|
+| `regime` | `str` | 來自 `mkt_info`（bull/neutral/caution/bear） |
+| `icon / color / label` | `str` | 顯示用（🔴/🟡/🟢 + 十六進位色 + 操作標籤） |
+| `action / sub` | `str` | 主要操作建議與補充說明 |
+| `health` | `float` | 綜合健康度 0–100（`jqavg×0.4 + score_norm×0.4 + fnet_bonus×0.2`） |
+| `defense` | `bool` | Defense Mode 是否觸發 |
+| `conf` | `int` | 資料信心指數 0–100%（5 個資料源各 20%） |
+
+---
+
+**`_render_traffic_light(placeholder, tl, mkt_info)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `placeholder: st.empty`；`tl: dict \| None`；`mkt_info: dict \| None`（選填，用於顯示評分/信號） |
+| 輸出 | `None`（渲染至 placeholder） |
+| 副作用 | 渲染：主燈號卡（含信號 badges + 指數 + 持股建議）→ Defense Mode 警告 → 核心/衛星資金看板 → 進度條 |
+| 合併邏輯 | `mkt_info` 提供的原始 regime 資訊整合顯示，以 `tl` 的保守信號為主 |
+
+---
+
+**`gemini_call(prompt, max_tokens)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `prompt: str`；`max_tokens: int`（預設 800） |
+| 輸出 | `str` — Gemini 回傳文字；失敗時回傳 `'⚠️ ...'` |
+| Fallback 順序 | `gemini-2.5-flash-lite` → `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite` |
+| 副作用 | 失敗時 `print('[AI-LLM/Gemini] ❌ ...')` 寫入 Cloud log |
+
+---
