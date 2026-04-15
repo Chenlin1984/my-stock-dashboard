@@ -140,4 +140,194 @@ my-stock-dashboard/
 
 ---
 
-<!-- Step 2, 3, 4 將於後續步驟補充 -->
+## 2. 分層架構
+
+### 2.1 整體架構圖
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║                    台股 AI 戰情室 v4.0 Pro                            ║
+║              Streamlit Cloud  ·  Python 3.14  ·  GitHub              ║
+╚══════════════════════════════════════════════════════════════════════╝
+                              │
+                    ┌─────────▼─────────┐
+                    │   app.py (L0)      │  ← 唯一入口；協調所有層
+                    │   Streamlit 主程式  │    session_state 管理
+                    └─────┬──────┬──────┘
+          ┌───────────────┘      └───────────────┐
+          ▼                                       ▼
+┌─────────────────┐                   ┌─────────────────────┐
+│  L5 · AI 層     │                   │  L4 · 視覺化層       │
+│  ai_engine.py   │                   │  chart_plotter.py    │
+│  unified_       │                   │  etf_dashboard.py    │
+│  decision.py    │                   │  daily_checklist.py  │
+│  ↕ Gemini API   │                   │  (UI 元件)           │
+└────────┬────────┘                   └──────────┬──────────┘
+         │                                        │
+         └──────────────┬─────────────────────────┘
+                        ▼
+          ┌─────────────────────────┐
+          │  L3 · 策略層             │
+          │  market_strategy.py     │  ← 多空判斷 / 倉位比例
+          │  risk_control.py        │  ← 停損 / 追蹤停利
+          │  backtest_engine.py     │  ← 策略回測 / WFT
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │  L2 · 評分層             │
+          │  scoring_engine.py      │  ← 多因子評分 (0-100)
+          │  v4_strategy_engine.py  │  ← 相對籌碼 / 總體否決
+          │  v5_modules.py          │  ← RS 強度 / 估值區間
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │  L1 · 資料層             │
+          │  data_loader.py         │  ← 個股 OHLCV + 法人
+          │  daily_checklist.py     │  ← 大盤 / 外資 / ADL
+          │  leading_indicators.py  │  ← 期貨 / PCR / 先行
+          └────────────┬────────────┘
+                       │
+          ┌────────────▼────────────┐
+          │  L0 · 基礎設施           │
+          │  config.py              │  ← 全域常數
+          │  stock_names.py         │  ← 代號映射
+          │  financial_debug_       │
+          │  helper.py              │  ← 欄位別名
+          └─────────────────────────┘
+
+外部服務（唯讀，不屬於任何層）：
+  TWSE / TPEx API  ·  TAIFEX POST  ·  FinMind API
+  yfinance (Yahoo)  ·  Gemini 2.5-Flash API  ·  dbnomics
+```
+
+---
+
+### 2.2 各層職責與設計原則
+
+#### L0 — 基礎設施層（Infrastructure）
+
+| 模組 | 類型 | 設計原則 |
+|------|------|---------|
+| `config.py` | 純常數（無邏輯） | 所有閾值集中在此，其他層只讀不寫 |
+| `stock_names.py` | 靜態映射表 | 不依賴任何外部 API；冷資料 |
+| `financial_debug_helper.py` | 工具函式 | 欄位別名標準化，隔離 API 格式變動 |
+
+**設計原則**：零外部依賴；任何層可自由引用；變更只影響此層。
+
+---
+
+#### L1 — 資料層（Data Layer）
+
+| 模組 | 主要外部源 | 快取策略 |
+|------|-----------|---------|
+| `data_loader.py` | TWSE T86、TPEx、FinMind | `@st.cache_data(ttl=3600)` + process-level dict |
+| `daily_checklist.py` | TWSE BFI82U、yfinance、FinMind ADL | `@st.cache_data(ttl=1800)` |
+| `leading_indicators.py` | TAIFEX POST、FinMind 未平倉、TWSE 成交量 | `@st.cache_data(ttl=3600)` |
+
+**設計原則**：
+- 每個函式只抓一種資料源（單一職責）
+- 所有 HTTP 呼叫有 retry + fallback（TWSE IP 封鎖 → FinMind 備援）
+- 回傳純 `pd.DataFrame` 或 `dict`，不含任何 UI 邏輯
+
+---
+
+#### L2 — 評分層（Scoring Layer）
+
+| 模組 | 輸入來源 | 輸出格式 |
+|------|---------|---------|
+| `scoring_engine.py` | L1 DataFrame | `dict`（各因子分數 + 總分 + 訊號） |
+| `v4_strategy_engine.py` | L1 DataFrame + L3 市場狀態 | `dict`（相對籌碼比 + 限倉燈號） |
+| `v5_modules.py` | L1 DataFrame + 財務數據 | `dict`（RS Z-Score / 估值標籤 / 突破訊號） |
+
+**設計原則**：
+- 純函式（Pure Functions）—— 相同輸入永遠相同輸出
+- 不呼叫任何 API；不依賴 `st.session_state`
+- 評分結果以 0–100 正規化，便於跨模組比較
+
+**因子權重表（依市場狀態動態切換）**：
+
+```
+              趨勢    動能    籌碼    量價    風險    基本面
+bull（多頭）  30%     25%     20%     15%      5%      5%
+neutral（中性）25%    20%     20%     15%     10%     10%
+bear（空頭）  15%     10%     15%     15%     25%     20%
+```
+
+---
+
+#### L3 — 策略層（Strategy Layer）
+
+| 模組 | 核心判斷邏輯 | 輸出給 |
+|------|------------|--------|
+| `market_strategy.py` | 5 分制評分 → regime（bull/neutral/caution/bear） | L4 UI、L5 AI、`session_state` |
+| `risk_control.py` | 固定停損 / 追蹤停利 / ATR 動態停損 / 最大回撤 | L4 UI |
+| `backtest_engine.py` | MA 交叉 / MA+RSI 策略 + Walk-Forward Test | L4 視覺化 |
+
+**設計原則**：
+- 策略邏輯與 UI 完全分離
+- `market_strategy.regime` 的結果寫入 `session_state['mkt_info']`，供全站各 Tab 共用
+- `risk_control.RiskController` 為有狀態類別，封裝單一交易週期的風控計算
+
+---
+
+#### L4 — 視覺化層（Visualization Layer）
+
+| 模組 | 渲染目標 | 依賴層 |
+|------|---------|--------|
+| `chart_plotter.py` | 個股 K 線 5 子圖、月營收、季度財務 | L1、L2 |
+| `etf_dashboard.py` | ETF 四子頁（診斷/組合/回測/AI） | L1、L2、L3、L5 |
+| `daily_checklist.py` (UI 部分) | 共用 UI 元件（`section_header`、`kpi`、`sparkline`） | L1 |
+
+**設計原則**：
+- 所有 `render_*` 函式接受純資料 dict，不自行抓取資料
+- Plotly 圖表以 `st.plotly_chart` 渲染，支援互動縮放
+- `st.session_state` gate pattern：大按鈕（開始診斷/計算組合）觸發後持久化狀態，避免 AI 按鈕 rerun 時閘門失效
+
+---
+
+#### L5 — AI 層（AI Layer）
+
+| 模組 | 呼叫方式 | Prompt 架構 |
+|------|---------|------------|
+| `ai_engine.py` | 直接呼叫 Gemini REST API | 個股分析 / 新聞摘要 / 每日摘要（各自獨立 Prompt） |
+| `unified_decision.py` | 透過 `gemini_fn` 回呼（Callback） | `_BASE_RULES` + 型別路由（stock/etf/portfolio） → JSON 輸出 |
+
+**設計原則**：
+- AI 層**不依賴**任何評分或策略計算——只接收已整理的資料 dict
+- Gemini 回傳強制為 JSON 格式，`re.search` 提取後 `json.loads` 解析
+- 結果以 `session_state[_sess_key]` 持久化，跨 rerun 不消失
+- Fallback 模型順序：`gemini-2.5-flash-lite` → `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite`
+
+---
+
+### 2.3 跨層依賴矩陣
+
+```
+           L0   L1   L2   L3   L4   L5
+L0 基礎     ─    ✗    ✗    ✗    ✗    ✗
+L1 資料     ✓    ─    ✗    ✗    ✗    ✗
+L2 評分     ✓    ✓    ─    ✗    ✗    ✗
+L3 策略     ✓    ✓    ✓    ─    ✗    ✗
+L4 視覺     ✓    ✓    ✓    ✓    ─    ✗
+L5 AI       ✓    ✗    ✗    ✗    ✗    ─
+app.py      ✓    ✓    ✓    ✓    ✓    ✓
+
+✓ = 可引用上層  ✗ = 禁止反向依賴（無循環）
+```
+
+> **關鍵約束**：資料永遠向上流（L1 → L2 → L3）；AI 層（L5）直接由 app.py 驅動，繞過評分與策略層，避免增加 LLM 呼叫延遲。
+
+---
+
+### 2.4 環境變數與 Secrets
+
+| 變數名 | 作用範圍 | 用途 |
+|--------|---------|------|
+| `GEMINI_API_KEY` | L5（ai_engine、unified_decision） | Gemini 2.5-Flash API 金鑰 |
+| `FINMIND_TOKEN` | L1（data_loader、leading_indicators） | FinMind 免費帳號（每小時 600 次） |
+
+兩者皆儲存於 Streamlit Secrets（`st.secrets`），部署時不進版控。
+
+---
+
+<!-- Step 3, 4 將於後續步驟補充 -->
