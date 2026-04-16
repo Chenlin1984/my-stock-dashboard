@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.4 | main `5b715ec` | branch `716eed1`
-- **最新異動**: 紅綠燈 + 市場概覽合併為單一看板 ✅
+- **版本**: v6.5 | main `fff28cf`
+- **最新異動**: v4.0 四大引擎升級 ✅
 
 ## 🔨 進行中任務：ARCHITECTURE.md 技術規格書
 
@@ -48,6 +48,13 @@
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 新增功能（v6.5）
+- v4.0 四大引擎升級（`fff28cf`）：
+  - **Engine 1** `market_strategy.py`：`market_regime()` 加入宏爺 M1B-M2 資金活水評分（選填，向後相容），max_score 升至 6
+  - **Engine 3** `v4_strategy_engine.py`：`detect_vcp_breakout()`（春哥三階段波幅收縮 + 蔡森等幅測距目標價）+ `detect_false_breakout_v4()`（天量黑K逃命訊號）
+  - **Engine 4** `portfolio_manager.py`（新建）：`CoreSatelliteManager` 核心/衛星動態配比 + 超標 10% 再平衡警報
+  - 妮可地緣籌碼加權（1.5x）：資料源不支援，暫不實作
 
 ## ✅ 已修復（v6.4）
 - 紅綠燈 + 市場概覽合併為單一看板（`716eed1`）：
