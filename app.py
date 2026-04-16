@@ -43,6 +43,7 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
+from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
     safe_float, find_value_by_alias, classify_missing_data,
@@ -3990,6 +3991,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # SECTION 八: 總經拼圖 v4.0 (景氣位階 × 前瞻需求 × 全球風險)
     # ══════════════════════════════════════════════════════════════
     st.markdown(section_header('八','🌐 總經拼圖 v4.0（景氣位階 × 前瞻需求 × 全球風險）','🌐'),unsafe_allow_html=True)
+
+    # ── 總經自動警示看板（VIX / CPI / 10Y / DXY / PCR）────────
+    _ma_snap   = fetch_macro_snapshot(
+        session_macro=st.session_state.get('macro_info'),
+        session_li=st.session_state.get('li_latest'),
+        session_m1b2=st.session_state.get('m1b_m2_info'),
+    )
+    _ma_alerts = check_macro_alerts(_ma_snap)
+    st.session_state['macro_alerts'] = _ma_alerts   # 供 Section 九/十共用
+    render_macro_alerts(_ma_alerts)
 
     _macro_info = st.session_state.get('macro_info') or {}
     _m8_ndc   = _macro_info.get('ndc_signal')
