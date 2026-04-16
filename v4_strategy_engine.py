@@ -281,13 +281,154 @@ class V4StrategyEngine:
             "msg":           f"🛡️ 嚴格防守價：{stop_loss:.2f} 元（距現價 {sl_pct:.1f}%）— 收盤跌破請無條件停損",
         }
 
-    def generate_report(self) -> dict:
-        """整合四個模組輸出的完整報告"""
+    # ─────────────────────────────────────────────────────────────
+    # [Task 5] 春哥 VCP 三階段波動收縮偵測（含等幅測距目標價）
+    # 春哥原理：波幅遞減 + 窒息量 + 帶量突破 = 籌碼沉澱完畢
+    # ─────────────────────────────────────────────────────────────
+    def detect_vcp_breakout(self, lookback_days: int = 60) -> dict:
+        """
+        春哥 VCP 三階段波動收縮 + 帶量突破偵測。
+
+        偵測邏輯：
+          1. 將 lookback 區間切為 3 段，計算每段波幅（High-Low/High）
+          2. 三段波幅必須遞減（第三段 < 第二段 < 第一段）
+          3. 近 5 日出現窒息量（< 50日均量 × 50%）
+          4. 最新收盤突破區間最高點（容許 1% 誤差），且量 > 50日均量 × 1.5
+
+        返回 dict：
+          signal:       'BUY' | 'HOLD' | 'NONE'（資料不足）
+          vcp_stages:   [float, float, float]  各段波幅（%）
+          volume_dry:   bool
+          breakout:     bool
+          target_price: float  蔡森等幅測距目標價
+          stop_loss:    float  近 lookback 最低點 × 0.98
+          message:      str
+        """
+        if len(self.df) < lookback_days:
+            return {'signal': 'NONE', 'message': '⚪ 資料不足，VCP 無法計算'}
+
+        recent   = self.df.tail(lookback_days).copy()
+        seg_len  = lookback_days // 3
+        seg1     = recent.iloc[:seg_len]
+        seg2     = recent.iloc[seg_len: seg_len * 2]
+        seg3     = recent.iloc[seg_len * 2:]
+
+        def _volatility(seg):
+            hi = seg['close'].max() if 'high' not in seg.columns else seg['high'].max()
+            lo = seg['close'].min() if 'low'  not in seg.columns else seg['low'].min()
+            return (hi - lo) / hi if hi > 0 else 0
+
+        v1, v2, v3   = _volatility(seg1), _volatility(seg2), _volatility(seg3)
+        stages_ok    = (v1 > v2 > v3)
+
+        vol_50ma     = float(self.df['volume'].tail(50).mean()) if len(self.df) >= 50 else float(self.df['volume'].mean())
+        vol_50ma     = vol_50ma if vol_50ma > 0 else 1
+        last5_vol    = recent['volume'].iloc[-5:-1]          # 排除今日
+        volume_dry   = bool((last5_vol < vol_50ma * 0.5).any())
+
+        resistance   = recent['close'].max() if 'high' not in recent.columns else recent['high'].max()
+        current_close = float(self.df['close'].iloc[-1])
+        current_vol   = float(self.df['volume'].iloc[-1])
+        breakout      = current_close >= resistance * 0.99
+        volume_surge  = current_vol > vol_50ma * 1.5
+
+        # 蔡森等幅測距目標價
+        bottom        = recent['close'].min() if 'low' not in recent.columns else recent['low'].min()
+        target_price  = round(resistance + (resistance - bottom), 2)
+        stop_loss_vcp = round(bottom * 0.98, 2)
+
+        if stages_ok and volume_dry and breakout and volume_surge:
+            signal  = 'BUY'
+            message = (f'✅ VCP 三階段收縮（{v1*100:.1f}%→{v2*100:.1f}%→{v3*100:.1f}%）'
+                       f'帶量突破，籌碼沉澱完畢。目標 {target_price}，防守 {stop_loss_vcp}')
+        elif stages_ok and volume_dry:
+            signal  = 'HOLD'
+            message = f'⏳ VCP 收縮成型（{v1*100:.1f}%→{v2*100:.1f}%→{v3*100:.1f}%），等待帶量突破確認'
+        else:
+            signal  = 'HOLD'
+            message = '⚪ VCP 波幅收縮未達標準，繼續觀察'
+
         return {
-            "macro_veto":    self.check_macro_veto(),
-            "chip_analysis": self.calc_relative_chips(),
-            "resistance":    self.find_overhead_resistance(),
-            "stop_loss":     self.calculate_stop_loss(),
+            'signal':       signal,
+            'vcp_stages':   [round(v1*100,1), round(v2*100,1), round(v3*100,1)],
+            'stages_ok':    stages_ok,
+            'volume_dry':   volume_dry,
+            'breakout':     breakout,
+            'volume_surge': volume_surge,
+            'resistance':   round(resistance, 2),
+            'target_price': target_price,
+            'stop_loss':    stop_loss_vcp,
+            'message':      message,
+        }
+
+    # ─────────────────────────────────────────────────────────────
+    # [Task 6] 蔡森假突破 + 高檔爆量逃命訊號
+    # 公式：創 20 日新高 + 爆量 + 黑K/長上影線 = 主力出貨警訊
+    # ─────────────────────────────────────────────────────────────
+    def detect_false_breakout_v4(self) -> dict:
+        """
+        蔡森假突破偵測：創近期新高後，爆出天量且收黑K或長上影線。
+
+        條件：
+          1. 今日最高價 ≥ 近 20 日最高（創新高）
+          2. 今日成交量 ≥ 近 60 日最大量 × 90%（天量）
+          3. 黑K（收 < 開）或長上影線（上影線 > 實體 × 2）
+
+        返回 dict：
+          signal:       'SELL' | 'HOLD'
+          is_new_high:  bool
+          is_huge_vol:  bool
+          is_ugly_k:    bool
+          message:      str
+        """
+        if len(self.df) < 20:
+            return {'signal': 'HOLD', 'message': '⚪ 資料不足，假突破偵測略過'}
+
+        last        = self.df.iloc[-1]
+        hi_col      = 'close'  # 無 high 欄時退回 close
+        vol_col     = 'volume'
+
+        current_high  = float(last.get('high', last['close']))
+        hi20          = float(self.df['close'].tail(20).max()
+                              if 'high' not in self.df.columns
+                              else self.df['high'].tail(20).max())
+        is_new_high   = current_high >= hi20
+
+        vol_60_max    = float(self.df[vol_col].tail(60).max())
+        is_huge_vol   = float(last[vol_col]) >= vol_60_max * 0.9
+
+        open_p  = float(last.get('open', last['close']))
+        close_p = float(last['close'])
+        high_p  = float(last.get('high', last['close']))
+        body    = abs(close_p - open_p)
+        upper   = high_p - max(close_p, open_p)
+        # 乘法避免 body=0 除法崩潰
+        is_ugly_k = (close_p < open_p) or (upper > body * 2)
+
+        if is_new_high and is_huge_vol and is_ugly_k:
+            signal  = 'SELL'
+            message = '🚨 高檔爆量假突破／避雷針，疑似主力出貨，建議立即停利出場'
+        else:
+            signal  = 'HOLD'
+            message = '✅ 無假突破訊號'
+
+        return {
+            'signal':      signal,
+            'is_new_high': is_new_high,
+            'is_huge_vol': is_huge_vol,
+            'is_ugly_k':   is_ugly_k,
+            'message':     message,
+        }
+
+    def generate_report(self) -> dict:
+        """整合六個模組輸出的完整報告（v4.0 升級含 VCP + 假突破）"""
+        return {
+            "macro_veto":      self.check_macro_veto(),
+            "chip_analysis":   self.calc_relative_chips(),
+            "resistance":      self.find_overhead_resistance(),
+            "stop_loss":       self.calculate_stop_loss(),
+            "vcp_breakout":    self.detect_vcp_breakout(),
+            "false_breakout":  self.detect_false_breakout_v4(),
         }
 
 
