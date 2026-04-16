@@ -2,12 +2,42 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.5 | main `fff28cf`
-- **最新異動**: v4.0 四大引擎升級 ✅
+- **版本**: v6.6 | main `0cc6e2e`
+- **最新異動**: ETF 配息 TypeError 修復 ✅
 
-## 🔨 進行中任務：ARCHITECTURE.md 技術規格書
+## 🔨 進行中任務：總經數據自動警示模組 `macro_alert.py`
 
-**目標**：產出 `ARCHITECTURE.md`，內容含目錄結構、資料流向、核心函式 I/O 定義
+**目標**：新增 L3 策略層模組，監控 VIX / CPI / 10Y 殖利率 / DXY / PCR 等總經指標，
+閾值觸發時自動在 Section 8 頂端發出 🔴🟡🟢 分級警示橫幅。
+
+**架構決策**：放在 **L3 策略層**（與 `market_strategy.py` 同層）
+- 理由：純市場層級判斷，輸入 L1 資料，輸出警示訊號 → L4 渲染，與個股評分無關
+- 新增檔案：`macro_alert.py`（L3）；`tests/test_macro_alert.py`
+- 修改檔案：`config.py`（新增閾值常數）、`app.py`（Section 8 整合）
+
+**監控指標與三色等級**：
+
+| 指標 | 🔴 紅燈 | 🟡 黃燈 | 🟢 綠燈 |
+|------|---------|---------|---------|
+| VIX（恐慌指數） | > 30 | 20–30 | < 20 |
+| CPI YoY（美國通膨） | > 3.5% | 2.5–3.5% | < 2.5% |
+| 10Y 美債殖利率 | > 4.8% | 4.2–4.8% | < 4.2% |
+| DXY（美元指數） | > 107 | 103–107 | < 103 |
+| PCR（選擇權比） | > 1.5 或 < 0.5 | 1.2–1.5 | 0.5–1.2 |
+
+**開發步驟**：
+
+| 步驟 | 內容 | 預期輸出 | 狀態 |
+|------|------|---------|------|
+| Step 1 | **規則引擎**：`config.py` 新增 `MACRO_ALERT_RULES`；`macro_alert.py` 新建，實作 `check_macro_alerts(snapshot) -> list[dict]` 純函式 | 可獨立 import 並執行的純函式，零外部依賴 | ⏳ 待執行 |
+| Step 2 | **資料擷取**：`macro_alert.py` 新增 `fetch_macro_snapshot()`，整合 yfinance（VIX/TNX/DXY）+ `st.session_state` 快取（CPI/PCR/M1B-M2） | 標準化 snapshot dict，含 `@st.cache_data(ttl=1800)` | ⏳ 待執行 |
+| Step 3 | **UI 元件**：`macro_alert.py` 新增 `render_macro_alerts(alerts)`，輸出警示橫幅（badge 條 + 展開詳情）；純資料驅動，不含抓取邏輯 | 可在任何 Streamlit 頁面獨立渲染 | ⏳ 待執行 |
+| Step 4 | **整合 `app.py`**：Section 8 標題下注入警示條；結果寫入 `session_state['macro_alerts']` 供 Section 九/十共用 | 完整端對端流程可在 Streamlit Cloud 運行 | ⏳ 待執行 |
+| Step 5 | **單元測試** `tests/test_macro_alert.py`：覆蓋各指標紅/黃/綠觸發、邊界值、空輸入防呆 | `pytest` 全綠，無外部 API 呼叫 | ⏳ 待執行 |
+
+> 請回覆「執行步驟 X」繼續。每次只實作一個步驟。
+
+## ✅ 已完成任務：ARCHITECTURE.md 技術規格書
 
 | 步驟 | 內容 | 狀態 |
 |------|------|------|
@@ -16,8 +46,6 @@
 | Step 3 | **資料流向**：3大主流程（個股/ETF/每日總覽）的資料流圖 | ✅ 完成 (`c7cb28d`) |
 | Step 4 | **核心函式 I/O**：按模組分組，列出 signature + 輸入/輸出說明 | ✅ 完成 (`22d29ec`) |
 | Step 5 | **組裝 + commit**：合併 Step 1-4 成完整 ARCHITECTURE.md，push + 更新 STATE.md | ✅ 完成 |
-
-> 請回覆「執行步驟 X」繼續。每次只實作一個步驟。
 
 
 | 檔案 | 職責 |
