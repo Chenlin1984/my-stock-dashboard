@@ -15,6 +15,19 @@ except ImportError:
     MACRO_ALERT_RULES = []   # fallback，允許不依賴 config 獨立測試
 
 
+# ── Streamlit 快取工具（非 Streamlit 環境自動退化為無快取）──────────
+def _safe_cache(**kwargs):
+    """
+    在 Streamlit 環境回傳 st.cache_data 裝飾器；
+    pytest / CLI 環境回傳恆等函式，讓測試不依賴 streamlit。
+    """
+    try:
+        import streamlit as st
+        return st.cache_data(**kwargs)
+    except Exception:
+        return lambda f: f
+
+
 # ══════════════════════════════════════════════════════════════
 # 內部工具函式（無副作用）
 # ══════════════════════════════════════════════════════════════
@@ -177,3 +190,117 @@ def alert_summary(alerts: list[dict]) -> dict:
         'overall':      overall,
         'overall_emoji': _EMOJI[overall],
     }
+
+
+# ══════════════════════════════════════════════════════════════
+# Step 2 — 資料擷取適配器
+# ══════════════════════════════════════════════════════════════
+
+@_safe_cache(ttl=1800, show_spinner=False)
+def _yf_latest(tickers: tuple) -> dict:
+    """
+    從 yfinance 抓指定 tickers 的最新收盤價（快取 30 分鐘）。
+
+    Parameters
+    ----------
+    tickers : tuple of str
+        Yahoo Finance 代碼，使用 tuple 以支援 st.cache_data 雜湊。
+        例：('^TNX', 'DX-Y.NYB', '^VIX')
+
+    Returns
+    -------
+    dict  { ticker: float | None }
+        取不到資料的 ticker 值為 None。
+    """
+    import yfinance as yf
+    result: dict = {}
+    for t in tickers:
+        try:
+            hist = yf.Ticker(t).history(period='5d')
+            result[t] = round(float(hist['Close'].iloc[-1]), 4) if not hist.empty else None
+        except Exception as e:
+            print(f'[MacroAlert/yf] {t} 失敗: {e}')
+            result[t] = None
+    return result
+
+
+def fetch_macro_snapshot(
+    session_macro: dict | None = None,
+    session_li=None,
+    session_m1b2: dict | None = None,
+) -> dict:
+    """
+    整合 session_state 快取資料與 yfinance，組建各指標當前快照。
+
+    優先順序：session_state 已計算值 > yfinance 即時抓取
+    （避免重複呼叫 API；僅補抓 session_state 尚未涵蓋的 us10y / dxy）
+
+    Parameters
+    ----------
+    session_macro : dict | None
+        st.session_state.get('macro_info')
+        含 vix={'current': float, ...} 與 us_core_cpi={'yoy': float}
+    session_li : pd.DataFrame | None
+        st.session_state.get('li_latest')
+        含 '選PCR' 欄位（台指選擇權 Put/Call Ratio）
+    session_m1b2 : dict | None
+        st.session_state.get('m1b_m2_info')
+        含 m1b_yoy / m2_yoy（保留供未來擴充，當前不映射至 snapshot）
+
+    Returns
+    -------
+    dict
+        {
+            'vix'  : float | None  — VIX 恐慌指數
+            'cpi'  : float | None  — US Core CPI YoY (%)
+            'us10y': float | None  — 美債 10Y 殖利率 (%)
+            'dxy'  : float | None  — 美元指數
+            'pcr'  : float | None  — 台指選擇權 Put/Call Ratio
+        }
+        值為 None 代表該指標資料不可用（不影響其他指標的警示計算）。
+    """
+    snap: dict = {}
+
+    # ── ① VIX：優先讀 session_state['macro_info']['vix']['current'] ──
+    _vix_ss = (session_macro or {}).get('vix') or {}
+    if _vix_ss.get('current') is not None:
+        try:
+            snap['vix'] = float(_vix_ss['current'])
+        except (TypeError, ValueError):
+            pass
+
+    # ── ② CPI YoY：session_state['macro_info']['us_core_cpi']['yoy'] ──
+    _cpi_ss = (session_macro or {}).get('us_core_cpi') or {}
+    if _cpi_ss.get('yoy') is not None:
+        try:
+            snap['cpi'] = float(_cpi_ss['yoy'])
+        except (TypeError, ValueError):
+            pass
+
+    # ── ③ PCR：session_state['li_latest'].iloc[-1]['選PCR'] ──────────
+    if session_li is not None:
+        try:
+            if not session_li.empty and '選PCR' in session_li.columns:
+                _pcr_raw = session_li.iloc[-1].get('選PCR')
+                if _pcr_raw is not None and str(_pcr_raw) not in ('', 'nan', '-'):
+                    snap['pcr'] = float(_pcr_raw)
+        except Exception:
+            pass
+
+    # ── ④ yfinance：us10y / dxy 必抓；vix 若 ①未命中則補抓 ──────────
+    _need_yf: list[str] = ['^TNX', 'DX-Y.NYB']
+    if 'vix' not in snap:
+        _need_yf.append('^VIX')
+
+    try:
+        _yf_data = _yf_latest(tuple(_need_yf))
+        if _yf_data.get('^TNX') is not None:
+            snap['us10y'] = _yf_data['^TNX']
+        if _yf_data.get('DX-Y.NYB') is not None:
+            snap['dxy'] = _yf_data['DX-Y.NYB']
+        if 'vix' not in snap and _yf_data.get('^VIX') is not None:
+            snap['vix'] = _yf_data['^VIX']
+    except Exception as e:
+        print(f'[MacroAlert] yfinance 批次抓取失敗: {e}')
+
+    return snap
