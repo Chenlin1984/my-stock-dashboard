@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.6 | main `0cc6e2e`
+- **版本**: v6.7 | main `5e56112`
 - **最新異動**: ETF 配息 TypeError 修復 ✅
 
 ## 🔨 進行中任務：總經數據自動警示模組 `macro_alert.py`
@@ -33,7 +33,7 @@
 | Step 2 | **資料擷取**：`macro_alert.py` 新增 `fetch_macro_snapshot()`，整合 yfinance（VIX/TNX/DXY）+ `st.session_state` 快取（CPI/PCR/M1B-M2） | 標準化 snapshot dict，含 `@st.cache_data(ttl=1800)` | ✅ 完成 |
 | Step 3 | **UI 元件**：`macro_alert.py` 新增 `render_macro_alerts(alerts)`，輸出警示橫幅（badge 條 + 展開詳情）；純資料驅動，不含抓取邏輯 | 可在任何 Streamlit 頁面獨立渲染 | ✅ 完成 |
 | Step 4 | **整合 `app.py`**：Section 8 標題下注入警示條；結果寫入 `session_state['macro_alerts']` 供 Section 九/十共用 | 完整端對端流程可在 Streamlit Cloud 運行 | ✅ 完成 |
-| Step 5 | **單元測試** `tests/test_macro_alert.py`：覆蓋各指標紅/黃/綠觸發、邊界值、空輸入防呆 | `pytest` 全綠，無外部 API 呼叫 | ⏳ 待執行 |
+| Step 5 | **單元測試** `tests/test_macro_alert.py`：覆蓋各指標紅/黃/綠觸發、邊界值、空輸入防呆 | `pytest` 全綠，無外部 API 呼叫 | ✅ 完成 |
 
 > 請回覆「執行步驟 X」繼續。每次只實作一個步驟。
 
