@@ -1284,7 +1284,8 @@ def render_etf_portfolio(gemini_fn=None):
             _recent  = _div_s[_div_s.index >= _cutoff]
             if _recent.empty:
                 continue
-            _annual_per_share = float(_recent.sum())
+            _sum = _recent.sum()
+            _annual_per_share = float(np.ravel(_sum)[0]) if hasattr(_sum, '__len__') else float(_sum)
             _n_pay = len(_recent)
             _est_income = _annual_per_share * _shares
             _div_data.append({
@@ -1297,7 +1298,8 @@ def render_etf_portfolio(gemini_fn=None):
             # 月度分配（依歷史配息月份）
             _pay_months = sorted(set(_recent.index.month.tolist()))
             for _m in _pay_months:
-                _month_div = float(_recent[_recent.index.month == _m].sum()) * _shares
+                _ms = _recent[_recent.index.month == _m].sum()
+                _month_div = (float(np.ravel(_ms)[0]) if hasattr(_ms, '__len__') else float(_ms)) * _shares
                 _monthly_cf[_m] = _monthly_cf.get(_m, 0) + _month_div
 
     if _div_data:
