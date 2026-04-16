@@ -304,3 +304,137 @@ def fetch_macro_snapshot(
         print(f'[MacroAlert] yfinance 批次抓取失敗: {e}')
 
     return snap
+
+
+# ══════════════════════════════════════════════════════════════
+# Step 3 — UI 渲染元件（純資料驅動，不自行抓取資料）
+# ══════════════════════════════════════════════════════════════
+
+# 三色對應：背景色、文字色、邊框色
+_LEVEL_STYLE: dict[str, dict] = {
+    'red':    {'bg': '#2d1b1b', 'text': '#f85149', 'border': '#f85149', 'badge_bg': '#3d1f1f'},
+    'yellow': {'bg': '#2d2208', 'text': '#d29922', 'border': '#d29922', 'badge_bg': '#3a2c0a'},
+    'green':  {'bg': '#0d2318', 'text': '#3fb950', 'border': '#3fb950', 'badge_bg': '#142d1e'},
+}
+
+
+def render_macro_alerts(alerts: list[dict]) -> None:
+    """
+    渲染總經數據三色警示看板（純資料驅動）。
+
+    版面分兩區：
+    1. **警示橫幅**：顯示整體風險等級 + 各指標 badge（一行 pill 條）
+    2. **展開詳情**：st.expander，以表格列出各指標當前值與警示說明
+
+    Parameters
+    ----------
+    alerts : list[dict]
+        check_macro_alerts() 的回傳值。空清單時顯示「資料載入中」佔位符。
+
+    Returns
+    -------
+    None  （直接渲染至 Streamlit，無回傳值）
+    """
+    import streamlit as st
+
+    # ── 資料不可用時的佔位符 ─────────────────────────────────────
+    if not alerts:
+        st.info('⏳ 總經警示資料載入中，請點擊「🔄 更新全部總經數據」', icon='📡')
+        return
+
+    sm = alert_summary(alerts)
+    overall = sm['overall']
+    _os = _LEVEL_STYLE[overall]
+
+    # ── ① 警示橫幅 ───────────────────────────────────────────────
+    # 各指標 badge（pill 形式）
+    _badge_parts: list[str] = []
+    for a in alerts:
+        _s     = _LEVEL_STYLE[a['level']]
+        _unit  = a.get('unit', '')
+        _val   = f"{a['value']:.2f}{_unit}"
+        _badge_parts.append(
+            f'<span style="'
+            f'background:{_s["badge_bg"]};'
+            f'border:1px solid {_s["border"]};'
+            f'border-radius:20px;'
+            f'padding:3px 10px;'
+            f'font-size:12px;'
+            f'color:{_s["text"]};'
+            f'white-space:nowrap;'
+            f'margin-right:4px;'
+            f'">'
+            f'{a["emoji"]} {a["label"]} <b>{_val}</b>'
+            f'</span>'
+        )
+    _badges_html = ''.join(_badge_parts)
+
+    # 整體狀態標籤
+    _overall_labels = {
+        'red':    '⚠️ 高風險 — 建議降低部位',
+        'yellow': '⚡ 觀察中 — 謹慎持倉',
+        'green':  '✅ 正常 — 總經環境無異常',
+    }
+    _overall_counts = (
+        f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
+        f'🔴×{sm["red_count"]} &nbsp;🟡×{sm["yellow_count"]} &nbsp;🟢×{sm["green_count"]}'
+        f'</span>'
+    )
+
+    st.markdown(
+        f'<div style="'
+        f'background:{_os["bg"]};'
+        f'border-left:4px solid {_os["border"]};'
+        f'border-radius:0 8px 8px 0;'
+        f'padding:10px 16px;'
+        f'margin-bottom:6px;'
+        f'">'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+        f'<span style="font-size:14px;font-weight:700;color:{_os["text"]};">'
+        f'{_overall_labels[overall]}</span>'
+        f'{_overall_counts}'
+        f'</div>'
+        f'<div style="display:flex;flex-wrap:wrap;gap:4px;">'
+        f'{_badges_html}'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── ② 展開詳情 ──────────────────────────────────────────────
+    _red_alerts    = [a for a in alerts if a['level'] == 'red']
+    _yellow_alerts = [a for a in alerts if a['level'] == 'yellow']
+    _green_alerts  = [a for a in alerts if a['level'] == 'green']
+
+    _expander_label = (
+        f'🔍 總經警示詳情（'
+        + (f'🔴×{sm["red_count"]} ' if sm['red_count'] else '')
+        + (f'🟡×{sm["yellow_count"]} ' if sm['yellow_count'] else '')
+        + f'🟢×{sm["green_count"]}）'
+    )
+    with st.expander(_expander_label, expanded=(overall == 'red')):
+        _all_ordered = _red_alerts + _yellow_alerts + _green_alerts
+        for a in _all_ordered:
+            _s    = _LEVEL_STYLE[a['level']]
+            _unit = a.get('unit', '')
+            _val  = f"{a['value']:.2f}{_unit}"
+            st.markdown(
+                f'<div style="'
+                f'background:{_s["badge_bg"]};'
+                f'border-radius:6px;'
+                f'padding:8px 14px;'
+                f'margin-bottom:6px;'
+                f'border-left:3px solid {_s["border"]};'
+                f'">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<span style="font-size:13px;font-weight:600;color:{_s["text"]};">'
+                f'{a["emoji"]} {a["label"]}</span>'
+                f'<span style="font-size:15px;font-weight:700;color:{_s["text"]};">'
+                f'{_val}</span>'
+                f'</div>'
+                f'<div style="font-size:12px;color:#8b949e;margin-top:3px;">'
+                f'{a["message"]}'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )

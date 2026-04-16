@@ -31,7 +31,7 @@
 |------|------|---------|------|
 | Step 1 | **規則引擎**：`config.py` 新增 `MACRO_ALERT_RULES`；`macro_alert.py` 新建，實作 `check_macro_alerts(snapshot) -> list[dict]` 純函式 | 可獨立 import 並執行的純函式，零外部依賴 | ✅ 完成 |
 | Step 2 | **資料擷取**：`macro_alert.py` 新增 `fetch_macro_snapshot()`，整合 yfinance（VIX/TNX/DXY）+ `st.session_state` 快取（CPI/PCR/M1B-M2） | 標準化 snapshot dict，含 `@st.cache_data(ttl=1800)` | ✅ 完成 |
-| Step 3 | **UI 元件**：`macro_alert.py` 新增 `render_macro_alerts(alerts)`，輸出警示橫幅（badge 條 + 展開詳情）；純資料驅動，不含抓取邏輯 | 可在任何 Streamlit 頁面獨立渲染 | ⏳ 待執行 |
+| Step 3 | **UI 元件**：`macro_alert.py` 新增 `render_macro_alerts(alerts)`，輸出警示橫幅（badge 條 + 展開詳情）；純資料驅動，不含抓取邏輯 | 可在任何 Streamlit 頁面獨立渲染 | ✅ 完成 |
 | Step 4 | **整合 `app.py`**：Section 8 標題下注入警示條；結果寫入 `session_state['macro_alerts']` 供 Section 九/十共用 | 完整端對端流程可在 Streamlit Cloud 運行 | ⏳ 待執行 |
 | Step 5 | **單元測試** `tests/test_macro_alert.py`：覆蓋各指標紅/黃/綠觸發、邊界值、空輸入防呆 | `pytest` 全綠，無外部 API 呼叫 | ⏳ 待執行 |
 
