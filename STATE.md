@@ -2,19 +2,29 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.8 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: Section 十重構為實體狀態鎖架構（MacroStateLocker + macro_state.json）✅
+- **版本**: v7.0 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: AI 決策引擎升級為理科/文科分工架構（calculate_system_state + 輕量化 Prompt）✅
 
-## ✅ 已完成任務：AI 總裁決實體狀態鎖 v1.0
+## ✅ 已完成任務：AI 決策引擎 v2.0（理科/文科分工）
 
-**目標**：將 Section 十前端 inline LLM 運算改為「實體狀態鎖」架構，
-前端唯讀 macro_state.json，LLM 寫入由觸發按鈕在背景執行，杜絕多重矛盾結論。
+**目標**：拆分「運算邏輯（理科）」與「解讀邏輯（文科）」，消除 AI 自行決定倉位的幻覺風險。
+Python rule-based 計算 `exposure_limit_pct`，AI 僅輸出 `analysis_summary` 解讀文字。
+
+| 步驟 | 內容 | 狀態 |
+|------|------|------|
+| Step 1 | `macro_state_locker.py`：新增 `calculate_system_state()`（VIX/PMI/M1B-M2/BIAS240/PCR 五因子）| ✅ |
+| Step 2 | 輕量化 Prompt：AI role 改為「解讀師」，輸出從 4 欄位縮為 1 欄位（`analysis_summary`）| ✅ |
+| Step 3 | `execute_and_lock()` 改接收 `system_state dict`，合併 Python + AI 後原子寫入 | ✅ |
+| Step 4 | `app.py`：呼叫 `calculate_system_state()` 後傳入 `execute_and_lock()`；渲染層改讀新欄位 | ✅ |
+| Step 5 | `macro_state.json`：欄位更新（`exposure_limit_pct` + `analysis_summary` + `Macro_Phase`）| ✅ |
+| Step 6 | `tests/test_macro_state_locker.py`：31 tests（+8），新增 `TestCalculateSystemState`（7 cases）| ✅ |
+
+## ✅ 已完成任務：AI 總裁決實體狀態鎖 v1.0（前版基礎）
 
 | 步驟 | 內容 | 狀態 |
 |------|------|------|
 | Step 1 | `macro_state_locker.py`：`MacroStateLocker` 類別 + `load_macro_state()` + 原子寫入 + Fail-safe | ✅ |
-| Step 1b | `macro_state.json`：初始化預設 Fail-safe 狀態鎖檔案 | ✅ |
-| Step 2 | `app.py`：Section 十改為唯讀裁決卡片 + 「執行 AI 裁決」觸發按鈕；移除舊 IF-ELSE 結論邏輯 | ✅ |
+| Step 2 | `app.py`：Section 十改為唯讀裁決卡片 + 「執行 AI 裁決」觸發按鈕；移除舊 IF-ELSE 邏輯 | ✅ |
 | Step 3 | `tests/test_macro_state_locker.py`：23 tests，0 failures，無 HTTP 呼叫 | ✅ |
 
 ## 🛠️ 核心檔案
