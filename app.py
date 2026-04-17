@@ -27,6 +27,7 @@ from daily_checklist import (
 # ── 新增模組（根據說明書 v1.0）──────────────────────────────
 # ── v3.0 新增模組（§5-§11）──────────────────────────────────
 from market_strategy import get_market_assessment
+from macro_state_locker import MacroStateLocker, load_macro_state
 from risk_control import calc_position_size, calc_stop_loss  # RiskController removed (unused)
 from v4_strategy_engine import V4StrategyEngine   # v4.0 核心策略引擎
 from v5_modules import (                           # v5.0 大師滿配
@@ -4524,143 +4525,112 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'</div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════
-    # SECTION 十: 🤖 AI 總經戰情總結（新聞 × 量化數據 × Claude LLM）
+    # SECTION 十: 🤖 AI 總裁決（實體狀態鎖架構）
+    # 前端唯讀 macro_state.json；LLM 運算由觸發按鈕在背景執行並寫檔
     # ══════════════════════════════════════════════════════════════
-    st.markdown(section_header('十', '🤖 AI 總經戰情總結', '🤖'), unsafe_allow_html=True)
+    st.markdown(section_header('十', '🤖 AI 總裁決', '🤖'), unsafe_allow_html=True)
 
-    with st.expander('🤖 AI 總經戰情總結 — 即時新聞 × 量化數據 × Claude 深度研判', expanded=True):
-        _llm_hdr_c1, _llm_hdr_c2 = st.columns([4, 1])
-        with _llm_hdr_c1:
+    with st.expander('🤖 AI 總裁決 — 實體狀態鎖架構（唯讀）', expanded=True):
+        _verdict_hdr_c1, _verdict_hdr_c2 = st.columns([4, 1])
+        with _verdict_hdr_c1:
             st.markdown(
                 '<div style="font-size:12px;color:#8b949e;padding:4px 0;">'
                 '整合即時國際財經新聞（RSS）與當前量化總經數據，'
-                '由 Claude AI 進行總體經濟戰況深度研判，輸出持股建議與操作方針。'
+                '由 Gemini AI 寫入實體狀態鎖（macro_state.json）。'
+                '前端唯讀渲染，杜絕多重矛盾結論。'
                 '<br><span style="color:#484f58;">需設定 Streamlit Secrets：'
                 '<code>GEMINI_API_KEY = "AIza..."</code></span></div>',
                 unsafe_allow_html=True)
-        with _llm_hdr_c2:
-            _do_llm = st.button('🔄 執行 AI 研判', key='btn_run_llm',
-                                use_container_width=True, type='primary')
+        with _verdict_hdr_c2:
+            _do_verdict = st.button('🔒 執行 AI 裁決', key='btn_run_verdict',
+                                    use_container_width=True, type='primary')
 
-        _llm_res  = st.session_state.get('ai_analysis_result')
-        _llm_news = st.session_state.get('ai_analysis_news', [])
-        _llm_ts   = st.session_state.get('ai_analysis_ts', '')
+        # ── 觸發：呼叫 MacroStateLocker 寫入 macro_state.json ──
+        if _do_verdict:
+            with st.spinner('📡 正在抓取財經新聞 + 呼叫 Gemini AI（約 15~30 秒）…'):
+                _v_news = _fetch_macro_news(5)
+                _v_news_titles = [_n['title'] for _n in _v_news]
+                # 組裝量化數據快照供 AI 判讀
+                _vix_d  = _macro_info.get('vix') or {}
+                _exp_d  = _macro_info.get('tw_export') or {}
+                _pmi_d  = _macro_info.get('ism_pmi') or {}
+                _cpi_d  = _macro_info.get('us_core_cpi') or {}
+                _mi_d   = st.session_state.get('m1b_m2_info') or {}
+                _bi_d   = st.session_state.get('bias_info') or {}
+                _li_d   = st.session_state.get('li_latest')
+                _pcr_v  = None
+                if _li_d is not None and not _li_d.empty and '選PCR' in _li_d.columns:
+                    _pcr_raw = str(_li_d.iloc[-1].get('選PCR', ''))
+                    if _pcr_raw not in ('', '-', 'nan', 'None'):
+                        try: _pcr_v = float(_pcr_raw)
+                        except ValueError: pass
+                _macro_numbers = {
+                    'VIX_Index':           _vix_d.get('current'),
+                    'M1B_YoY_pct':         _mi_d.get('m1b_yoy'),
+                    'M2_YoY_pct':          _mi_d.get('m2_yoy'),
+                    'TW_Export_YoY_pct':   _exp_d.get('yoy'),
+                    'ISM_PMI_or_OECD_CLI': _pmi_d.get('value'),
+                    'US_Core_CPI_YoY_pct': _cpi_d.get('yoy'),
+                    'BIAS240_pct':         _bi_d.get('bias_240'),
+                    'PCR':                 _pcr_v,
+                }
+                _locker = MacroStateLocker()
+                _ok = _locker.execute_and_lock(_macro_numbers, _v_news_titles)
+                if _ok:
+                    st.success('✅ AI 裁決已更新至實體狀態鎖')
+                else:
+                    st.error('❌ AI 裁決失敗，已啟動 Fail-safe（曝險 0%）')
 
-        # ── 觸發分析 ─────────────────────────────────────────
-        if _do_llm:
-            with st.spinner('📡 正在抓取財經新聞 + 呼叫 Claude AI 分析中（約 15~30 秒）…'):
-                _llm_news = _fetch_macro_news(5)
-                _llm_res  = _run_llm_analysis(_macro_info, _llm_news)
-                st.session_state['ai_analysis_result'] = _llm_res
-                st.session_state['ai_analysis_news']   = _llm_news
-                st.session_state['ai_analysis_ts']     = _tw_now_str()
-                _llm_ts = st.session_state['ai_analysis_ts']
+        # ── 唯讀渲染：從 macro_state.json 讀取並顯示 ────────────
+        _ms = load_macro_state()
+        _srl = _ms.get('systemic_risk_level', '危險')
+        _regime = _ms.get('market_regime', '系統異常')
+        _exp_pct = int(_ms.get('equity_fund_exposure_pct', 0))
+        _cash_pct = 100 - _exp_pct
+        _verdict_txt = _ms.get('final_verdict', '')
+        _ms_ts = _ms.get('timestamp', '')
 
-        # ── 渲染結果 ─────────────────────────────────────────
-        if _llm_res and 'error' not in _llm_res:
-            # 風險色系
-            _rl = _llm_res.get('risk_level', 'medium')
-            _risk_clr = {'high': '#f85149', 'medium': '#d29922', 'low': '#3fb950'}.get(_rl, '#8b949e')
-            _risk_txt = {'high': '高風險', 'medium': '中等風險', 'low': '低風險'}.get(_rl, '未知')
+        _srl_clr = {'安全': '#3fb950', '警告': '#d29922', '危險': '#f85149'}.get(_srl, '#8b949e')
+        _reg_clr = {'多頭': '#3fb950', '震盪': '#d29922', '空頭': '#f85149'}.get(_regime, '#8b949e')
 
-            # 情緒色系
-            _sent = _llm_res.get('sentiment', '中性')
-            _sent_clr = {
-                '極度恐慌': '#f85149', '警戒': '#d29922', '中性': '#8b949e',
-                '樂觀': '#3fb950',     '極度狂熱': '#f0e040',
-            }.get(_sent, '#8b949e')
+        st.markdown(
+            f'<div style="background:#0d1117;border:2px solid {_srl_clr};'
+            f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
+            # 頂部：市場體制 + 系統風險等級
+            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+            f'flex-wrap:wrap;gap:8px;margin-bottom:14px;">'
+            f'<div>'
+            f'<span style="font-size:11px;color:#484f58;">市場體制</span><br>'
+            f'<span style="font-size:22px;font-weight:900;color:{_reg_clr};">{_regime}</span>'
+            f'</div>'
+            f'<div style="text-align:right;">'
+            f'<span style="background:{_srl_clr}22;border:1px solid {_srl_clr};'
+            f'border-radius:20px;padding:4px 14px;font-size:12px;'
+            f'font-weight:700;color:{_srl_clr};">系統風險：{_srl}</span>'
+            f'<div style="font-size:10px;color:#484f58;margin-top:4px;">'
+            f'裁決時間：{_ms_ts if _ms_ts else "尚未執行"}</div>'
+            f'</div>'
+            f'</div>'
+            # 曝險水位列
+            f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+            f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;'
+            f'padding:12px;text-align:center;">'
+            f'<div style="font-size:10px;color:#484f58;">建議股票型基金曝險</div>'
+            f'<div style="font-size:32px;font-weight:900;color:{_srl_clr};">'
+            f'{_exp_pct}<span style="font-size:14px;">%</span></div>'
+            f'<div style="font-size:10px;color:#8b949e;">現金/防禦型資產 {_cash_pct}%</div>'
+            f'</div>'
+            # 最終裁決文字
+            f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
+            f'<div style="font-size:10px;color:#484f58;margin-bottom:6px;">🔒 AI 最終裁決（實體鎖）</div>'
+            f'<div style="font-size:13px;color:#e6edf3;line-height:1.7;">{_verdict_txt}</div>'
+            f'</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True)
 
-            _spct = int(_llm_res.get('stock_pct', 50))
-            _cpct = int(_llm_res.get('cash_pct', 50))
-
-            # ── 主卡片 ───────────────────────────────────────
-            st.markdown(
-                f'<div style="background:#0d1117;border:2px solid {_risk_clr};'
-                f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
-                # 頂部：情緒 + 風險等級
-                f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                f'flex-wrap:wrap;gap:8px;margin-bottom:12px;">'
-                f'<div>'
-                f'<span style="font-size:11px;color:#484f58;">市場情緒</span><br>'
-                f'<span style="font-size:20px;font-weight:900;color:{_sent_clr};">{_sent}</span>'
-                f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
-                f'{_llm_res.get("sentiment_reason","")}</span>'
-                f'</div>'
-                f'<div style="text-align:right;">'
-                f'<span style="background:{_risk_clr}22;border:1px solid {_risk_clr};'
-                f'border-radius:20px;padding:4px 14px;font-size:12px;'
-                f'font-weight:700;color:{_risk_clr};">{_risk_txt}</span>'
-                f'<div style="font-size:10px;color:#484f58;margin-top:4px;">'
-                f'分析時間：{_llm_ts}</div>'
-                f'</div>'
-                f'</div>'
-                # 總經解讀
-                f'<div style="background:#161b22;border-radius:8px;padding:12px;margin-bottom:12px;">'
-                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">📊 總經現況解讀</div>'
-                f'<div style="font-size:13px;color:#c9d1d9;line-height:1.6;">'
-                f'{_llm_res.get("macro_reading","")}</div>'
-                f'</div>'
-                # 持股水位 + 操作方針
-                f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
-                f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;padding:12px;text-align:center;">'
-                f'<div style="font-size:10px;color:#484f58;">建議持股水位</div>'
-                f'<div style="font-size:28px;font-weight:900;color:{_risk_clr};">{_spct}<span style="font-size:14px;">%</span></div>'
-                f'<div style="font-size:10px;color:#8b949e;">現金 {_cpct}%</div>'
-                f'</div>'
-                f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
-                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">⚔️ 最終作戰指令</div>'
-                f'<div style="font-size:14px;font-weight:700;color:#e6edf3;line-height:1.5;">'
-                f'{_llm_res.get("action","")}</div>'
-                f'</div>'
-                f'</div>'
-                # 風險 vs 機會
-                f'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
-                f'<div style="flex:1;min-width:150px;">'
-                f'<span style="font-size:10px;color:#f85149;">⚠️ 最大風險</span><br>'
-                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("key_risk","")}</span>'
-                f'</div>'
-                f'<div style="flex:1;min-width:150px;">'
-                f'<span style="font-size:10px;color:#3fb950;">💡 最大機會</span><br>'
-                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("opportunity","")}</span>'
-                f'</div>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True)
-
-            # ── 新聞來源展示 ──────────────────────────────────
-            if _llm_news:
-                with st.expander(f'📰 本次分析引用的 {len(_llm_news)} 則財經新聞', expanded=False):
-                    for _nw in _llm_news:
-                        st.markdown(
-                            f'<div style="border-left:2px solid #21262d;padding:6px 12px;margin:4px 0;">'
-                            + f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
-                            + f'<div style="font-size:10px;color:#484f58;">'
-                            + f'{_nw["source"]}  {_nw.get("published","")}</div>'
-                            + (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">{_nw["summary"][:120]}…</div>'
-                               if _nw.get('summary') else '')
-                            + '</div>',
-                            unsafe_allow_html=True)
-
-        elif _llm_res and 'error' in _llm_res:
-            st.error(f'❌ AI 研判失敗：{_llm_res["error"]}')
-        else:
-            # 尚未執行 — 顯示說明卡
-            st.markdown(
-                '<div style="background:#0d1117;border:1px dashed #30363d;'
-                'border-radius:12px;padding:24px;text-align:center;margin:8px 0;">'
-                '<div style="font-size:32px;margin-bottom:8px;">🤖</div>'
-                '<div style="font-size:15px;font-weight:700;color:#c9d1d9;margin-bottom:8px;">'
-                '點擊「執行 AI 研判」開始分析</div>'
-                '<div style="font-size:12px;color:#8b949e;line-height:1.8;max-width:480px;margin:0 auto;">'
-                'AI 將自動：<br>'
-                '① 從 Google News / Yahoo Finance / Reuters 抓取最新 5 則財經新聞<br>'
-                '② 讀取當前儀表板所有量化總經數據（VIX、M1B、外銷訂單等）<br>'
-                '③ 呼叫 Claude AI 進行整合研判，輸出持股建議與操作方針<br>'
-                '<span style="color:#484f58;font-size:11px;">'
-                '預計耗時 15~30 秒，結果快取至下次手動刷新</span>'
-                '</div>'
-                '</div>',
-                unsafe_allow_html=True)
+        if not _ms_ts:
+            st.info('尚未執行 AI 裁決。點擊上方「執行 AI 裁決」按鈕以生成首次分析。')
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 

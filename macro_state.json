@@ -1,0 +1,7 @@
+{
+    "market_regime": "系統異常",
+    "systemic_risk_level": "危險",
+    "equity_fund_exposure_pct": 0,
+    "final_verdict": "系統防護機制啟動：尚未執行 AI 裁決，強制將風險部位降至零。請點擊「執行 AI 裁決」按鈕以更新。",
+    "timestamp": ""
+}
