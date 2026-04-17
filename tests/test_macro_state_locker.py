@@ -2,38 +2,87 @@
 tests/test_macro_state_locker.py
 ---------------------------------
 MacroStateLocker 單元測試（無 HTTP、無 Streamlit）
+架構 v2.0：理科（calculate_system_state） / 文科（AI analysis_summary）
 """
 import json
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-# 確保 project root 在 sys.path
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from macro_state_locker import MacroStateLocker, load_macro_state, _DEFAULT_STATE
+from macro_state_locker import (
+    MacroStateLocker,
+    load_macro_state,
+    calculate_system_state,
+    _DEFAULT_STATE,
+)
 
 
 # ═══════════════════════════════════════════════════════════════
 # 輔助工廠
 # ═══════════════════════════════════════════════════════════════
 def _locker(mock_llm=None, tmp_path=None) -> MacroStateLocker:
-    """建立測試用 MacroStateLocker，不呼叫真實 Gemini API。"""
     path = tmp_path or tempfile.mktemp(suffix=".json")
     return MacroStateLocker(llm_client=mock_llm, state_file_path=path)
 
 
-_VALID_JSON_RESP = json.dumps({
-    "market_regime": "多頭",
-    "systemic_risk_level": "安全",
-    "equity_fund_exposure_pct": 70,
-    "final_verdict": "量化指標樂觀，建議維持高曝險。",
+# AI 只輸出 analysis_summary
+_VALID_AI_RESP = json.dumps({
+    "analysis_summary": "PMI 持續收縮，VIX 偏高，系統建議防禦性配置。",
 })
 
-_MARKDOWN_WRAPPED = f"```json\n{_VALID_JSON_RESP}\n```"
+_MARKDOWN_WRAPPED = f"```json\n{_VALID_AI_RESP}\n```"
+
+_BASE_SYSTEM_STATE = {
+    "market_regime": "震盪",
+    "systemic_risk_level": "警告",
+    "exposure_limit_pct": 50,
+    "Macro_Phase": "PMI收縮(48.5)",
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# TestCalculateSystemState — 理科引擎
+# ═══════════════════════════════════════════════════════════════
+class TestCalculateSystemState:
+    def test_high_vix_reduces_exposure(self):
+        result = calculate_system_state({"VIX_Index": 36, "ISM_PMI_or_OECD_CLI": 52})
+        assert result["exposure_limit_pct"] <= 40
+        assert result["systemic_risk_level"] in ("警告", "危險")
+
+    def test_low_vix_pmi_expansion_bullish(self):
+        result = calculate_system_state({
+            "VIX_Index": 13, "ISM_PMI_or_OECD_CLI": 56,
+            "M1B_YoY_pct": 5.0, "M2_YoY_pct": 2.0,
+        })
+        assert result["exposure_limit_pct"] >= 70
+        assert result["market_regime"] == "多頭"
+
+    def test_pmi_contraction_label_in_macro_phase(self):
+        result = calculate_system_state({"ISM_PMI_or_OECD_CLI": 47})
+        assert "PMI收縮" in result["Macro_Phase"]
+
+    def test_normal_env_label(self):
+        result = calculate_system_state({"VIX_Index": 18, "ISM_PMI_or_OECD_CLI": 51})
+        assert result["Macro_Phase"] == "環境正常"
+
+    def test_none_values_use_defaults(self):
+        result = calculate_system_state({"VIX_Index": None, "ISM_PMI_or_OECD_CLI": None})
+        assert isinstance(result["exposure_limit_pct"], int)
+        assert result["market_regime"] in ("多頭", "震盪", "空頭")
+
+    def test_output_keys_complete(self):
+        result = calculate_system_state({})
+        for key in ("market_regime", "systemic_risk_level", "exposure_limit_pct", "Macro_Phase"):
+            assert key in result
+
+    def test_exposure_within_bounds(self):
+        for vix in (10, 20, 30, 40, 50):
+            r = calculate_system_state({"VIX_Index": vix})
+            assert 0 <= r["exposure_limit_pct"] <= 100
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -41,21 +90,17 @@ _MARKDOWN_WRAPPED = f"```json\n{_VALID_JSON_RESP}\n```"
 # ═══════════════════════════════════════════════════════════════
 class TestExtractJson:
     def test_plain_json(self):
-        locker = _locker()
-        result = locker._extract_json(_VALID_JSON_RESP)
-        assert result["market_regime"] == "多頭"
-        assert result["equity_fund_exposure_pct"] == 70
+        result = _locker()._extract_json(_VALID_AI_RESP)
+        assert result["analysis_summary"] != ""
 
     def test_markdown_wrapped(self):
-        locker = _locker()
-        result = locker._extract_json(_MARKDOWN_WRAPPED)
-        assert result["systemic_risk_level"] == "安全"
+        result = _locker()._extract_json(_MARKDOWN_WRAPPED)
+        assert "analysis_summary" in result
 
     def test_trailing_text(self):
-        """LLM 在 JSON 後加說明文字仍可解析。"""
-        raw = _VALID_JSON_RESP + "\n\n以上為本次分析結論。"
+        raw = _VALID_AI_RESP + "\n\n以上為本次分析結論。"
         result = _locker()._extract_json(raw)
-        assert result["final_verdict"] != ""
+        assert result["analysis_summary"] != ""
 
     def test_invalid_raises(self):
         with pytest.raises((ValueError, json.JSONDecodeError)):
@@ -72,25 +117,22 @@ class TestExtractJson:
 class TestWriteStateLock:
     def test_writes_json_file(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(tmp_path=path)
-        locker._write_state_lock({"market_regime": "震盪", "equity_fund_exposure_pct": 40})
+        _locker(tmp_path=path)._write_state_lock({"market_regime": "震盪", "exposure_limit_pct": 40})
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         assert data["market_regime"] == "震盪"
 
     def test_no_tmp_file_remains(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(tmp_path=path)
-        locker._write_state_lock({"x": 1})
+        _locker(tmp_path=path)._write_state_lock({"x": 1})
         assert not os.path.exists(path + ".tmp")
 
     def test_unicode_persisted(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(tmp_path=path)
-        locker._write_state_lock({"final_verdict": "繁體中文測試內容"})
+        _locker(tmp_path=path)._write_state_lock({"analysis_summary": "繁體中文測試內容"})
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        assert "繁體中文" in data["final_verdict"]
+        assert "繁體中文" in data["analysis_summary"]
 
     def test_overwrites_existing(self, tmp_path):
         path = str(tmp_path / "state.json")
@@ -108,90 +150,89 @@ class TestWriteStateLock:
 class TestExecuteAndLock:
     def test_success_path(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(mock_llm=lambda p: _VALID_JSON_RESP, tmp_path=path)
-        ok = locker.execute_and_lock({"VIX_Index": 18.0}, ["市場平穩"])
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        ok = locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), ["市場平穩"])
         assert ok is True
         data = json.load(open(path, encoding="utf-8"))
-        assert data["market_regime"] == "多頭"
-        assert data["equity_fund_exposure_pct"] == 70
+        assert data["market_regime"] == "震盪"
+        assert data["analysis_summary"] != ""
 
     def test_exposure_clamped_to_100(self, tmp_path):
         path = str(tmp_path / "state.json")
-        raw = json.dumps({
-            "market_regime": "多頭",
-            "systemic_risk_level": "安全",
-            "equity_fund_exposure_pct": 150,
-            "final_verdict": "test",
-        })
-        locker = _locker(mock_llm=lambda p: raw, tmp_path=path)
-        locker.execute_and_lock({}, [])
+        state = {**_BASE_SYSTEM_STATE, "exposure_limit_pct": 150}
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        locker.execute_and_lock(state, [])
         data = json.load(open(path, encoding="utf-8"))
-        assert data["equity_fund_exposure_pct"] == 100
+        assert data["exposure_limit_pct"] == 100
 
     def test_exposure_clamped_to_0(self, tmp_path):
         path = str(tmp_path / "state.json")
-        raw = json.dumps({
-            "market_regime": "空頭",
-            "systemic_risk_level": "危險",
-            "equity_fund_exposure_pct": -10,
-            "final_verdict": "test",
-        })
-        locker = _locker(mock_llm=lambda p: raw, tmp_path=path)
-        locker.execute_and_lock({}, [])
+        state = {**_BASE_SYSTEM_STATE, "exposure_limit_pct": -10}
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        locker.execute_and_lock(state, [])
         data = json.load(open(path, encoding="utf-8"))
-        assert data["equity_fund_exposure_pct"] == 0
+        assert data["exposure_limit_pct"] == 0
 
     def test_timestamp_written(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(mock_llm=lambda p: _VALID_JSON_RESP, tmp_path=path)
-        locker.execute_and_lock({}, [])
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
         data = json.load(open(path, encoding="utf-8"))
         assert data.get("timestamp", "") != ""
+
+    def test_system_state_fields_preserved(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
+        data = json.load(open(path, encoding="utf-8"))
+        assert data["Macro_Phase"] == "PMI收縮(48.5)"
+        assert data["systemic_risk_level"] == "警告"
 
     def test_llm_error_triggers_failsafe(self, tmp_path):
         path = str(tmp_path / "state.json")
         def bad_llm(p): raise RuntimeError("API down")
         locker = _locker(mock_llm=bad_llm, tmp_path=path)
-        ok = locker.execute_and_lock({}, [])
+        ok = locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
         assert ok is False
         data = json.load(open(path, encoding="utf-8"))
-        assert data["equity_fund_exposure_pct"] == 0
+        assert data["exposure_limit_pct"] == 0
         assert data["systemic_risk_level"] == "危險"
 
     def test_llm_warning_prefix_triggers_failsafe(self, tmp_path):
         path = str(tmp_path / "state.json")
         locker = _locker(mock_llm=lambda p: "⚠️ API Key 無效", tmp_path=path)
-        ok = locker.execute_and_lock({}, [])
+        ok = locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
         assert ok is False
         data = json.load(open(path, encoding="utf-8"))
-        assert data["equity_fund_exposure_pct"] == 0
+        assert data["exposure_limit_pct"] == 0
 
     def test_invalid_json_triggers_failsafe(self, tmp_path):
         path = str(tmp_path / "state.json")
         locker = _locker(mock_llm=lambda p: "不是 JSON", tmp_path=path)
-        ok = locker.execute_and_lock({}, [])
+        ok = locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
         assert ok is False
 
     def test_empty_news_list(self, tmp_path):
         path = str(tmp_path / "state.json")
-        locker = _locker(mock_llm=lambda p: _VALID_JSON_RESP, tmp_path=path)
-        ok = locker.execute_and_lock({"VIX_Index": 25}, [])
+        locker = _locker(mock_llm=lambda p: _VALID_AI_RESP, tmp_path=path)
+        ok = locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), [])
         assert ok is True
 
-    def test_prompt_contains_macro_numbers(self, tmp_path):
+    def test_prompt_contains_system_state(self, tmp_path):
         path = str(tmp_path / "state.json")
         received = []
-        def capture_llm(p): received.append(p); return _VALID_JSON_RESP
+        def capture_llm(p): received.append(p); return _VALID_AI_RESP
         locker = _locker(mock_llm=capture_llm, tmp_path=path)
-        locker.execute_and_lock({"VIX_Index": 99.9}, ["headline"])
-        assert "99.9" in received[0]
+        locker.execute_and_lock({**_BASE_SYSTEM_STATE, "exposure_limit_pct": 30}, ["headline"])
+        assert "30" in received[0]
+        assert "exposure_limit_pct" in received[0]
 
     def test_prompt_contains_news(self, tmp_path):
         path = str(tmp_path / "state.json")
         received = []
-        def capture_llm(p): received.append(p); return _VALID_JSON_RESP
+        def capture_llm(p): received.append(p); return _VALID_AI_RESP
         locker = _locker(mock_llm=capture_llm, tmp_path=path)
-        locker.execute_and_lock({}, ["Fed 升息 50bps"])
+        locker.execute_and_lock(_BASE_SYSTEM_STATE.copy(), ["Fed 升息 50bps"])
         assert "Fed 升息 50bps" in received[0]
 
 
@@ -204,20 +245,22 @@ class TestLoadMacroState:
         payload = {
             "market_regime": "空頭",
             "systemic_risk_level": "危險",
-            "equity_fund_exposure_pct": 10,
-            "final_verdict": "謹慎",
+            "exposure_limit_pct": 10,
+            "Macro_Phase": "PMI收縮(46.0)",
+            "analysis_summary": "謹慎防禦",
             "timestamp": "2026-04-17 09:00:00",
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f)
         data = load_macro_state(path)
         assert data["market_regime"] == "空頭"
-        assert data["equity_fund_exposure_pct"] == 10
+        assert data["exposure_limit_pct"] == 10
+        assert data["analysis_summary"] == "謹慎防禦"
 
     def test_missing_file_returns_default(self, tmp_path):
         path = str(tmp_path / "nonexistent.json")
         data = load_macro_state(path)
-        assert data["equity_fund_exposure_pct"] == 0
+        assert data["exposure_limit_pct"] == 0
         assert data["systemic_risk_level"] == "危險"
 
     def test_corrupt_file_returns_default(self, tmp_path):
@@ -225,12 +268,12 @@ class TestLoadMacroState:
         with open(path, "w") as f:
             f.write("{ broken json ::::")
         data = load_macro_state(path)
-        assert data["equity_fund_exposure_pct"] == 0
+        assert data["exposure_limit_pct"] == 0
 
     def test_exposure_coerced_to_int(self, tmp_path):
         path = str(tmp_path / "s.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"equity_fund_exposure_pct": "60"}, f)
+            json.dump({"exposure_limit_pct": "60"}, f)
         data = load_macro_state(path)
-        assert isinstance(data["equity_fund_exposure_pct"], int)
-        assert data["equity_fund_exposure_pct"] == 60
+        assert isinstance(data["exposure_limit_pct"], int)
+        assert data["exposure_limit_pct"] == 60

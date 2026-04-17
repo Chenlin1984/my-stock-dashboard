@@ -27,7 +27,7 @@ from daily_checklist import (
 # ── 新增模組（根據說明書 v1.0）──────────────────────────────
 # ── v3.0 新增模組（§5-§11）──────────────────────────────────
 from market_strategy import get_market_assessment
-from macro_state_locker import MacroStateLocker, load_macro_state
+from macro_state_locker import MacroStateLocker, load_macro_state, calculate_system_state
 from risk_control import calc_position_size, calc_stop_loss  # RiskController removed (unused)
 from v4_strategy_engine import V4StrategyEngine   # v4.0 核心策略引擎
 from v5_modules import (                           # v5.0 大師滿配
@@ -4574,8 +4574,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     'BIAS240_pct':         _bi_d.get('bias_240'),
                     'PCR':                 _pcr_v,
                 }
+                _system_state = calculate_system_state(_macro_numbers)
                 _locker = MacroStateLocker()
-                _ok = _locker.execute_and_lock(_macro_numbers, _v_news_titles)
+                _ok = _locker.execute_and_lock(_system_state, _v_news_titles)
                 if _ok:
                     st.success('✅ AI 裁決已更新至實體狀態鎖')
                 else:
@@ -4585,9 +4586,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _ms = load_macro_state()
         _srl = _ms.get('systemic_risk_level', '危險')
         _regime = _ms.get('market_regime', '系統異常')
-        _exp_pct = int(_ms.get('equity_fund_exposure_pct', 0))
+        _exp_pct = int(_ms.get('exposure_limit_pct', 0))
         _cash_pct = 100 - _exp_pct
-        _verdict_txt = _ms.get('final_verdict', '')
+        _verdict_txt = _ms.get('analysis_summary', '')
         _ms_ts = _ms.get('timestamp', '')
 
         _srl_clr = {'安全': '#3fb950', '警告': '#d29922', '危險': '#f85149'}.get(_srl, '#8b949e')
@@ -4622,7 +4623,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'</div>'
             # 最終裁決文字
             f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
-            f'<div style="font-size:10px;color:#484f58;margin-bottom:6px;">🔒 AI 最終裁決（實體鎖）</div>'
+            f'<div style="font-size:10px;color:#484f58;margin-bottom:6px;">🔒 AI 解讀分析（實體鎖）</div>'
             f'<div style="font-size:13px;color:#e6edf3;line-height:1.7;">{_verdict_txt}</div>'
             f'</div>'
             f'</div>'
