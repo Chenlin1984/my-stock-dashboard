@@ -2,8 +2,19 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.0 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: AI 決策引擎升級為理科/文科分工架構（calculate_system_state + 輕量化 Prompt）✅
+- **版本**: v7.1 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: v5.2 物理鎖三大紅線 + MA120 5日斜率 + chip 5日累積（`46a8457`）✅
+
+## ✅ 已完成任務：v5.2 物理鎖三大紅線（`46a8457`）
+
+| 項目 | 內容 |
+|------|------|
+| 紅線一 | 薩姆規則觸發 → 曝險上限 20% |
+| 紅線二 | PMI 連兩月 <48 → 曝險上限 40%（跨次執行用 session_state 追蹤前月值）|
+| 紅線三 | 外資期貨淨空 >35000 口 + 破 MA5 → 曝險上限 30% |
+| 公式修正 | BIAS240 改雙重共振、MA120 改5日斜率、chip_score 加 foreign_5d_net、MA5 新增至 mkt_info |
+| AI Prompt | 加第4條：禁止在 analysis_summary 輸出持股百分比數字 |
+| 測試 | 36 passed（+5 紅線測試）|
 
 ## ✅ 已完成任務：AI 決策引擎 v2.0（理科/文科分工）
 
