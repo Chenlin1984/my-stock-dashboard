@@ -4564,15 +4564,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     if _pcr_raw not in ('', '-', 'nan', 'None'):
                         try: _pcr_v = float(_pcr_raw)
                         except ValueError: pass
+                # 外資期貨淨口數（負值=淨空單）
+                _fut_net_v = None
+                if _li_d is not None and not _li_d.empty and '外資大小' in _li_d.columns:
+                    try: _fut_net_v = float(_li_d.iloc[-1].get('外資大小', 0))
+                    except (ValueError, TypeError): pass
+                # 指數是否跌破 MA5（從 mkt_info 取得）
+                _mkt_d = st.session_state.get('mkt_info') or {}
+                _below_ma5 = bool(_mkt_d.get('index_below_ma5', False))
+                # PMI 連兩月追蹤：本次觸發時記錄當前值，下次觸發時作為「前月」
+                _pmi_cur = _pmi_d.get('value')
+                _pmi_prev_v = st.session_state.get('_s10_prev_pmi_value')
+                if _pmi_cur is not None:
+                    st.session_state['_s10_prev_pmi_value'] = _pmi_cur
                 _macro_numbers = {
                     'VIX_Index':           _vix_d.get('current'),
                     'M1B_YoY_pct':         _mi_d.get('m1b_yoy'),
                     'M2_YoY_pct':          _mi_d.get('m2_yoy'),
                     'TW_Export_YoY_pct':   _exp_d.get('yoy'),
-                    'ISM_PMI_or_OECD_CLI': _pmi_d.get('value'),
+                    'ISM_PMI_or_OECD_CLI': _pmi_cur,
+                    'PMI_Prev_Month':       _pmi_prev_v,
                     'US_Core_CPI_YoY_pct': _cpi_d.get('yoy'),
                     'BIAS240_pct':         _bi_d.get('bias_240'),
                     'PCR':                 _pcr_v,
+                    'Futures_Net_Short':   _fut_net_v,
+                    'Index_Below_MA5':     _below_ma5,
+                    'Sahm_Rule_Triggered': False,  # 尚無薩姆規則資料來源，預設 False
                 }
                 _system_state = calculate_system_state(_macro_numbers)
                 _locker = MacroStateLocker()

@@ -118,36 +118,41 @@ def momentum_signal(df) -> bool:
     )
 
 # ── 3. 籌碼分數 (§5.4) ────────────────────────────────────────
-def chip_score(foreign_buy, trust_buy=0, dealer_buy=0) -> int:
+def chip_score(foreign_buy, trust_buy=0, dealer_buy=0, foreign_5d_net=None) -> int:
     """
     法人籌碼評分（§5.4）
-    外資買超 +2、投信買超 +2、自營商買超 +1
-    最高 5 分
+    外資：優先用 5 日累積淨買超（foreign_5d_net），避免單日雜訊。
+    投信買超 +2、自營商買超 +1，最高 5 分。
     """
     score = 0
-    if foreign_buy > 0: score += 2
+    if foreign_5d_net is not None:
+        if foreign_5d_net > 0: score += 2
+    elif foreign_buy > 0:
+        score += 2
     if trust_buy   > 0: score += 2
     if dealer_buy  > 0: score += 1
     return score
 
 def calc_chip_score(df, foreign_buy=None, trust_buy=None, dealer_buy=None) -> float:
     """
-    籌碼分數（0-100）
-    修正：股價 DataFrame 不含籌碼欄位，必須額外傳入法人數據
-    若無法人數據，回傳 50（中性），並在 score_single_stock 中明確標記
+    籌碼分數（0-100）。
+    優先嘗試從 df 計算 5 日外資累積買超（雜訊過濾），
+    若無法取得則降級用單日 foreign_buy，最終無資料回傳 50（中性）。
     """
+    # 嘗試從 df 計算 5 日累積外資買超
+    if df is not None and not df.empty:
+        fb_col = next((c for c in ('外資買超', '外資') if c in df.columns), None)
+        tb_col = next((c for c in ('投信買超', '投信') if c in df.columns), None)
+        db_col = next((c for c in ('自營買超', '自營商') if c in df.columns), None)
+        if fb_col:
+            f5d = float(df[fb_col].tail(5).sum())
+            tb  = float(df[tb_col].iloc[-1]) if tb_col else (trust_buy or 0)
+            db  = float(df[db_col].iloc[-1]) if db_col else (dealer_buy or 0)
+            raw = chip_score(0, tb, db, foreign_5d_net=f5d)
+            return round(raw / 5 * 100, 1)
     if foreign_buy is not None:
         raw = chip_score(foreign_buy or 0, trust_buy or 0, dealer_buy or 0)
         return round(raw / 5 * 100, 1)
-    # 嘗試從 df 讀取（若有整合籌碼欄位）
-    if df is not None and not df.empty:
-        latest = df.iloc[-1]
-        fb = latest.get('外資買超', latest.get('外資', None))
-        tb = latest.get('投信買超', latest.get('投信', None))
-        db = latest.get('自營買超', latest.get('自營商', None))
-        if fb is not None:
-            raw = chip_score(float(fb or 0), float(tb or 0), float(db or 0))
-            return round(raw / 5 * 100, 1)
     return 50.0  # 無籌碼資料 → 中性（不加分不扣分）
 
 # ── 4. 量價分數 ───────────────────────────────────────────────

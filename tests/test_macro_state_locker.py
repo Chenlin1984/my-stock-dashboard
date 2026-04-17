@@ -84,6 +84,54 @@ class TestCalculateSystemState:
             r = calculate_system_state({"VIX_Index": vix})
             assert 0 <= r["exposure_limit_pct"] <= 100
 
+    # ── 三大硬否決紅線測試 ────────────────────────────────────
+    def test_sahm_rule_caps_exposure_at_20(self):
+        """薩姆規則觸發 → 無論分數多高，曝險上限 20%"""
+        result = calculate_system_state({
+            "VIX_Index": 14, "ISM_PMI_or_OECD_CLI": 56,
+            "M1B_YoY_pct": 5.0, "M2_YoY_pct": 1.0,
+            "Sahm_Rule_Triggered": True,
+        })
+        assert result["exposure_limit_pct"] <= 20
+        assert result["systemic_risk_level"] == "危險"
+        assert "薩姆規則" in result["Macro_Phase"]
+
+    def test_pmi_consecutive_below_48_caps_at_40(self):
+        """PMI 連兩月 <48 → 曝險上限 40%"""
+        result = calculate_system_state({
+            "VIX_Index": 18, "ISM_PMI_or_OECD_CLI": 47.0,
+            "PMI_Prev_Month": 47.5,
+        })
+        assert result["exposure_limit_pct"] <= 40
+        assert "PMI連兩月收縮" in result["Macro_Phase"]
+
+    def test_pmi_only_one_month_no_veto(self):
+        """PMI 只有本月 <48，前月正常 → 不觸發連兩月紅線"""
+        result = calculate_system_state({
+            "ISM_PMI_or_OECD_CLI": 47.0,
+            "PMI_Prev_Month": 50.5,
+        })
+        assert "PMI連兩月收縮" not in result["Macro_Phase"]
+
+    def test_futures_net_short_with_below_ma5_caps_at_30(self):
+        """外資期貨淨空 >35000 + 破 MA5 → 曝險上限 30%"""
+        result = calculate_system_state({
+            "VIX_Index": 18, "ISM_PMI_or_OECD_CLI": 52,
+            "Futures_Net_Short": -40000,
+            "Index_Below_MA5": True,
+        })
+        assert result["exposure_limit_pct"] <= 30
+        assert "期貨淨空" in result["Macro_Phase"]
+
+    def test_futures_net_short_without_below_ma5_no_veto(self):
+        """外資期貨淨空 >35000 但指數站上 MA5 → 不觸發紅線三"""
+        result = calculate_system_state({
+            "VIX_Index": 18, "ISM_PMI_or_OECD_CLI": 52,
+            "Futures_Net_Short": -40000,
+            "Index_Below_MA5": False,
+        })
+        assert "期貨淨空" not in result["Macro_Phase"]
+
 
 # ═══════════════════════════════════════════════════════════════
 # TestExtractJson — _extract_json 清洗邏輯

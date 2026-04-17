@@ -192,9 +192,12 @@ def get_market_assessment(df_index=None, foreign_net=None):
         mkt = fetch_market_data()
         foreign_net = mkt.get('foreign_net') or 0  # None(API失敗) → 0 避免 TypeError
 
-    # P9修正: 傳入前一日MA值，讓斜率過濾生效
-    ma60_prev  = float(df_index['Close'].rolling(60).mean().iloc[-2])  if len(df_index) >= 61 else None
-    ma120_prev = float(df_index['Close'].rolling(120).mean().iloc[-2]) if len(df_index) >= 121 else None
+    # MA5 計算（供物理鎖硬否決紅線三使用）
+    ma5 = float(df_index['Close'].rolling(5).mean().iloc[-1]) if len(df_index) >= 5 else current_price
+
+    # MA120 改用 5 日斜率（防止單日假訊號）：5日前 MA120 值作為比較基準
+    ma60_prev  = float(df_index['Close'].rolling(60).mean().iloc[-2])  if len(df_index) >= 61  else None
+    ma120_prev = float(df_index['Close'].rolling(120).mean().iloc[-6]) if len(df_index) >= 126 else None
     regime_result = market_regime(current_price, ma60, ma120, foreign_net,
                                   ma60_prev=ma60_prev, ma120_prev=ma120_prev,
                                   vol_today=vol_today, avg_vol_20=avg_vol)
@@ -203,10 +206,12 @@ def get_market_assessment(df_index=None, foreign_net=None):
     # P5修正: 保留新版signals，不讓old_result.signals覆蓋
     result = {**old_result, **regime_result}   # regime優先
     result['signals'] = regime_result.get('signals', [])  # 確保新版signals不被覆蓋
-    result['index_price'] = round(current_price, 2)
-    result['ma60']  = round(ma60, 2)
-    result['ma120'] = round(ma120, 2)
-    result['ma200'] = round(ma200, 2)
+    result['index_price']    = round(current_price, 2)
+    result['ma5']            = round(ma5, 2)
+    result['ma60']           = round(ma60, 2)
+    result['ma120']          = round(ma120, 2)
+    result['ma200']          = round(ma200, 2)
+    result['index_below_ma5'] = current_price < ma5
     result['foreign_net']   = foreign_net
     result['exposure']      = portfolio_exposure(regime_result['regime'])
     result['exposure_pct']  = f"{portfolio_exposure(regime_result['regime'])*100:.0f}%"

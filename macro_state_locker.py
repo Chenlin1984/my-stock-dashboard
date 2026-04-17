@@ -40,6 +40,7 @@ _PROMPT_TEMPLATE = """\
 1. 資訊隔離：【絕對禁止】腦補或使用預訓練知識。你的解讀【必須 100% 基於】下方 <System_Calculated_State> 與 <News> 的內容。
 2. 絕對服從：你必須絕對服從系統給出的「最高持股上限 (exposure_limit_pct)」。若系統給出 30%，代表底層風控已啟動，你的解讀必須偏向防禦與風險提示；若為 80%，則可偏向樂觀。禁止在文字中給出違背系統上限的買賣建議。
 3. 標的限制：禁止在解讀中建議配置 ETF 或任何非股票型基金的資產。
+4. 數字禁令：【絕對禁止】在 analysis_summary 中輸出任何持股百分比數字（如「60%」「持股七成」）。你的角色是「軍事發言人」，解釋系統決策理由，不得重複或替換系統已輸出的量化水位。
 
 # Input Data
 <System_Calculated_State>
@@ -212,9 +213,14 @@ def load_macro_state(state_file_path: str = "macro_state.json") -> dict:
 def calculate_system_state(macro_numbers: dict) -> dict:
     """
     Rule-based quantitative engine (理科 brain).
-    輸入原始指標 dict，輸出 market_regime / systemic_risk_level /
-    exposure_limit_pct / Macro_Phase，供 AI 解讀引擎使用。
+    包含三大硬否決紅線（Physical Lock），覆蓋分數計算結果。
+    新增輸入：Sahm_Rule_Triggered / PMI_Prev_Month / Futures_Net_Short / Index_Below_MA5
     """
+    def _b(key):
+        v = macro_numbers.get(key)
+        if isinstance(v, bool): return v
+        return str(v).lower() in ('true', '1', 'yes') if v is not None else False
+
     def _f(key, default):
         v = macro_numbers.get(key)
         try:
@@ -222,12 +228,16 @@ def calculate_system_state(macro_numbers: dict) -> dict:
         except (ValueError, TypeError):
             return default
 
-    vix     = _f("VIX_Index", 20.0)
-    pmi     = _f("ISM_PMI_or_OECD_CLI", 50.0)
-    m1b_yoy = _f("M1B_YoY_pct", 0.0)
-    m2_yoy  = _f("M2_YoY_pct", 0.0)
-    bias240 = _f("BIAS240_pct", 0.0)
-    pcr     = _f("PCR", 1.0)
+    vix         = _f("VIX_Index", 20.0)
+    pmi         = _f("ISM_PMI_or_OECD_CLI", 50.0)
+    pmi_prev    = _f("PMI_Prev_Month", 50.0)
+    m1b_yoy     = _f("M1B_YoY_pct", 0.0)
+    m2_yoy      = _f("M2_YoY_pct", 0.0)
+    bias240     = _f("BIAS240_pct", 0.0)
+    pcr         = _f("PCR", 1.0)
+    futures_net = _f("Futures_Net_Short", 0.0)  # 負值 = 淨空單
+    sahm        = _b("Sahm_Rule_Triggered")
+    below_ma5   = _b("Index_Below_MA5")
 
     score = 60  # 中性基準
 
@@ -249,25 +259,51 @@ def calculate_system_state(macro_numbers: dict) -> dict:
     elif spread > 0:  score += 5
     elif spread < -3: score -= 10
 
-    # BIAS240 長期均線偏離
-    if bias240 > 15:    score -= 15
-    elif bias240 < -10: score += 10
+    # BIAS240 雙重共振才扣分：高乖離需同時伴隨 VIX 偏高或 PMI 收縮
+    if bias240 > 15 and (vix >= 22 or pmi < 50):
+        score -= 15
+    elif bias240 < -10:
+        score += 10
 
     # PCR 期權恐慌比
     if pcr > 1.5:   score -= 10
     elif pcr < 0.7: score += 5
 
+    # ── 初始曝險（分數計算結果）─────────────────────────────
     exposure = max(0, min(100, round(score / 10) * 10))
 
+    # ── 三大硬否決紅線 (Hard Veto Physical Lock) ────────────
+    veto_labels: list[str] = []
+
+    # 紅線一：薩姆規則（美國衰退警報）→ 強制上限 20%
+    if sahm:
+        exposure = min(exposure, 20)
+        veto_labels.append("🚨薩姆規則觸發")
+
+    # 紅線二：ISM PMI 連兩月 <48 → 強制上限 40%
+    if pmi < 48 and pmi_prev < 48:
+        exposure = min(exposure, 40)
+        veto_labels.append(f"⚠️PMI連兩月收縮({pmi_prev:.1f}→{pmi:.1f})")
+
+    # 紅線三：外資期貨淨空 >35000 口 + 指數跌破 MA5 → 強制上限 30%
+    if futures_net < -35000 and below_ma5:
+        exposure = min(exposure, 30)
+        veto_labels.append(f"🚨期貨淨空{abs(futures_net):.0f}口+破MA5")
+
+    # ── 依硬否決後的曝險重新評定等級 ────────────────────────
     if exposure >= 70:   risk_level, regime = "安全", "多頭"
     elif exposure >= 40: risk_level, regime = "警告", "震盪"
     else:                risk_level, regime = "危險", "空頭"
 
-    labels = []
-    if pmi < 50:      labels.append(f"PMI收縮({pmi:.1f})")
-    if vix > 25:      labels.append(f"VIX高波動({vix:.1f})")
-    if spread < 0:    labels.append("資金緊縮")
-    if bias240 > 15:  labels.append("均線過熱")
+    labels = veto_labels.copy()
+    if pmi < 50 and not any("PMI" in l for l in labels):
+        labels.append(f"PMI收縮({pmi:.1f})")
+    if vix > 25:
+        labels.append(f"VIX高波動({vix:.1f})")
+    if spread < 0:
+        labels.append("資金緊縮")
+    if bias240 > 15 and (vix >= 22 or pmi < 50):
+        labels.append("均線過熱")
     macro_phase = "、".join(labels) if labels else "環境正常"
 
     return {
