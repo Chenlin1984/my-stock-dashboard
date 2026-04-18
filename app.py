@@ -6924,7 +6924,162 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     st.markdown(_ai_result)
                 else:
                     st.caption('點擊上方按鈕生成完整AI投資決策分析')
-    
+
+    # ══ 批次財報體檢（MJ林明樟體系）═══════════════════════════════
+    st.markdown('---')
+    st.markdown("""<div style="padding:4px 0 2px;">
+<span style="font-size:18px;font-weight:900;color:#e6edf3;">🏥 批次財報體檢</span>
+<span style="font-size:11px;color:#484f58;margin-left:10px;">MJ林明樟體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span>
+</div>""", unsafe_allow_html=True)
+
+    _fh_t3_col1, _fh_t3_col2 = st.columns([3, 1])
+    with _fh_t3_col1:
+        t3_fh_btn = st.button(
+            '🏥 批次財報體檢', key='btn_fh_t3', type='primary',
+            disabled=not bool(stock_list_t3),
+            help='對上方股票清單批次執行MJ財報體檢（最多10支）'
+        )
+    with _fh_t3_col2:
+        if st.button('🗑️ 清除體檢結果', key='btn_fh_t3_clear'):
+            st.session_state.pop('_fh_t3_results', None)
+            st.rerun()
+
+    if t3_fh_btn and stock_list_t3:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        _gemini_key_fh = st.secrets.get('GEMINI_API_KEY', '')
+        _finmind_tok_fh = st.secrets.get('FINMIND_TOKEN', '')
+        _fh_t3_res = {}
+        _fh_prog = st.progress(0, text='財報體檢中...')
+
+        def _fetch_and_analyze(sid):
+            fin = fetch_financial_statements(sid, _finmind_tok_fh)
+            result = analyze_financial_health(_gemini_key_fh, sid, fin)
+            return sid, result
+
+        _done = 0
+        with ThreadPoolExecutor(max_workers=3) as _exe:
+            _futs = {_exe.submit(_fetch_and_analyze, s): s for s in stock_list_t3}
+            for _fut in as_completed(_futs):
+                _done += 1
+                _fh_prog.progress(_done / len(stock_list_t3),
+                                   text=f'體檢完成 {_done}/{len(stock_list_t3)}...')
+                _sid_r, _res_r = _fut.result()
+                _fh_t3_res[_sid_r] = _res_r
+        _fh_prog.empty()
+        st.session_state['_fh_t3_results'] = _fh_t3_res
+
+    _fh_t3_cached = st.session_state.get('_fh_t3_results', {})
+    if _fh_t3_cached:
+        # ── 摘要比較表 ────────────────────────────────────────────
+        st.markdown('##### 📊 體檢摘要比較表')
+        _fh_rows = []
+        for _sid_f, _fd_f in _fh_t3_cached.items():
+            _scores_f = _fd_f.get('radar_scores', {})
+            _avg_f = round(sum(_scores_f.values()) / len(_scores_f), 1) if _scores_f else 0
+            _fh_rows.append({
+                '代碼':     _sid_f,
+                '現金水位':  _fd_f.get('cash_ratio_status', '?') + ' ' + _fd_f.get('cash_ratio_value', ''),
+                'OCF':      _fd_f.get('ocf_status', '?') + ' ' + _fd_f.get('ocf_value', ''),
+                '負債比':   _fd_f.get('debt_ratio_status', '?') + ' ' + _fd_f.get('debt_ratio_value', ''),
+                '企業DNA':  _fd_f.get('business_model_dna', 'N/A'),
+                '雷達均分': _avg_f,
+                '紅旗':     '⚠️' if (_fd_f.get('red_flags', 'None') not in ('None', '', None)) else '✅',
+            })
+        _df_fh = pd.DataFrame(_fh_rows)
+        st.dataframe(
+            _df_fh, use_container_width=True, hide_index=True,
+            column_config={
+                '代碼':     st.column_config.TextColumn('代碼',   width='small'),
+                '現金水位': st.column_config.TextColumn('現金水位'),
+                'OCF':      st.column_config.TextColumn('OCF'),
+                '負債比':   st.column_config.TextColumn('負債比'),
+                '企業DNA':  st.column_config.TextColumn('企業DNA', width='medium'),
+                '雷達均分': st.column_config.NumberColumn('雷達均分', format='%.1f ⭐'),
+                '紅旗':     st.column_config.TextColumn('紅旗', width='small'),
+            }
+        )
+
+        # ── 個股詳細展開卡片 ──────────────────────────────────────
+        st.markdown('##### 🔍 個股詳細體檢報告')
+        for _sid_f, _fd_f in _fh_t3_cached.items():
+            _dna_f = _fd_f.get('business_model_dna', '無法判斷')
+            _dna_color = ('#3fb950' if _dna_f.startswith('A+') else
+                          '#2ea043' if _dna_f.startswith('A') else
+                          '#d29922' if _dna_f.startswith('B') else
+                          '#f97316' if _dna_f.startswith('C') else
+                          '#f85149')
+            with st.expander(f'🏥 {_sid_f} — DNA: {_dna_f}', expanded=False):
+                # 生死燈號
+                _gc1, _gc2, _gc3 = st.columns(3)
+                _gc1.metric('現金佔總資產', _fd_f.get('cash_ratio_value', 'N/A'),
+                            _fd_f.get('cash_ratio_status', '🔴'))
+                _gc2.metric('營業活動現金流', _fd_f.get('ocf_value', 'N/A'),
+                            _fd_f.get('ocf_status', '🔴'))
+                _gc3.metric('負債比率', _fd_f.get('debt_ratio_value', 'N/A'),
+                            _fd_f.get('debt_ratio_status', '🔴'))
+
+                # 雷達圖
+                _scores_f = _fd_f.get('radar_scores', {})
+                if _scores_f:
+                    import plotly.graph_objects as go
+                    _cats_f = list(_scores_f.keys())
+                    _vals_f = list(_scores_f.values()) + [list(_scores_f.values())[0]]
+                    _cats_f_closed = _cats_f + [_cats_f[0]]
+                    _fig_f = go.Figure(go.Scatterpolar(
+                        r=_vals_f, theta=_cats_f_closed,
+                        fill='toself', fillcolor='rgba(63,185,80,0.15)',
+                        line=dict(color='#3fb950', width=2),
+                        marker=dict(size=6, color='#3fb950'),
+                    ))
+                    _fig_f.update_layout(
+                        polar=dict(
+                            radialaxis=dict(range=[0, 100], tickfont=dict(size=9), showticklabels=True),
+                            angularaxis=dict(tickfont=dict(size=11)),
+                            bgcolor='#0d1117',
+                        ),
+                        paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+                        showlegend=False, height=280,
+                        margin=dict(l=40, r=40, t=20, b=20),
+                    )
+                    st.plotly_chart(_fig_f, use_container_width=True,
+                                    key=f'radar_t3_{_sid_f}')
+
+                # DNA + OPM
+                st.markdown(
+                    f'<div style="display:inline-block;background:{_dna_color}22;'
+                    f'border:1px solid {_dna_color}66;border-radius:6px;'
+                    f'padding:4px 12px;font-size:13px;color:{_dna_color};font-weight:700;">'
+                    f'企業DNA：{_dna_f}</div>',
+                    unsafe_allow_html=True
+                )
+                _opm_f = _fd_f.get('opm_data', {})
+                if _opm_f:
+                    _pay_f = _opm_f.get('payable_days', 0)
+                    _rec_f = _opm_f.get('receivable_days', 0)
+                    _adv_f = _opm_f.get('advantage', False)
+                    if _adv_f:
+                        st.success(f'OPM護城河 ✅ 付款天數({_pay_f}天) > 收款天數({_rec_f}天)，具議價優勢')
+                    else:
+                        st.warning(f'OPM護城河 ⚠️ 付款天數({_pay_f}天) ≤ 收款天數({_rec_f}天)，議價能力待強化')
+
+                # AI 診斷
+                _insight_f = _fd_f.get('ai_insight', '')
+                if _insight_f:
+                    st.markdown(
+                        f'<div style="background:#161b22;border-left:3px solid #3fb950;'
+                        f'padding:10px 14px;border-radius:0 6px 6px 0;'
+                        f'font-size:13px;color:#c9d1d9;margin-top:8px;">'
+                        f'🤖 {_insight_f}</div>',
+                        unsafe_allow_html=True
+                    )
+
+                # 紅旗
+                _flags_f = _fd_f.get('red_flags', 'None')
+                if _flags_f and _flags_f not in ('None', ''):
+                    st.error(f'🚩 紅旗警示：{_flags_f}')
+                else:
+                    st.success('✅ 未發現財報紅旗異常')
+
 # ══════════════════════════════════════════════════════════════
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
 # ══════════════════════════════════════════════════════════════
