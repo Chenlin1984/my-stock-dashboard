@@ -2,8 +2,8 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.2 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: 個股 Tab 2 新增「H. AI 財報體檢戰情室」（MJ 林明樟體系）（`a53b8c8`）✅
+- **版本**: v7.3 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: Tab 3 批次財報體檢（MJ林明樟體系）完成（`2ace67d`）✅
 
 ## ✅ 已完成任務：AI 財報體檢戰情室 v1.0（`a53b8c8`）
 
@@ -47,7 +47,29 @@ Python rule-based 計算 `exposure_limit_pct`，AI 僅輸出 `analysis_summary` 
 | Step 2 | `app.py`：Section 十改為唯讀裁決卡片 + 「執行 AI 裁決」觸發按鈕；移除舊 IF-ELSE 邏輯 | ✅ |
 | Step 3 | `tests/test_macro_state_locker.py`：23 tests，0 failures，無 HTTP 呼叫 | ✅ |
 
-## 🛠️ 核心檔案
+## ✅ 已完成任務：總經數據自動警示模組 `macro_alert.py`（main `20bad40`）
+
+**目標**：新增 L3 策略層模組，監控 VIX / CPI / 10Y 殖利率 / DXY / PCR 等總經指標，
+閾值觸發時自動在 Section 8 頂端發出 🔴🟡🟢 分級警示橫幅。
+
+| 步驟 | 內容 | Commit | 狀態 |
+|------|------|--------|------|
+| Step 1 | 規則引擎：`config.py` MACRO_ALERT_RULES + `check_macro_alerts()` 純函式 | `6aef067` | ✅ |
+| Step 2 | 資料擷取：`fetch_macro_snapshot()`，session_state 優先 + yfinance 補抓 | `92086c6` | ✅ |
+| Step 3 | UI 元件：`render_macro_alerts()`，badge 條 + 展開詳情，純資料驅動 | `e293fe7` | ✅ |
+| Step 4 | app.py 整合：Section 8 頂端注入，`session_state['macro_alerts']` 供全站共用 | `5e56112` | ✅ |
+| Step 5 | 單元測試：`tests/test_macro_alert.py` 62 tests，0 failures，無 API 呼叫 | `20bad40` | ✅ |
+
+## ✅ 已完成任務：ARCHITECTURE.md 技術規格書
+
+| 步驟 | 內容 | 狀態 |
+|------|------|------|
+| Step 1 | **目錄結構**：檔案樹 + 每檔一行職責說明 | ✅ 完成 (`bc2f200`) |
+| Step 2 | **系統架構概覽**：分層設計（5層）+ ASCII 架構圖 | ✅ 完成 (`079a589`) |
+| Step 3 | **資料流向**：3大主流程（個股/ETF/每日總覽）的資料流圖 | ✅ 完成 (`c7cb28d`) |
+| Step 4 | **核心函式 I/O**：按模組分組，列出 signature + 輸入/輸出說明 | ✅ 完成 (`22d29ec`) |
+| Step 5 | **組裝 + commit**：合併 Step 1-4 成完整 ARCHITECTURE.md，push + 更新 STATE.md | ✅ 完成 |
+
 | 檔案 | 職責 |
 |------|------|
 | `app.py` | Streamlit 主程式（10 個 Section，~4700 行）|
@@ -76,6 +98,13 @@ Python rule-based 計算 `exposure_limit_pct`，AI 僅輸出 `analysis_summary` 
 - NDC data.gov.tw 3個resourceID 全404 → OECD CLI代理正常
 - st.dataframe / st.button 的 `use_container_width` 待 Streamlit 官方明確後再處理
 - ETF AI 存股決策：BIAS240 需 ≥240 日資料，新掛牌 ETF 會顯示 N/A
+
+## ✅ 新增功能（v6.5）
+- v4.0 四大引擎升級（`fff28cf`）：
+  - **Engine 1** `market_strategy.py`：`market_regime()` 加入宏爺 M1B-M2 資金活水評分（選填，向後相容），max_score 升至 6
+  - **Engine 3** `v4_strategy_engine.py`：`detect_vcp_breakout()`（春哥三階段波幅收縮 + 蔡森等幅測距目標價）+ `detect_false_breakout_v4()`（天量黑K逃命訊號）
+  - **Engine 4** `portfolio_manager.py`（新建）：`CoreSatelliteManager` 核心/衛星動態配比 + 超標 10% 再平衡警報
+  - 妮可地緣籌碼加權（1.5x）：資料源不支援，暫不實作
 
 ## ✅ 已修復（v6.4）
 - 紅綠燈 + 市場概覽合併為單一看板（`716eed1`）：

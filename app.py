@@ -46,6 +46,7 @@ from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
 from financial_health_engine import analyze_financial_health
 from data_loader import fetch_financial_statements
+from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
     safe_float, find_value_by_alias, classify_missing_data,
@@ -2680,9 +2681,17 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 print(f'[市場評估] 大盤DF shape={getattr(_twii_df_loaded,"shape",None)}, '
                       f'columns={list(getattr(_twii_df_loaded,"columns",[]))}, '
                       f'外資淨={_foreign_net_loaded/1e8:.1f}億')
+                # 取得 M1B-M2 資金活水資料（宏爺評分維度）
+                _m1b2  = st.session_state.get('m1b_m2_info') or {}
+                _m1b2_gap  = (round(float(_m1b2['m1b_yoy']) - float(_m1b2['m2_yoy']), 2)
+                               if _m1b2.get('m1b_yoy') is not None and _m1b2.get('m2_yoy') is not None
+                               else None)
+                _m1b2_prev = _m1b2.get('m1b_m2_gap_prev')  # 上月 gap（若有）
                 _mkt_loaded = get_market_assessment(
                     df_index=_twii_df_loaded,
-                    foreign_net=_foreign_net_loaded
+                    foreign_net=_foreign_net_loaded,
+                    m1b_m2_gap=_m1b2_gap,
+                    m1b_m2_prev=_m1b2_prev,
                 )
                 if _mkt_loaded:
                     if margin:
@@ -3985,6 +3994,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # SECTION 八: 總經拼圖 v4.0 (景氣位階 × 前瞻需求 × 全球風險)
     # ══════════════════════════════════════════════════════════════
     st.markdown(section_header('八','🌐 總經拼圖 v4.0（景氣位階 × 前瞻需求 × 全球風險）','🌐'),unsafe_allow_html=True)
+
+    # ── 總經自動警示看板（VIX / CPI / 10Y / DXY / PCR）────────
+    _ma_snap   = fetch_macro_snapshot(
+        session_macro=st.session_state.get('macro_info'),
+        session_li=st.session_state.get('li_latest'),
+        session_m1b2=st.session_state.get('m1b_m2_info'),
+    )
+    _ma_alerts = check_macro_alerts(_ma_snap)
+    st.session_state['macro_alerts'] = _ma_alerts   # 供 Section 九/十共用
+    render_macro_alerts(_ma_alerts)
 
     _macro_info = st.session_state.get('macro_info') or {}
     _m8_ndc   = _macro_info.get('ndc_signal')

@@ -1,7 +1,8 @@
 """
-市場狀態判斷引擎 v3.0 (§5.1)
+市場狀態判斷引擎 v4.0 (§5.1)
 目的：先判斷是否適合積極進場
 輸出：bull / neutral / bear + 建議持股比例
+v4.0 新增：宏爺 M1B-M2 資金活水評分維度
 """
 import requests
 import datetime
@@ -44,10 +45,14 @@ def fetch_market_data():
 
 # ── 核心：市場狀態判斷 (§5.1) ─────────────────────────────────
 def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
-                  ma60_prev=None, ma120_prev=None, vol_today=0, avg_vol_20=1):
+                  ma60_prev=None, ma120_prev=None, vol_today=0, avg_vol_20=1,
+                  m1b_m2_gap=None, m1b_m2_prev=None):
     """
-    市場狀態判斷引擎（優化版）
-    新增：MA斜率過濾（防假突破）+ 瘋牛濾網（量能修正韭菜指數）
+    市場狀態判斷引擎 v4.0
+    新增：MA斜率過濾（防假突破）+ 瘋牛濾網 + 宏爺 M1B-M2 資金活水評分
+
+    m1b_m2_gap:  float | None — M1B年增率 - M2年增率（百分點）
+    m1b_m2_prev: float | None — 上月 gap，用於判斷趨勢方向
     """
     score = 0
     signals = []
@@ -56,7 +61,6 @@ def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
     if index_close > ma60:
         score += 1
         signals.append('✅ 站上MA60')
-        # MA斜率：今日MA60 > 昨日MA60 = 中期趨勢向上彎折
         if ma60_prev and ma60 > ma60_prev:
             score += 0.5
             signals.append('✅ MA60向上彎折（真突破濾網）')
@@ -75,7 +79,7 @@ def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
     else:
         signals.append('❌ 跌破MA120')
 
-    # ③ 外資方向（foreign_buy == 0 且未傳入真實數據時視為「尚無資料」，不扣分）
+    # ③ 外資方向
     if foreign_buy is None or foreign_buy == 0:
         signals.append('⏰ 外資數據待更新（收盤後15:30可用）')
     elif foreign_buy > 0:
@@ -91,8 +95,20 @@ def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
     else:
         signals.append(f'❌ 市場廣度偏弱 ({ad_ratio:.2f})')
 
-    # ── 判定 regime（斜率加分納入後最高可到 5 分）
-    _bull_threshold = 3     # 含斜率加分，門檻不變
+    # ⑤ 宏爺 M1B-M2 資金活水（選填，不傳則略過，向後相容）
+    if m1b_m2_gap is not None:
+        _trending_up = (m1b_m2_prev is not None) and (m1b_m2_gap > m1b_m2_prev)
+        if m1b_m2_gap > 0 and _trending_up:
+            score += 1
+            signals.append(f'💧 M1B-M2 活水正向且上升 ({m1b_m2_gap:+.2f}%)')
+        elif m1b_m2_gap > 0:
+            score += 0.5
+            signals.append(f'💧 M1B-M2 活水正向 ({m1b_m2_gap:+.2f}%)，趨勢待確認')
+        else:
+            signals.append(f'🚱 M1B-M2 資金動能偏弱 ({m1b_m2_gap:+.2f}%)，延後積極進場')
+
+    # ── 判定 regime
+    _bull_threshold   = 3
     _neutral_threshold = 2
     if score >= _bull_threshold:
         regime = 'bull'
@@ -101,18 +117,22 @@ def market_regime(index_close, ma60, ma120, foreign_buy, ad_ratio=1.0,
     else:
         regime = 'bear'
 
-    # ── 瘋牛濾網（量能充沛 → 放寬散戶警戒）
+    # ── 瘋牛濾網
     _bullrun = vol_today > avg_vol_20 * 1.3 if avg_vol_20 > 0 else False
     if _bullrun:
-        signals.append(f'💹 瘋牛模式：成交量 {vol_today/avg_vol_20:.1f}x 均量，散戶信號需放寬解讀')
+        signals.append(f'💹 瘋牛模式：成交量 {vol_today/avg_vol_20:.1f}x 均量')
+
+    # max_score：基礎 5 分（MA×2 + 外資 + 廣度 + 斜率×1）+ M1B-M2 最多 1 分 = 6
+    _max = 6 if m1b_m2_gap is not None else 5
 
     return {
         'regime': regime,
         'bullrun': _bullrun,
         'score': score,
-        'max_score': 5,  # 含斜率加分（MA60+MA120各0.5），最高5分
+        'max_score': _max,
         'signals': signals,
-        'label': {'bull': '🟢 多頭', 'neutral': '🟡 中性', 'bear': '🔴 空頭'}[regime]
+        'label': {'bull': '🟢 多頭', 'neutral': '🟡 中性', 'bear': '🔴 空頭'}[regime],
+        'm1b_m2_gap': m1b_m2_gap,
     }
 
 
@@ -156,10 +176,13 @@ def market_score(index_price, ma200, foreign_buy, volume, avg_volume=1000):
             'confidence': confidence, 'signals': signals}
 
 
-def get_market_assessment(df_index=None, foreign_net=None):
+def get_market_assessment(df_index=None, foreign_net=None,
+                          m1b_m2_gap=None, m1b_m2_prev=None):
     """
-    整合版市場評估（v3.0 升級版）
+    整合版市場評估（v4.0 升級版）
     同時輸出 regime (bull/neutral/bear) 與舊版 score
+    m1b_m2_gap:  M1B年增率 - M2年增率（百分點）；None = 不納入評分
+    m1b_m2_prev: 上月 gap，用於判斷趨勢方向
     """
     import yfinance as yf
     if df_index is None:
@@ -200,7 +223,8 @@ def get_market_assessment(df_index=None, foreign_net=None):
     ma120_prev = float(df_index['Close'].rolling(120).mean().iloc[-6]) if len(df_index) >= 126 else None
     regime_result = market_regime(current_price, ma60, ma120, foreign_net,
                                   ma60_prev=ma60_prev, ma120_prev=ma120_prev,
-                                  vol_today=vol_today, avg_vol_20=avg_vol)
+                                  vol_today=vol_today, avg_vol_20=avg_vol,
+                                  m1b_m2_gap=m1b_m2_gap, m1b_m2_prev=m1b_m2_prev)
     old_result    = market_score(current_price, ma200, foreign_net, vol_today, avg_vol)
 
     # P5修正: 保留新版signals，不讓old_result.signals覆蓋

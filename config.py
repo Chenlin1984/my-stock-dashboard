@@ -81,3 +81,49 @@ LEEK_LOW_THRESHOLD   = 10.0   # 低於此值 = 散戶淨空，潛在機會
 # ── 瘋牛濾網（量能過濾韭菜指數）────────────────────────────
 BULLRUN_VOL_THRESHOLD = 1.3   # 大盤成交量 > 月均量 x 1.3 = 資金派對模式
 
+# ── 總經警示規則（macro_alert.py 使用）──────────────────────
+# 欄位說明：
+#   red_above    → 值 > 此門檻觸發 🔴
+#   yellow_above → 值 > 此門檻觸發 🟡（優先級低於 red_above）
+#   red_below    → 值 < 此門檻觸發 🔴（雙向指標適用）
+#   yellow_below → 值 < 此門檻觸發 🟡（雙向指標適用）
+MACRO_ALERT_RULES: list = [
+    {
+        'key':          'vix',
+        'label':        'VIX 恐慌指數',
+        'unit':         '',
+        'red_above':    30.0,   # > 30 市場恐慌
+        'yellow_above': 20.0,   # 20–30 警戒
+    },
+    {
+        'key':          'cpi',
+        'label':        'CPI YoY（美）',
+        'unit':         '%',
+        'red_above':    3.5,    # > 3.5% 通膨加速，Fed 升息壓力
+        'yellow_above': 2.5,    # 2.5–3.5% 溫和通膨
+    },
+    {
+        'key':          'us10y',
+        'label':        '美債 10Y 殖利率',
+        'unit':         '%',
+        'red_above':    4.8,    # > 4.8% 融資成本壓力，股市估值承壓
+        'yellow_above': 4.2,    # 4.2–4.8% 觀察區
+    },
+    {
+        'key':          'dxy',
+        'label':        'DXY 美元指數',
+        'unit':         '',
+        'red_above':    107.0,  # > 107 強美元，外資撤離新興市場壓力
+        'yellow_above': 103.0,  # 103–107 中性偏強
+    },
+    {
+        'key':          'pcr',
+        'label':        'PCR 選擇權比值',
+        'unit':         '',
+        'red_above':    1.5,    # > 1.5 市場極度恐慌
+        'yellow_above': 1.2,    # 1.2–1.5 偏空情緒
+        'red_below':    0.5,    # < 0.5 過度樂觀（頂部訊號）
+        'yellow_below': 0.7,    # 0.5–0.7 樂觀偏高，注意反轉
+    },
+]
+
