@@ -44,6 +44,8 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
+from financial_health_engine import analyze_financial_health
+from data_loader import fetch_financial_statements
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
     safe_float, find_value_by_alias, classify_missing_data,
@@ -6247,6 +6249,151 @@ padding:12px 16px;margin:8px 0;">
                 '大盤狀態':      _regime2,
             },
         })
+
+        # ══════════════════════════════════════════════════════
+        # H. AI 財報體檢戰情室（MJ 林明樟體系）
+        # ══════════════════════════════════════════════════════
+        st.markdown("""<div style="padding:6px 0 2px;margin-top:10px;">
+<span style="font-size:16px;font-weight:900;color:#e6edf3;">🏥 H. AI 財報體檢戰情室</span>
+<span style="font-size:11px;color:#484f58;margin-left:8px;">林明樟 MJ 體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span>
+</div>""", unsafe_allow_html=True)
+
+        with st.expander('🔬 展開 AI 財報體檢（林明樟 MJ 體系）', expanded=False):
+            _fh_hdr1, _fh_hdr2 = st.columns([5, 1])
+            with _fh_hdr1:
+                st.markdown(
+                    '<div style="font-size:12px;color:#8b949e;padding:2px 0 6px;">'
+                    '依林明樟（MJ老師）4力1棒子框架，由 Gemini AI 解讀三大報表，'
+                    '輸出生死燈號、五力雷達、企業DNA、護城河指標與白話診斷。'
+                    '<br><span style="color:#484f58;">需設定 FINMIND_TOKEN 與 GEMINI_API_KEY。</span></div>',
+                    unsafe_allow_html=True)
+            with _fh_hdr2:
+                _do_fh = st.button('🏥 執行財報體檢', key='btn_fh',
+                                   use_container_width=True, type='primary')
+
+            if _do_fh:
+                with st.spinner('📊 正在從 FinMind 抓取財報數據並呼叫 AI 分析（約 20~30 秒）…'):
+                    _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
+                    if _fin_raw.get('error'):
+                        st.error(_fin_raw['error'])
+                    else:
+                        _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
+                        st.session_state[f'_fh_{sid2}'] = _fh_out
+                        if _fh_out.get('error'):
+                            st.error(_fh_out.get('ai_insight', 'AI 分析失敗'))
+                        else:
+                            st.success(f'✅ {name2} 財報體檢完成')
+
+            _fh = st.session_state.get(f'_fh_{sid2}')
+
+            if not _fh:
+                st.info('點擊「執行財報體檢」按鈕，啟動 MJ 體系 AI 財務診斷。')
+            else:
+                # ── 第一關：三大生死燈號 ────────────────────
+                st.markdown('#### 🛡️ 第一關：生死與體質防禦')
+                _fh_c1, _fh_c2, _fh_c3 = st.columns(3)
+                with _fh_c1:
+                    st.metric(
+                        label='氣長不長（現金佔總資產 > 25%）',
+                        value=f"{_fh.get('cash_ratio_status','?')} {_fh.get('cash_ratio_value','N/A')}",
+                        delta='安全' if _fh.get('cash_ratio_status') == '🟢' else
+                              '注意' if _fh.get('cash_ratio_status') == '🟡' else '危險',
+                        delta_color='normal' if _fh.get('cash_ratio_status') == '🟢' else 'inverse',
+                    )
+                with _fh_c2:
+                    st.metric(
+                        label='真假獲利（OCF 必須為正）',
+                        value=f"{_fh.get('ocf_status','?')} {_fh.get('ocf_value','N/A')}",
+                        delta='穩定流入' if _fh.get('ocf_status') == '🟢' else '黑字破產警戒',
+                        delta_color='normal' if _fh.get('ocf_status') == '🟢' else 'inverse',
+                    )
+                with _fh_c3:
+                    st.metric(
+                        label='那根棒子（負債比 < 60%）',
+                        value=f"{_fh.get('debt_ratio_status','?')} {_fh.get('debt_ratio_value','N/A')}",
+                        delta='穩健' if _fh.get('debt_ratio_status') == '🟢' else
+                              '留意' if _fh.get('debt_ratio_status') == '🟡' else '危險',
+                        delta_color='normal' if _fh.get('debt_ratio_status') == '🟢' else 'inverse',
+                    )
+
+                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
+
+                # ── 五力雷達圖 + 企業DNA / 護城河 ──────────
+                _fh_left, _fh_right = st.columns([1, 1])
+
+                with _fh_left:
+                    st.markdown('#### 🎯 五力體質雷達圖')
+                    _radar = _fh.get('radar_scores', {})
+                    if _radar:
+                        import plotly.graph_objects as _go_fh
+                        _cats = list(_radar.keys()) + [list(_radar.keys())[0]]
+                        _vals = [max(0, min(100, int(v))) for v in _radar.values()]
+                        _vals += [_vals[0]]
+                        _fig_fh = _go_fh.Figure(_go_fh.Scatterpolar(
+                            r=_vals, theta=_cats, fill='toself',
+                            line_color='#3fb950', fillcolor='rgba(63,185,80,0.2)',
+                        ))
+                        _fig_fh.update_layout(
+                            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            margin=dict(l=20, r=20, t=20, b=20),
+                            showlegend=False,
+                        )
+                        st.plotly_chart(_fig_fh, use_container_width=True)
+                    else:
+                        st.warning('無法取得五力評分資料')
+
+                with _fh_right:
+                    st.markdown('#### 🧬 企業 DNA 與護城河')
+                    _dna = _fh.get('business_model_dna', '無法判斷')
+                    _dna_clr = ('#3fb950' if 'A+' in _dna or _dna.startswith('A ')
+                                else '#d29922' if 'B' in _dna or 'C' in _dna
+                                else '#f85149')
+                    st.markdown(
+                        f'<div style="background:#161b22;border-left:4px solid {_dna_clr};'
+                        f'border-radius:8px;padding:14px 16px;margin-bottom:10px;">'
+                        f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">現金流矩陣判定</div>'
+                        f'<div style="font-size:18px;font-weight:900;color:{_dna_clr};">{_dna}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('**OPM 商業話語權檢驗**')
+                    _opm = _fh.get('opm_data', {})
+                    _p_days = _opm.get('payable_days', 0)
+                    _r_days = _opm.get('receivable_days', 0)
+                    _adv = _opm.get('advantage', False)
+                    if _adv or _p_days > _r_days:
+                        st.success(
+                            f'👑 具備快收慢付優勢\n\n'
+                            f'應付帳款 **{_p_days}天** > 應收帳款 **{_r_days}天**'
+                        )
+                    else:
+                        st.warning(
+                            f'⚠️ 營運資金壓力較大\n\n'
+                            f'應付帳款 **{_p_days}天** < 應收帳款 **{_r_days}天**'
+                        )
+
+                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
+
+                # ── AI 白話診斷室 ─────────────────────────
+                st.markdown('#### 🤖 AI 財務長總結報告')
+                _insight = _fh.get('ai_insight', '')
+                _red = _fh.get('red_flags', 'None')
+
+                st.markdown(
+                    f'<div style="background:#161b22;border-radius:8px;padding:14px 16px;">'
+                    f'<div style="font-size:11px;color:#484f58;margin-bottom:6px;">'
+                    f'💡 綜合營運洞察（DuPont + 盈餘品質）</div>'
+                    f'<div style="font-size:13px;color:#e6edf3;line-height:1.8;">{_insight}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown('<div style="margin-top:10px;"></div>', unsafe_allow_html=True)
+                if not _red or _red.strip().lower() in ('none', '無', ''):
+                    st.success('🟢 避雷照妖鏡：目前未偵測到重大財務地雷或塞貨異常跡象。')
+                else:
+                    st.error(f'🚨 避雷照妖鏡警告：{_red}')
 
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════
