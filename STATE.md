@@ -12,7 +12,7 @@
 | `financial_health_engine.py` | MJ 4力1棒子+現金流矩陣 Prompt + `analyze_financial_health()` + `_FAIL_SAFE` |
 | `data_loader.py` | 新增 `fetch_financial_statements()`，抓 FinMind BS+CF+IS，計算現金比/負債比/OCF/AR天數/AP天數 |
 | `app.py` Tab 2 Section H | 生死燈號 × 3 + 五力雷達圖（range=[0,100]）+ 企業DNA + OPM護城河 + AI白話診斷 + 紅旗警示 |
-| 待完成 | Tab 3「比較×排行」批次財報體檢（多股並行）尚未實作 |
+| Tab 3 批次體檢 | `2ace67d` ✅ ThreadPoolExecutor 並行 + 摘要表 + 個股 expander 卡片 |
 
 ## ✅ 已完成任務：v5.2 物理鎖三大紅線（`46a8457`）
 
