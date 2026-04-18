@@ -1,0 +1,8 @@
+{
+    "market_regime": "系統異常",
+    "systemic_risk_level": "危險",
+    "exposure_limit_pct": 0,
+    "Macro_Phase": "系統異常",
+    "analysis_summary": "系統防護機制啟動：尚未執行 AI 裁決，強制將風險部位降至零。請點擊「執行 AI 裁決」按鈕以更新。",
+    "timestamp": ""
+}

@@ -1434,3 +1434,131 @@ class StockDataLoader:
         except Exception as _e_bscf:
             import traceback; traceback.print_exc()
             return None, f"BS+CF 載入錯誤: {_e_bscf}"
+
+
+# ── 模組級函式：MJ 財報體檢所需原始數據 ─────────────────────
+def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
+    """
+    從 FinMind 抓取最新一季資產負債表、現金流量表、損益表，
+    計算 MJ 體系所需指標。
+    回傳 dict；失敗時回傳 {"error": "..."}。
+    """
+    import os as _os_ffs, requests as _rq_ffs, datetime as _dt_ffs
+
+    _tok = token or _os_ffs.environ.get("FINMIND_TOKEN", "")
+    _start = (_dt_ffs.date.today() - _dt_ffs.timedelta(days=730)).strftime("%Y-%m-%d")
+    _hdrs = {"Authorization": f"Bearer {_tok}"} if _tok else {}
+
+    def _fm(dataset):
+        _p = {"dataset": dataset, "data_id": stock_id, "start_date": _start}
+        if _tok:
+            _p["token"] = _tok
+        try:
+            _r = _rq_ffs.get(
+                "https://api.finmindtrade.com/api/v4/data",
+                params=_p, headers=_hdrs, timeout=20,
+            )
+            _j = _r.json()
+            return _j.get("data", []) if _j.get("status") == 200 else []
+        except Exception as _e:
+            print(f"[fetch_fin/{dataset}] {_e}")
+            return []
+
+    _bs_rows = _fm("TaiwanStockBalanceSheet")
+    _cf_rows = _fm("TaiwanStockCashFlowsStatement")
+    _is_rows = _fm("TaiwanStockFinancialStatements")
+
+    if not _bs_rows and not _cf_rows:
+        return {"error": f"{stock_id}：FinMind 無財報資料（請確認 FINMIND_TOKEN 已設定）"}
+
+    def _build(rows):
+        m: dict = {}
+        for r in rows:
+            d = r.get("date", "")
+            m.setdefault(d, {})[r.get("type", "")] = r.get("value", 0)
+            m[d][r.get("origin_name", "")] = r.get("value", 0)
+        return m
+
+    _bs = _build(_bs_rows)
+    _cf = _build(_cf_rows)
+    _is = _build(_is_rows)
+
+    _dates = sorted(set(list(_bs.keys()) + list(_cf.keys())))
+    if not _dates:
+        return {"error": f"{stock_id}：財報日期解析失敗"}
+
+    _lat = _dates[-1]
+    _prv = _dates[-2] if len(_dates) >= 2 else _lat
+
+    def _v(m, d, keys):
+        slot = m.get(d, {})
+        for k in keys:
+            v = slot.get(k)
+            if v is not None:
+                try:
+                    fv = float(str(v).replace(",", "") or 0)
+                    if fv != 0:
+                        return fv
+                except Exception:
+                    pass
+        return 0.0
+
+    cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
+    assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
+    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
+    ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
+                             "NoteAndAccountsReceivable", "應收帳款及票據應收款"])
+    ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
+                             "NoteAndAccountsPayable", "應付帳款及票據應付款"])
+
+    ocf    = _v(_cf, _lat, ["CashFlowsFromOperatingActivities",
+                             "營業活動之淨現金流入（流出）", "來自營業活動之現金流量"])
+    icf    = _v(_cf, _lat, ["CashFlowsFromInvestingActivities",
+                             "投資活動之淨現金流入（流出）", "來自投資活動之現金流量"])
+    fncf   = _v(_cf, _lat, ["CashFlowsFromFinancingActivities",
+                             "籌資活動之淨現金流入（流出）", "來自籌資活動之現金流量"])
+    capex  = abs(_v(_cf, _lat, ["AcquisitionOfPropertyPlantAndEquipment",
+                                 "取得不動產、廠房及設備", "資本支出"]))
+
+    rev    = _v(_is, _lat, ["Revenue", "營業收入合計", "營業收入", "NetRevenue"])
+    cogs   = abs(_v(_is, _lat, ["CostOfGoodsSold", "營業成本", "銷售成本"]))
+    net_ni = _v(_is, _lat, ["NetIncome", "本期淨利（淨損）", "淨利", "稅後淨利"])
+
+    rev_p  = _v(_is, _prv, ["Revenue", "營業收入合計", "營業收入"])
+    ar_p   = _v(_bs, _prv, ["AccountsReceivable", "應收帳款淨額", "應收帳款"])
+
+    cash_ratio = round(cash / assets * 100, 1) if assets > 0 else 0
+    debt_ratio = round(liab / assets * 100, 1) if assets > 0 else 0
+    gp         = rev - cogs
+    gm         = round(gp / rev * 100, 1) if rev > 0 else 0
+    ar_days    = round(ar / rev * 365, 1) if rev > 0 and ar > 0 else 0
+    ap_days    = round(ap / cogs * 365, 1) if cogs > 0 and ap > 0 else 0
+    fcf        = round(ocf - capex)
+    ar_chg     = round((ar - ar_p) / abs(ar_p) * 100, 1) if ar_p != 0 else None
+    rev_chg    = round((rev - rev_p) / abs(rev_p) * 100, 1) if rev_p != 0 else None
+
+    print(f"[fetch_fin] {stock_id} {_lat}: cash={cash_ratio}% debt={debt_ratio}% "
+          f"OCF={round(ocf/1e6,1)}百萬 AR_days={ar_days} AP_days={ap_days}")
+
+    return {
+        "stock_id":         stock_id,
+        "period":           _lat,
+        "現金佔總資產(%)":  cash_ratio,
+        "負債比率(%)":      debt_ratio,
+        "OCF(千)":          round(ocf),
+        "ICF(千)":          round(icf),
+        "籌資CF(千)":       round(fncf),
+        "自由現金流(千)":   fcf,
+        "資本支出(千)":     round(capex),
+        "應收帳款天數":     ar_days,
+        "應付帳款天數":     ap_days,
+        "毛利率(%)":        gm,
+        "稅後淨利(千)":     round(net_ni),
+        "OCF符號":          "正" if ocf > 0 else "負",
+        "ICF符號":          "正" if icf > 0 else "負",
+        "籌資CF符號":       "正" if fncf > 0 else "負",
+        "應收帳款季增率(%)": ar_chg,
+        "營收季增率(%)":     rev_chg,
+        "總資產(千)":        round(assets),
+        "總負債(千)":        round(liab),
+    }

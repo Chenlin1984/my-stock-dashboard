@@ -2,10 +2,52 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v6.7 | main `20bad40`
-- **最新異動**: 總經數據自動警示模組 `macro_alert.py` 上線 ✅
+- **版本**: v7.3 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: Tab 3 批次財報體檢（MJ林明樟體系）完成（`2ace67d`）✅
 
-## ✅ 已完成任務：總經數據自動警示模組 `macro_alert.py`
+## ✅ 已完成任務：AI 財報體檢戰情室 v1.0（`a53b8c8`）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | MJ 4力1棒子+現金流矩陣 Prompt + `analyze_financial_health()` + `_FAIL_SAFE` |
+| `data_loader.py` | 新增 `fetch_financial_statements()`，抓 FinMind BS+CF+IS，計算現金比/負債比/OCF/AR天數/AP天數 |
+| `app.py` Tab 2 Section H | 生死燈號 × 3 + 五力雷達圖（range=[0,100]）+ 企業DNA + OPM護城河 + AI白話診斷 + 紅旗警示 |
+| Tab 3 批次體檢 | `2ace67d` ✅ ThreadPoolExecutor 並行 + 摘要表 + 個股 expander 卡片 |
+
+## ✅ 已完成任務：v5.2 物理鎖三大紅線（`46a8457`）
+
+| 項目 | 內容 |
+|------|------|
+| 紅線一 | 薩姆規則觸發 → 曝險上限 20% |
+| 紅線二 | PMI 連兩月 <48 → 曝險上限 40%（跨次執行用 session_state 追蹤前月值）|
+| 紅線三 | 外資期貨淨空 >35000 口 + 破 MA5 → 曝險上限 30% |
+| 公式修正 | BIAS240 改雙重共振、MA120 改5日斜率、chip_score 加 foreign_5d_net、MA5 新增至 mkt_info |
+| AI Prompt | 加第4條：禁止在 analysis_summary 輸出持股百分比數字 |
+| 測試 | 36 passed（+5 紅線測試）|
+
+## ✅ 已完成任務：AI 決策引擎 v2.0（理科/文科分工）
+
+**目標**：拆分「運算邏輯（理科）」與「解讀邏輯（文科）」，消除 AI 自行決定倉位的幻覺風險。
+Python rule-based 計算 `exposure_limit_pct`，AI 僅輸出 `analysis_summary` 解讀文字。
+
+| 步驟 | 內容 | 狀態 |
+|------|------|------|
+| Step 1 | `macro_state_locker.py`：新增 `calculate_system_state()`（VIX/PMI/M1B-M2/BIAS240/PCR 五因子）| ✅ |
+| Step 2 | 輕量化 Prompt：AI role 改為「解讀師」，輸出從 4 欄位縮為 1 欄位（`analysis_summary`）| ✅ |
+| Step 3 | `execute_and_lock()` 改接收 `system_state dict`，合併 Python + AI 後原子寫入 | ✅ |
+| Step 4 | `app.py`：呼叫 `calculate_system_state()` 後傳入 `execute_and_lock()`；渲染層改讀新欄位 | ✅ |
+| Step 5 | `macro_state.json`：欄位更新（`exposure_limit_pct` + `analysis_summary` + `Macro_Phase`）| ✅ |
+| Step 6 | `tests/test_macro_state_locker.py`：31 tests（+8），新增 `TestCalculateSystemState`（7 cases）| ✅ |
+
+## ✅ 已完成任務：AI 總裁決實體狀態鎖 v1.0（前版基礎）
+
+| 步驟 | 內容 | 狀態 |
+|------|------|------|
+| Step 1 | `macro_state_locker.py`：`MacroStateLocker` 類別 + `load_macro_state()` + 原子寫入 + Fail-safe | ✅ |
+| Step 2 | `app.py`：Section 十改為唯讀裁決卡片 + 「執行 AI 裁決」觸發按鈕；移除舊 IF-ELSE 邏輯 | ✅ |
+| Step 3 | `tests/test_macro_state_locker.py`：23 tests，0 failures，無 HTTP 呼叫 | ✅ |
+
+## ✅ 已完成任務：總經數據自動警示模組 `macro_alert.py`（main `20bad40`）
 
 **目標**：新增 L3 策略層模組，監控 VIX / CPI / 10Y 殖利率 / DXY / PCR 等總經指標，
 閾值觸發時自動在 Section 8 頂端發出 🔴🟡🟢 分級警示橫幅。
@@ -27,7 +69,6 @@
 | Step 3 | **資料流向**：3大主流程（個股/ETF/每日總覽）的資料流圖 | ✅ 完成 (`c7cb28d`) |
 | Step 4 | **核心函式 I/O**：按模組分組，列出 signature + 輸入/輸出說明 | ✅ 完成 (`22d29ec`) |
 | Step 5 | **組裝 + commit**：合併 Step 1-4 成完整 ARCHITECTURE.md，push + 更新 STATE.md | ✅ 完成 |
-
 
 | 檔案 | 職責 |
 |------|------|

@@ -27,6 +27,7 @@ from daily_checklist import (
 # ── 新增模組（根據說明書 v1.0）──────────────────────────────
 # ── v3.0 新增模組（§5-§11）──────────────────────────────────
 from market_strategy import get_market_assessment
+from macro_state_locker import MacroStateLocker, load_macro_state, calculate_system_state
 from risk_control import calc_position_size, calc_stop_loss  # RiskController removed (unused)
 from v4_strategy_engine import V4StrategyEngine   # v4.0 核心策略引擎
 from v5_modules import (                           # v5.0 大師滿配
@@ -43,6 +44,8 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
+from financial_health_engine import analyze_financial_health
+from data_loader import fetch_financial_statements
 from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
 from financial_debug_helper import (
     FIELD_ALIASES, FieldResult, DebugReport,
@@ -4543,143 +4546,130 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'</div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════
-    # SECTION 十: 🤖 AI 總經戰情總結（新聞 × 量化數據 × Claude LLM）
+    # SECTION 十: 🤖 AI 總裁決（實體狀態鎖架構）
+    # 前端唯讀 macro_state.json；LLM 運算由觸發按鈕在背景執行並寫檔
     # ══════════════════════════════════════════════════════════════
-    st.markdown(section_header('十', '🤖 AI 總經戰情總結', '🤖'), unsafe_allow_html=True)
+    st.markdown(section_header('十', '🤖 AI 總裁決', '🤖'), unsafe_allow_html=True)
 
-    with st.expander('🤖 AI 總經戰情總結 — 即時新聞 × 量化數據 × Claude 深度研判', expanded=True):
-        _llm_hdr_c1, _llm_hdr_c2 = st.columns([4, 1])
-        with _llm_hdr_c1:
+    with st.expander('🤖 AI 總裁決 — 實體狀態鎖架構（唯讀）', expanded=True):
+        _verdict_hdr_c1, _verdict_hdr_c2 = st.columns([4, 1])
+        with _verdict_hdr_c1:
             st.markdown(
                 '<div style="font-size:12px;color:#8b949e;padding:4px 0;">'
                 '整合即時國際財經新聞（RSS）與當前量化總經數據，'
-                '由 Claude AI 進行總體經濟戰況深度研判，輸出持股建議與操作方針。'
+                '由 Gemini AI 寫入實體狀態鎖（macro_state.json）。'
+                '前端唯讀渲染，杜絕多重矛盾結論。'
                 '<br><span style="color:#484f58;">需設定 Streamlit Secrets：'
                 '<code>GEMINI_API_KEY = "AIza..."</code></span></div>',
                 unsafe_allow_html=True)
-        with _llm_hdr_c2:
-            _do_llm = st.button('🔄 執行 AI 研判', key='btn_run_llm',
-                                use_container_width=True, type='primary')
+        with _verdict_hdr_c2:
+            _do_verdict = st.button('🔒 執行 AI 裁決', key='btn_run_verdict',
+                                    use_container_width=True, type='primary')
 
-        _llm_res  = st.session_state.get('ai_analysis_result')
-        _llm_news = st.session_state.get('ai_analysis_news', [])
-        _llm_ts   = st.session_state.get('ai_analysis_ts', '')
+        # ── 觸發：呼叫 MacroStateLocker 寫入 macro_state.json ──
+        if _do_verdict:
+            with st.spinner('📡 正在抓取財經新聞 + 呼叫 Gemini AI（約 15~30 秒）…'):
+                _v_news = _fetch_macro_news(5)
+                _v_news_titles = [_n['title'] for _n in _v_news]
+                # 組裝量化數據快照供 AI 判讀
+                _vix_d  = _macro_info.get('vix') or {}
+                _exp_d  = _macro_info.get('tw_export') or {}
+                _pmi_d  = _macro_info.get('ism_pmi') or {}
+                _cpi_d  = _macro_info.get('us_core_cpi') or {}
+                _mi_d   = st.session_state.get('m1b_m2_info') or {}
+                _bi_d   = st.session_state.get('bias_info') or {}
+                _li_d   = st.session_state.get('li_latest')
+                _pcr_v  = None
+                if _li_d is not None and not _li_d.empty and '選PCR' in _li_d.columns:
+                    _pcr_raw = str(_li_d.iloc[-1].get('選PCR', ''))
+                    if _pcr_raw not in ('', '-', 'nan', 'None'):
+                        try: _pcr_v = float(_pcr_raw)
+                        except ValueError: pass
+                # 外資期貨淨口數（負值=淨空單）
+                _fut_net_v = None
+                if _li_d is not None and not _li_d.empty and '外資大小' in _li_d.columns:
+                    try: _fut_net_v = float(_li_d.iloc[-1].get('外資大小', 0))
+                    except (ValueError, TypeError): pass
+                # 指數是否跌破 MA5（從 mkt_info 取得）
+                _mkt_d = st.session_state.get('mkt_info') or {}
+                _below_ma5 = bool(_mkt_d.get('index_below_ma5', False))
+                # PMI 連兩月追蹤：本次觸發時記錄當前值，下次觸發時作為「前月」
+                _pmi_cur = _pmi_d.get('value')
+                _pmi_prev_v = st.session_state.get('_s10_prev_pmi_value')
+                if _pmi_cur is not None:
+                    st.session_state['_s10_prev_pmi_value'] = _pmi_cur
+                _macro_numbers = {
+                    'VIX_Index':           _vix_d.get('current'),
+                    'M1B_YoY_pct':         _mi_d.get('m1b_yoy'),
+                    'M2_YoY_pct':          _mi_d.get('m2_yoy'),
+                    'TW_Export_YoY_pct':   _exp_d.get('yoy'),
+                    'ISM_PMI_or_OECD_CLI': _pmi_cur,
+                    'PMI_Prev_Month':       _pmi_prev_v,
+                    'US_Core_CPI_YoY_pct': _cpi_d.get('yoy'),
+                    'BIAS240_pct':         _bi_d.get('bias_240'),
+                    'PCR':                 _pcr_v,
+                    'Futures_Net_Short':   _fut_net_v,
+                    'Index_Below_MA5':     _below_ma5,
+                    'Sahm_Rule_Triggered': False,  # 尚無薩姆規則資料來源，預設 False
+                }
+                _system_state = calculate_system_state(_macro_numbers)
+                _locker = MacroStateLocker()
+                _ok = _locker.execute_and_lock(_system_state, _v_news_titles)
+                if _ok:
+                    st.success('✅ AI 裁決已更新至實體狀態鎖')
+                else:
+                    st.error('❌ AI 裁決失敗，已啟動 Fail-safe（曝險 0%）')
 
-        # ── 觸發分析 ─────────────────────────────────────────
-        if _do_llm:
-            with st.spinner('📡 正在抓取財經新聞 + 呼叫 Claude AI 分析中（約 15~30 秒）…'):
-                _llm_news = _fetch_macro_news(5)
-                _llm_res  = _run_llm_analysis(_macro_info, _llm_news)
-                st.session_state['ai_analysis_result'] = _llm_res
-                st.session_state['ai_analysis_news']   = _llm_news
-                st.session_state['ai_analysis_ts']     = _tw_now_str()
-                _llm_ts = st.session_state['ai_analysis_ts']
+        # ── 唯讀渲染：從 macro_state.json 讀取並顯示 ────────────
+        _ms = load_macro_state()
+        _srl = _ms.get('systemic_risk_level', '危險')
+        _regime = _ms.get('market_regime', '系統異常')
+        _exp_pct = int(_ms.get('exposure_limit_pct', 0))
+        _cash_pct = 100 - _exp_pct
+        _verdict_txt = _ms.get('analysis_summary', '')
+        _ms_ts = _ms.get('timestamp', '')
 
-        # ── 渲染結果 ─────────────────────────────────────────
-        if _llm_res and 'error' not in _llm_res:
-            # 風險色系
-            _rl = _llm_res.get('risk_level', 'medium')
-            _risk_clr = {'high': '#f85149', 'medium': '#d29922', 'low': '#3fb950'}.get(_rl, '#8b949e')
-            _risk_txt = {'high': '高風險', 'medium': '中等風險', 'low': '低風險'}.get(_rl, '未知')
+        _srl_clr = {'安全': '#3fb950', '警告': '#d29922', '危險': '#f85149'}.get(_srl, '#8b949e')
+        _reg_clr = {'多頭': '#3fb950', '震盪': '#d29922', '空頭': '#f85149'}.get(_regime, '#8b949e')
 
-            # 情緒色系
-            _sent = _llm_res.get('sentiment', '中性')
-            _sent_clr = {
-                '極度恐慌': '#f85149', '警戒': '#d29922', '中性': '#8b949e',
-                '樂觀': '#3fb950',     '極度狂熱': '#f0e040',
-            }.get(_sent, '#8b949e')
+        st.markdown(
+            f'<div style="background:#0d1117;border:2px solid {_srl_clr};'
+            f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
+            # 頂部：市場體制 + 系統風險等級
+            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+            f'flex-wrap:wrap;gap:8px;margin-bottom:14px;">'
+            f'<div>'
+            f'<span style="font-size:11px;color:#484f58;">市場體制</span><br>'
+            f'<span style="font-size:22px;font-weight:900;color:{_reg_clr};">{_regime}</span>'
+            f'</div>'
+            f'<div style="text-align:right;">'
+            f'<span style="background:{_srl_clr}22;border:1px solid {_srl_clr};'
+            f'border-radius:20px;padding:4px 14px;font-size:12px;'
+            f'font-weight:700;color:{_srl_clr};">系統風險：{_srl}</span>'
+            f'<div style="font-size:10px;color:#484f58;margin-top:4px;">'
+            f'裁決時間：{_ms_ts if _ms_ts else "尚未執行"}</div>'
+            f'</div>'
+            f'</div>'
+            # 曝險水位列
+            f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+            f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;'
+            f'padding:12px;text-align:center;">'
+            f'<div style="font-size:10px;color:#484f58;">建議股票型基金曝險</div>'
+            f'<div style="font-size:32px;font-weight:900;color:{_srl_clr};">'
+            f'{_exp_pct}<span style="font-size:14px;">%</span></div>'
+            f'<div style="font-size:10px;color:#8b949e;">現金/防禦型資產 {_cash_pct}%</div>'
+            f'</div>'
+            # 最終裁決文字
+            f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
+            f'<div style="font-size:10px;color:#484f58;margin-bottom:6px;">🔒 AI 解讀分析（實體鎖）</div>'
+            f'<div style="font-size:13px;color:#e6edf3;line-height:1.7;">{_verdict_txt}</div>'
+            f'</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True)
 
-            _spct = int(_llm_res.get('stock_pct', 50))
-            _cpct = int(_llm_res.get('cash_pct', 50))
-
-            # ── 主卡片 ───────────────────────────────────────
-            st.markdown(
-                f'<div style="background:#0d1117;border:2px solid {_risk_clr};'
-                f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
-                # 頂部：情緒 + 風險等級
-                f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                f'flex-wrap:wrap;gap:8px;margin-bottom:12px;">'
-                f'<div>'
-                f'<span style="font-size:11px;color:#484f58;">市場情緒</span><br>'
-                f'<span style="font-size:20px;font-weight:900;color:{_sent_clr};">{_sent}</span>'
-                f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
-                f'{_llm_res.get("sentiment_reason","")}</span>'
-                f'</div>'
-                f'<div style="text-align:right;">'
-                f'<span style="background:{_risk_clr}22;border:1px solid {_risk_clr};'
-                f'border-radius:20px;padding:4px 14px;font-size:12px;'
-                f'font-weight:700;color:{_risk_clr};">{_risk_txt}</span>'
-                f'<div style="font-size:10px;color:#484f58;margin-top:4px;">'
-                f'分析時間：{_llm_ts}</div>'
-                f'</div>'
-                f'</div>'
-                # 總經解讀
-                f'<div style="background:#161b22;border-radius:8px;padding:12px;margin-bottom:12px;">'
-                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">📊 總經現況解讀</div>'
-                f'<div style="font-size:13px;color:#c9d1d9;line-height:1.6;">'
-                f'{_llm_res.get("macro_reading","")}</div>'
-                f'</div>'
-                # 持股水位 + 操作方針
-                f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
-                f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;padding:12px;text-align:center;">'
-                f'<div style="font-size:10px;color:#484f58;">建議持股水位</div>'
-                f'<div style="font-size:28px;font-weight:900;color:{_risk_clr};">{_spct}<span style="font-size:14px;">%</span></div>'
-                f'<div style="font-size:10px;color:#8b949e;">現金 {_cpct}%</div>'
-                f'</div>'
-                f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
-                f'<div style="font-size:10px;color:#484f58;margin-bottom:4px;">⚔️ 最終作戰指令</div>'
-                f'<div style="font-size:14px;font-weight:700;color:#e6edf3;line-height:1.5;">'
-                f'{_llm_res.get("action","")}</div>'
-                f'</div>'
-                f'</div>'
-                # 風險 vs 機會
-                f'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
-                f'<div style="flex:1;min-width:150px;">'
-                f'<span style="font-size:10px;color:#f85149;">⚠️ 最大風險</span><br>'
-                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("key_risk","")}</span>'
-                f'</div>'
-                f'<div style="flex:1;min-width:150px;">'
-                f'<span style="font-size:10px;color:#3fb950;">💡 最大機會</span><br>'
-                f'<span style="font-size:12px;color:#c9d1d9;">{_llm_res.get("opportunity","")}</span>'
-                f'</div>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True)
-
-            # ── 新聞來源展示 ──────────────────────────────────
-            if _llm_news:
-                with st.expander(f'📰 本次分析引用的 {len(_llm_news)} 則財經新聞', expanded=False):
-                    for _nw in _llm_news:
-                        st.markdown(
-                            f'<div style="border-left:2px solid #21262d;padding:6px 12px;margin:4px 0;">'
-                            + f'<div style="font-size:12px;font-weight:600;color:#c9d1d9;">{_nw["title"]}</div>'
-                            + f'<div style="font-size:10px;color:#484f58;">'
-                            + f'{_nw["source"]}  {_nw.get("published","")}</div>'
-                            + (f'<div style="font-size:11px;color:#8b949e;margin-top:3px;">{_nw["summary"][:120]}…</div>'
-                               if _nw.get('summary') else '')
-                            + '</div>',
-                            unsafe_allow_html=True)
-
-        elif _llm_res and 'error' in _llm_res:
-            st.error(f'❌ AI 研判失敗：{_llm_res["error"]}')
-        else:
-            # 尚未執行 — 顯示說明卡
-            st.markdown(
-                '<div style="background:#0d1117;border:1px dashed #30363d;'
-                'border-radius:12px;padding:24px;text-align:center;margin:8px 0;">'
-                '<div style="font-size:32px;margin-bottom:8px;">🤖</div>'
-                '<div style="font-size:15px;font-weight:700;color:#c9d1d9;margin-bottom:8px;">'
-                '點擊「執行 AI 研判」開始分析</div>'
-                '<div style="font-size:12px;color:#8b949e;line-height:1.8;max-width:480px;margin:0 auto;">'
-                'AI 將自動：<br>'
-                '① 從 Google News / Yahoo Finance / Reuters 抓取最新 5 則財經新聞<br>'
-                '② 讀取當前儀表板所有量化總經數據（VIX、M1B、外銷訂單等）<br>'
-                '③ 呼叫 Claude AI 進行整合研判，輸出持股建議與操作方針<br>'
-                '<span style="color:#484f58;font-size:11px;">'
-                '預計耗時 15~30 秒，結果快取至下次手動刷新</span>'
-                '</div>'
-                '</div>',
-                unsafe_allow_html=True)
+        if not _ms_ts:
+            st.info('尚未執行 AI 裁決。點擊上方「執行 AI 裁決」按鈕以生成首次分析。')
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
@@ -6279,6 +6269,151 @@ padding:12px 16px;margin:8px 0;">
             },
         })
 
+        # ══════════════════════════════════════════════════════
+        # H. AI 財報體檢戰情室（MJ 林明樟體系）
+        # ══════════════════════════════════════════════════════
+        st.markdown("""<div style="padding:6px 0 2px;margin-top:10px;">
+<span style="font-size:16px;font-weight:900;color:#e6edf3;">🏥 H. AI 財報體檢戰情室</span>
+<span style="font-size:11px;color:#484f58;margin-left:8px;">林明樟 MJ 體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span>
+</div>""", unsafe_allow_html=True)
+
+        with st.expander('🔬 展開 AI 財報體檢（林明樟 MJ 體系）', expanded=False):
+            _fh_hdr1, _fh_hdr2 = st.columns([5, 1])
+            with _fh_hdr1:
+                st.markdown(
+                    '<div style="font-size:12px;color:#8b949e;padding:2px 0 6px;">'
+                    '依林明樟（MJ老師）4力1棒子框架，由 Gemini AI 解讀三大報表，'
+                    '輸出生死燈號、五力雷達、企業DNA、護城河指標與白話診斷。'
+                    '<br><span style="color:#484f58;">需設定 FINMIND_TOKEN 與 GEMINI_API_KEY。</span></div>',
+                    unsafe_allow_html=True)
+            with _fh_hdr2:
+                _do_fh = st.button('🏥 執行財報體檢', key='btn_fh',
+                                   use_container_width=True, type='primary')
+
+            if _do_fh:
+                with st.spinner('📊 正在從 FinMind 抓取財報數據並呼叫 AI 分析（約 20~30 秒）…'):
+                    _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
+                    if _fin_raw.get('error'):
+                        st.error(_fin_raw['error'])
+                    else:
+                        _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
+                        st.session_state[f'_fh_{sid2}'] = _fh_out
+                        if _fh_out.get('error'):
+                            st.error(_fh_out.get('ai_insight', 'AI 分析失敗'))
+                        else:
+                            st.success(f'✅ {name2} 財報體檢完成')
+
+            _fh = st.session_state.get(f'_fh_{sid2}')
+
+            if not _fh:
+                st.info('點擊「執行財報體檢」按鈕，啟動 MJ 體系 AI 財務診斷。')
+            else:
+                # ── 第一關：三大生死燈號 ────────────────────
+                st.markdown('#### 🛡️ 第一關：生死與體質防禦')
+                _fh_c1, _fh_c2, _fh_c3 = st.columns(3)
+                with _fh_c1:
+                    st.metric(
+                        label='氣長不長（現金佔總資產 > 25%）',
+                        value=f"{_fh.get('cash_ratio_status','?')} {_fh.get('cash_ratio_value','N/A')}",
+                        delta='安全' if _fh.get('cash_ratio_status') == '🟢' else
+                              '注意' if _fh.get('cash_ratio_status') == '🟡' else '危險',
+                        delta_color='normal' if _fh.get('cash_ratio_status') == '🟢' else 'inverse',
+                    )
+                with _fh_c2:
+                    st.metric(
+                        label='真假獲利（OCF 必須為正）',
+                        value=f"{_fh.get('ocf_status','?')} {_fh.get('ocf_value','N/A')}",
+                        delta='穩定流入' if _fh.get('ocf_status') == '🟢' else '黑字破產警戒',
+                        delta_color='normal' if _fh.get('ocf_status') == '🟢' else 'inverse',
+                    )
+                with _fh_c3:
+                    st.metric(
+                        label='那根棒子（負債比 < 60%）',
+                        value=f"{_fh.get('debt_ratio_status','?')} {_fh.get('debt_ratio_value','N/A')}",
+                        delta='穩健' if _fh.get('debt_ratio_status') == '🟢' else
+                              '留意' if _fh.get('debt_ratio_status') == '🟡' else '危險',
+                        delta_color='normal' if _fh.get('debt_ratio_status') == '🟢' else 'inverse',
+                    )
+
+                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
+
+                # ── 五力雷達圖 + 企業DNA / 護城河 ──────────
+                _fh_left, _fh_right = st.columns([1, 1])
+
+                with _fh_left:
+                    st.markdown('#### 🎯 五力體質雷達圖')
+                    _radar = _fh.get('radar_scores', {})
+                    if _radar:
+                        import plotly.graph_objects as _go_fh
+                        _cats = list(_radar.keys()) + [list(_radar.keys())[0]]
+                        _vals = [max(0, min(100, int(v))) for v in _radar.values()]
+                        _vals += [_vals[0]]
+                        _fig_fh = _go_fh.Figure(_go_fh.Scatterpolar(
+                            r=_vals, theta=_cats, fill='toself',
+                            line_color='#3fb950', fillcolor='rgba(63,185,80,0.2)',
+                        ))
+                        _fig_fh.update_layout(
+                            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            margin=dict(l=20, r=20, t=20, b=20),
+                            showlegend=False,
+                        )
+                        st.plotly_chart(_fig_fh, use_container_width=True)
+                    else:
+                        st.warning('無法取得五力評分資料')
+
+                with _fh_right:
+                    st.markdown('#### 🧬 企業 DNA 與護城河')
+                    _dna = _fh.get('business_model_dna', '無法判斷')
+                    _dna_clr = ('#3fb950' if 'A+' in _dna or _dna.startswith('A ')
+                                else '#d29922' if 'B' in _dna or 'C' in _dna
+                                else '#f85149')
+                    st.markdown(
+                        f'<div style="background:#161b22;border-left:4px solid {_dna_clr};'
+                        f'border-radius:8px;padding:14px 16px;margin-bottom:10px;">'
+                        f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">現金流矩陣判定</div>'
+                        f'<div style="font-size:18px;font-weight:900;color:{_dna_clr};">{_dna}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('**OPM 商業話語權檢驗**')
+                    _opm = _fh.get('opm_data', {})
+                    _p_days = _opm.get('payable_days', 0)
+                    _r_days = _opm.get('receivable_days', 0)
+                    _adv = _opm.get('advantage', False)
+                    if _adv or _p_days > _r_days:
+                        st.success(
+                            f'👑 具備快收慢付優勢\n\n'
+                            f'應付帳款 **{_p_days}天** > 應收帳款 **{_r_days}天**'
+                        )
+                    else:
+                        st.warning(
+                            f'⚠️ 營運資金壓力較大\n\n'
+                            f'應付帳款 **{_p_days}天** < 應收帳款 **{_r_days}天**'
+                        )
+
+                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
+
+                # ── AI 白話診斷室 ─────────────────────────
+                st.markdown('#### 🤖 AI 財務長總結報告')
+                _insight = _fh.get('ai_insight', '')
+                _red = _fh.get('red_flags', 'None')
+
+                st.markdown(
+                    f'<div style="background:#161b22;border-radius:8px;padding:14px 16px;">'
+                    f'<div style="font-size:11px;color:#484f58;margin-bottom:6px;">'
+                    f'💡 綜合營運洞察（DuPont + 盈餘品質）</div>'
+                    f'<div style="font-size:13px;color:#e6edf3;line-height:1.8;">{_insight}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown('<div style="margin-top:10px;"></div>', unsafe_allow_html=True)
+                if not _red or _red.strip().lower() in ('none', '無', ''):
+                    st.success('🟢 避雷照妖鏡：目前未偵測到重大財務地雷或塞貨異常跡象。')
+                else:
+                    st.error(f'🚨 避雷照妖鏡警告：{_red}')
+
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════
 # TAB 3: 綜合評分戰情室（汰弱留強 × 多因子評分 合併版）
@@ -6808,7 +6943,162 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     st.markdown(_ai_result)
                 else:
                     st.caption('點擊上方按鈕生成完整AI投資決策分析')
-    
+
+    # ══ 批次財報體檢（MJ林明樟體系）═══════════════════════════════
+    st.markdown('---')
+    st.markdown("""<div style="padding:4px 0 2px;">
+<span style="font-size:18px;font-weight:900;color:#e6edf3;">🏥 批次財報體檢</span>
+<span style="font-size:11px;color:#484f58;margin-left:10px;">MJ林明樟體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span>
+</div>""", unsafe_allow_html=True)
+
+    _fh_t3_col1, _fh_t3_col2 = st.columns([3, 1])
+    with _fh_t3_col1:
+        t3_fh_btn = st.button(
+            '🏥 批次財報體檢', key='btn_fh_t3', type='primary',
+            disabled=not bool(stock_list_t3),
+            help='對上方股票清單批次執行MJ財報體檢（最多10支）'
+        )
+    with _fh_t3_col2:
+        if st.button('🗑️ 清除體檢結果', key='btn_fh_t3_clear'):
+            st.session_state.pop('_fh_t3_results', None)
+            st.rerun()
+
+    if t3_fh_btn and stock_list_t3:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        _gemini_key_fh = st.secrets.get('GEMINI_API_KEY', '')
+        _finmind_tok_fh = st.secrets.get('FINMIND_TOKEN', '')
+        _fh_t3_res = {}
+        _fh_prog = st.progress(0, text='財報體檢中...')
+
+        def _fetch_and_analyze(sid):
+            fin = fetch_financial_statements(sid, _finmind_tok_fh)
+            result = analyze_financial_health(_gemini_key_fh, sid, fin)
+            return sid, result
+
+        _done = 0
+        with ThreadPoolExecutor(max_workers=3) as _exe:
+            _futs = {_exe.submit(_fetch_and_analyze, s): s for s in stock_list_t3}
+            for _fut in as_completed(_futs):
+                _done += 1
+                _fh_prog.progress(_done / len(stock_list_t3),
+                                   text=f'體檢完成 {_done}/{len(stock_list_t3)}...')
+                _sid_r, _res_r = _fut.result()
+                _fh_t3_res[_sid_r] = _res_r
+        _fh_prog.empty()
+        st.session_state['_fh_t3_results'] = _fh_t3_res
+
+    _fh_t3_cached = st.session_state.get('_fh_t3_results', {})
+    if _fh_t3_cached:
+        # ── 摘要比較表 ────────────────────────────────────────────
+        st.markdown('##### 📊 體檢摘要比較表')
+        _fh_rows = []
+        for _sid_f, _fd_f in _fh_t3_cached.items():
+            _scores_f = _fd_f.get('radar_scores', {})
+            _avg_f = round(sum(_scores_f.values()) / len(_scores_f), 1) if _scores_f else 0
+            _fh_rows.append({
+                '代碼':     _sid_f,
+                '現金水位':  _fd_f.get('cash_ratio_status', '?') + ' ' + _fd_f.get('cash_ratio_value', ''),
+                'OCF':      _fd_f.get('ocf_status', '?') + ' ' + _fd_f.get('ocf_value', ''),
+                '負債比':   _fd_f.get('debt_ratio_status', '?') + ' ' + _fd_f.get('debt_ratio_value', ''),
+                '企業DNA':  _fd_f.get('business_model_dna', 'N/A'),
+                '雷達均分': _avg_f,
+                '紅旗':     '⚠️' if (_fd_f.get('red_flags', 'None') not in ('None', '', None)) else '✅',
+            })
+        _df_fh = pd.DataFrame(_fh_rows)
+        st.dataframe(
+            _df_fh, use_container_width=True, hide_index=True,
+            column_config={
+                '代碼':     st.column_config.TextColumn('代碼',   width='small'),
+                '現金水位': st.column_config.TextColumn('現金水位'),
+                'OCF':      st.column_config.TextColumn('OCF'),
+                '負債比':   st.column_config.TextColumn('負債比'),
+                '企業DNA':  st.column_config.TextColumn('企業DNA', width='medium'),
+                '雷達均分': st.column_config.NumberColumn('雷達均分', format='%.1f ⭐'),
+                '紅旗':     st.column_config.TextColumn('紅旗', width='small'),
+            }
+        )
+
+        # ── 個股詳細展開卡片 ──────────────────────────────────────
+        st.markdown('##### 🔍 個股詳細體檢報告')
+        for _sid_f, _fd_f in _fh_t3_cached.items():
+            _dna_f = _fd_f.get('business_model_dna', '無法判斷')
+            _dna_color = ('#3fb950' if _dna_f.startswith('A+') else
+                          '#2ea043' if _dna_f.startswith('A') else
+                          '#d29922' if _dna_f.startswith('B') else
+                          '#f97316' if _dna_f.startswith('C') else
+                          '#f85149')
+            with st.expander(f'🏥 {_sid_f} — DNA: {_dna_f}', expanded=False):
+                # 生死燈號
+                _gc1, _gc2, _gc3 = st.columns(3)
+                _gc1.metric('現金佔總資產', _fd_f.get('cash_ratio_value', 'N/A'),
+                            _fd_f.get('cash_ratio_status', '🔴'))
+                _gc2.metric('營業活動現金流', _fd_f.get('ocf_value', 'N/A'),
+                            _fd_f.get('ocf_status', '🔴'))
+                _gc3.metric('負債比率', _fd_f.get('debt_ratio_value', 'N/A'),
+                            _fd_f.get('debt_ratio_status', '🔴'))
+
+                # 雷達圖
+                _scores_f = _fd_f.get('radar_scores', {})
+                if _scores_f:
+                    import plotly.graph_objects as go
+                    _cats_f = list(_scores_f.keys())
+                    _vals_f = list(_scores_f.values()) + [list(_scores_f.values())[0]]
+                    _cats_f_closed = _cats_f + [_cats_f[0]]
+                    _fig_f = go.Figure(go.Scatterpolar(
+                        r=_vals_f, theta=_cats_f_closed,
+                        fill='toself', fillcolor='rgba(63,185,80,0.15)',
+                        line=dict(color='#3fb950', width=2),
+                        marker=dict(size=6, color='#3fb950'),
+                    ))
+                    _fig_f.update_layout(
+                        polar=dict(
+                            radialaxis=dict(range=[0, 100], tickfont=dict(size=9), showticklabels=True),
+                            angularaxis=dict(tickfont=dict(size=11)),
+                            bgcolor='#0d1117',
+                        ),
+                        paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+                        showlegend=False, height=280,
+                        margin=dict(l=40, r=40, t=20, b=20),
+                    )
+                    st.plotly_chart(_fig_f, use_container_width=True,
+                                    key=f'radar_t3_{_sid_f}')
+
+                # DNA + OPM
+                st.markdown(
+                    f'<div style="display:inline-block;background:{_dna_color}22;'
+                    f'border:1px solid {_dna_color}66;border-radius:6px;'
+                    f'padding:4px 12px;font-size:13px;color:{_dna_color};font-weight:700;">'
+                    f'企業DNA：{_dna_f}</div>',
+                    unsafe_allow_html=True
+                )
+                _opm_f = _fd_f.get('opm_data', {})
+                if _opm_f:
+                    _pay_f = _opm_f.get('payable_days', 0)
+                    _rec_f = _opm_f.get('receivable_days', 0)
+                    _adv_f = _opm_f.get('advantage', False)
+                    if _adv_f:
+                        st.success(f'OPM護城河 ✅ 付款天數({_pay_f}天) > 收款天數({_rec_f}天)，具議價優勢')
+                    else:
+                        st.warning(f'OPM護城河 ⚠️ 付款天數({_pay_f}天) ≤ 收款天數({_rec_f}天)，議價能力待強化')
+
+                # AI 診斷
+                _insight_f = _fd_f.get('ai_insight', '')
+                if _insight_f:
+                    st.markdown(
+                        f'<div style="background:#161b22;border-left:3px solid #3fb950;'
+                        f'padding:10px 14px;border-radius:0 6px 6px 0;'
+                        f'font-size:13px;color:#c9d1d9;margin-top:8px;">'
+                        f'🤖 {_insight_f}</div>',
+                        unsafe_allow_html=True
+                    )
+
+                # 紅旗
+                _flags_f = _fd_f.get('red_flags', 'None')
+                if _flags_f and _flags_f not in ('None', ''):
+                    st.error(f'🚩 紅旗警示：{_flags_f}')
+                else:
+                    st.success('✅ 未發現財報紅旗異常')
+
 # ══════════════════════════════════════════════════════════════
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
 # ══════════════════════════════════════════════════════════════
