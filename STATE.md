@@ -2,8 +2,17 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.1 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: v5.2 物理鎖三大紅線 + MA120 5日斜率 + chip 5日累積（`46a8457`）✅
+- **版本**: v7.2 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: 個股 Tab 2 新增「H. AI 財報體檢戰情室」（MJ 林明樟體系）（`a53b8c8`）✅
+
+## ✅ 已完成任務：AI 財報體檢戰情室 v1.0（`a53b8c8`）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | MJ 4力1棒子+現金流矩陣 Prompt + `analyze_financial_health()` + `_FAIL_SAFE` |
+| `data_loader.py` | 新增 `fetch_financial_statements()`，抓 FinMind BS+CF+IS，計算現金比/負債比/OCF/AR天數/AP天數 |
+| `app.py` Tab 2 Section H | 生死燈號 × 3 + 五力雷達圖（range=[0,100]）+ 企業DNA + OPM護城河 + AI白話診斷 + 紅旗警示 |
+| 待完成 | Tab 3「比較×排行」批次財報體檢（多股並行）尚未實作 |
 
 ## ✅ 已完成任務：v5.2 物理鎖三大紅線（`46a8457`）
 
