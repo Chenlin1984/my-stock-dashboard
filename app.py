@@ -7063,7 +7063,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     _row = {k: v for k, v in _r3.items() if not k.startswith('_') and k != 'stock_id'}
                     _row.update(_fund_map.get(_sid3, {}))
                     _elim_rows.append(_row)
-                df_cmp = pd.DataFrame(_elim_rows).sort_values('舊評分', ascending=False).reset_index(drop=True)
+                df_cmp = pd.DataFrame(_elim_rows).sort_values(['舊評分', '健康度'], ascending=[False, False]).reset_index(drop=True)
                 # 確保名稱欄位存在
                 if '名稱' not in df_cmp.columns and '代碼' in df_cmp.columns:
                     df_cmp.insert(0, '名稱', df_cmp['代碼'])
@@ -7099,8 +7099,8 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         _fh3_trigger = '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
         if st.session_state.get('_fh_t3_last_key') != _fh3_trigger or not st.session_state.get('_fh_t3_results'):
             from concurrent.futures import ThreadPoolExecutor, as_completed as _asc
-            _gk3 = st.secrets.get('GEMINI_API_KEY', '')
-            _fk3 = st.secrets.get('FINMIND_TOKEN', '')
+            _gk3 = api_key          # 使用全域 api_key（含 os.environ fallback）
+            _fk3 = FINMIND_TOKEN    # 使用全域 FINMIND_TOKEN（含 os.environ fallback）
             _fh3_new = {}
             _prog3 = st.progress(0, text='財報體檢中...')
             def _fh3_fn(sid):
@@ -7210,7 +7210,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                 '雷達均分': _avg_f,
                 '紅旗':     '⚠️' if (_fd_f.get('red_flags', 'None') not in ('None', '', None)) else '✅',
             })
-        _df_fh = pd.DataFrame(_fh_rows)
+        _df_fh = pd.DataFrame(_fh_rows).sort_values('雷達均分', ascending=False).reset_index(drop=True)
         st.dataframe(
             _df_fh, use_container_width=True, hide_index=True,
             column_config={
