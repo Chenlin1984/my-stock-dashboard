@@ -31,30 +31,42 @@ _DEFAULT_STATE: dict = {
     "timestamp": "",
 }
 
-# ── AI 核心 Prompt 模板（輕量化 v2.0）───────────────────────
+# ── AI 核心 Prompt 模板（台股AI戰情室 v3.0）──────────────────
 _PROMPT_TEMPLATE = """\
-# Role
-你是「台股戰情室首席總經分析師」。你的任務是將系統底層已經計算出的「總經燈號與曝險上限」，結合「近期新聞」，轉化為一段專業、精煉的給投資人的解讀報告。
+# 台股 AI 戰情室：總體經濟與大盤判讀提示語
 
-# Absolute Constraint (絕對約束)
-1. 資訊隔離：【絕對禁止】腦補或使用預訓練知識。你的解讀【必須 100% 基於】下方 <System_Calculated_State> 與 <News> 的內容。
-2. 絕對服從：你必須絕對服從系統給出的「最高持股上限 (exposure_limit_pct)」。若系統給出 30%，代表底層風控已啟動，你的解讀必須偏向防禦與風險提示；若為 80%，則可偏向樂觀。禁止在文字中給出違背系統上限的買賣建議。
-3. 標的限制：禁止在解讀中建議配置 ETF 或任何非股票型基金的資產。
-4. 數字禁令：【絕對禁止】在 analysis_summary 中輸出任何持股百分比數字（如「60%」「持股七成」）。你的角色是「軍事發言人」，解釋系統決策理由，不得重複或替換系統已輸出的量化水位。
+## Role（角色定義）
+你是「台股 AI 戰情室」首席總經分析師，擁有 20 年台股與全球宏觀研究經驗。
+你的任務是整合量化指標、籌碼數據與財經新聞，輸出一份精確、可直接指導操作的大盤戰情判讀報告。
 
-# Input Data
-<System_Calculated_State>
+## Absolute Constraints（絕對約束）
+1. 資訊隔離：【絕對禁止】腦補或使用預訓練知識中的具體數字。解讀必須 100% 基於下方 Data 標籤內的內容。
+2. 絕對服從：你必須絕對服從系統計算出的「曝險上限 (exposure_limit_pct)」。曝險 ≤30% → 解讀必須偏向防禦；曝險 ≥70% → 可偏向樂觀。
+3. 標的禁令：【絕對禁止】在報告中建議任何個股、ETF 或特定標的。
+4. 百分比禁令：analysis_summary 中不得出現任何持股百分比數字（如「60%」「持股七成」）。
+
+## Input Data
+<System_State>
 {system_state_json}
-</System_Calculated_State>
+</System_State>
 
-<News>
+<Macro_Quantitative_Data>
+{macro_data_str}
+</Macro_Quantitative_Data>
+
+<News_Headlines>
 {news_string}
-</News>
+</News_Headlines>
 
-# Output Protocol
-請直接輸出符合以下格式的 JSON，禁止包含任何 Markdown 標記（如 ```json）或解釋性前言/結語：
+## Output Protocol（輸出協議）
+請直接輸出符合以下格式的 JSON（禁止包含任何 ```json 標記或說明文字）：
 {{
-  "analysis_summary": "結合系統燈號與新聞的專業解讀，說明目前的市場結構與風險，以及為何對應此曝險水位。(限 100 字內，語氣需冷靜客觀)"
+  "traffic_light": "🟢 多頭市場|🟡 震盪整理|🔴 空頭防禦（三選一，須與 exposure_limit_pct 一致）",
+  "market_level": "大盤位階與 BIAS240 評價（25 字以內）",
+  "data_deep_dive": "資金國際連動、法人散戶博弈、潛在背離隱患的深度解析（80 字以內）",
+  "risk_warning": "具體系統性風險警示，最多 3 點以頓號分隔（50 字以內，無重大風險則輸出「暫無重大風險」）",
+  "strategy": "大盤戰略方向與操作建議（45 字以內，不可含持股百分比數字）",
+  "analysis_summary": "精煉一句話總結，語氣冷靜客觀（25 字以內，不可含百分比數字）"
 }}"""
 
 
@@ -130,9 +142,10 @@ class MacroStateLocker:
         self,
         system_state: dict,
         news_list: list[str],
+        macro_context: str = "",
     ) -> bool:
         """
-        接收 Python 預算好的 system_state（理科），呼叫 AI 生成 analysis_summary（文科），
+        接收 Python 預算好的 system_state（理科），呼叫 AI 生成 4 段判讀報告（文科），
         合併後原子寫入 macro_state.json。
 
         Returns True on success, False on failure (fail-safe written).
@@ -143,7 +156,7 @@ class MacroStateLocker:
             else "無重大異常新聞"
         )
         state_json_str = json.dumps(system_state, ensure_ascii=False, indent=2)
-        prompt = self._build_prompt(state_json_str, news_str)
+        prompt = self._build_prompt(state_json_str, news_str, macro_context)
 
         try:
             raw_response = self._llm(prompt)
@@ -156,6 +169,11 @@ class MacroStateLocker:
                 "exposure_limit_pct": max(
                     0, min(100, int(system_state.get("exposure_limit_pct", 0)))
                 ),
+                "traffic_light":   str(ai_out.get("traffic_light", "")),
+                "market_level":    str(ai_out.get("market_level", "")),
+                "data_deep_dive":  str(ai_out.get("data_deep_dive", "")),
+                "risk_warning":    str(ai_out.get("risk_warning", "")),
+                "strategy":        str(ai_out.get("strategy", "")),
                 "analysis_summary": str(ai_out.get("analysis_summary", "")),
                 "timestamp": _now_str(),
             }
@@ -172,9 +190,10 @@ class MacroStateLocker:
             return False
 
     # ── 內部方法 ────────────────────────────────────────────
-    def _build_prompt(self, state_json_str: str, news_str: str) -> str:
+    def _build_prompt(self, state_json_str: str, news_str: str, macro_context: str = "") -> str:
         return _PROMPT_TEMPLATE.format(
             system_state_json=state_json_str,
+            macro_data_str=macro_context or "（量化數據未提供）",
             news_string=news_str,
         )
 

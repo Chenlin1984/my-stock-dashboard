@@ -2,8 +2,18 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.4 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: 個股分析四大群組化 + AI首席顧問總結新Prompt（`6abaca7`）✅
+- **版本**: v7.5 | branch `claude/analyze-test-coverage-070Kf`
+- **最新異動**: Tab1 總經 AI 改版為「台股AI戰情室」4段判讀提示語 ✅
+
+## ✅ 已完成任務：Tab1 總經 AI 改版（v7.5）
+
+| 項目 | 內容 |
+|------|------|
+| `macro_state_locker.py` | 新版 Prompt「台股AI戰情室：總體經濟與大盤判讀提示語」4段輸出格式 |
+| `execute_and_lock()` | 新增 `macro_context` 參數（原始量化數據字串），新增儲存 `traffic_light/market_level/data_deep_dive/risk_warning/strategy` |
+| `app.py` if _do_verdict | 組裝豐富 `_v_macro_ctx`（外資/投信/自營/融資/韭菜指數/PCR/ADR/期貨）並傳入 locker |
+| `app.py` UI 渲染 | 4段戰情卡片（🚦燈號/🔍深度解析/🛡️風險預警/💼戰略建議），`traffic_light` 存在時才顯示 |
+| 所有 36 個測試 | ✅ 全部通過 |
 
 ## ✅ 已完成任務：個股分析四大群組化 + AI首席顧問總結（`6abaca7`）
 
