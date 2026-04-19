@@ -7141,81 +7141,6 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
 
     _fh_t3_cached = st.session_state.get('_fh_t3_results', {})
 
-    # ── AI 投資組合綜合判讀 ───────────────────────────────────────
-    if results_t3:
-        st.markdown('---')
-        st.markdown("""<div style="margin:16px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 投資組合綜合判讀</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">台股資深基金經理人 · 強弱排序 · 汰弱留強 · 風險診斷</span></div>""", unsafe_allow_html=True)
-        _t3ai_key = 't3_port_' + '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
-        _t3ai_cached = st.session_state.get(_t3ai_key, '')
-        _t3ai_c1, _t3ai_c2 = st.columns([3, 1])
-        with _t3ai_c1:
-            _t3ai_btn = st.button('🤖 生成 AI 投資組合分析報告', key='t3_ai_gen', type='primary')
-        with _t3ai_c2:
-            if st.button('🔄 重新生成', key='t3_ai_regen'):
-                st.session_state.pop(_t3ai_key, None)
-                st.rerun()
-        if _t3ai_btn:
-            _port_lines = []
-            for _rp in results_t3:
-                _sid_p = _rp.get('stock_id', _rp.get('代碼',''))
-                _nm_p  = _rp.get('stock_name', _rp.get('名稱', _sid_p))
-                _ht_p  = _rp.get('_health', 0)
-                _sc_p  = _rp.get('total', _rp.get('舊評分', 0))
-                _fd_p  = _fund_map.get(_sid_p, {})
-                _fhp   = _fh_t3_cached.get(_sid_p, {})
-                _dna_p = _fhp.get('business_model_dna', 'N/A') if _fhp else 'N/A'
-                _fb_p  = _rp.get('foreign_buy', 0) or 0
-                _rsi_p = _rp.get('rsi', 'N/A')
-                _ma_p  = '多頭排列' if (_rp.get('ma_above', 0) or 0) >= 2 else '空頭排列'
-                _vcp_p = 'VCP突破' if _rp.get('vcp_signal') else '未突破'
-                _port_lines.append(
-                    f"[{_sid_p} {_nm_p}] 健康度={_ht_p:.0f} 評分={_sc_p:.0f} | "
-                    f"技術: 均線={_ma_p} RSI={_rsi_p} {_vcp_p} | "
-                    f"籌碼: 外資{'買超' if _fb_p>0 else '賣超'}{abs(_fb_p)/1e8:.1f}億 | "
-                    f"基本面: EPS={_fd_p.get('近4季EPS','-')} 毛利={_fd_p.get('毛利率%','-')}% | "
-                    f"財報DNA={_dna_p}"
-                )
-            _reg_p = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
-            _reg_txt_p = '多頭市場（積極操作）' if _reg_p == 'bull' else ('空頭市場（縮減部位）' if _reg_p == 'bear' else '震盪整理（謹慎觀望）')
-            _exp_p = st.session_state.get('macro_state', {}).get('exposure_limit_pct', 'N/A')
-            _prompt_parts = [
-                "你是一位掌管百億資金的「台股資深基金經理人」與「量化策略師」。",
-                "專長是從投資組合高度進行資金效能最大化、汰弱留強與風險對沖。分析冷靜、客觀。",
-                "禁止出現「一定要買」「保證獲利」等字眼。統一使用繁體中文。",
-                "",
-                f"大盤格局={_reg_txt_p} | 建議持股上限={_exp_p}%",
-                "",
-                "投資組合數據：",
-            ] + _port_lines + [
-                "",
-                "請依以下格式輸出《投資組合戰略優化報告》：",
-                "",
-                "#### 一、組合強弱排序矩陣",
-                "| 梯隊 | 股票 | 核心催化劑 | 法人態度 | 綜合評分 |",
-                "|:---|:---|:---|:---|:---|",
-                "| S級（強勢領漲）| ... | ... | 偏多 | ... |",
-                "| A級（蓄勢待發）| ... | ... | 中立 | ... |",
-                "| B級（弱勢汰換）| ... | ... | 偏空 | ... |",
-                "",
-                "#### 二、投資組合體質與風險診斷",
-                "- 產業集中度分析：",
-                "- 總經環境適配度：",
-                "",
-                "#### 三、汰弱留強戰術建議（僅供策略參考，不構成投資邀約）",
-                "- 建議減碼/剔除名單：",
-                "- 建議加碼/核心名單（含資金分配比例建議）：",
-                "",
-                "#### 四、組合防禦底線",
-                "（設定整個組合的綜合防禦觀測指標）",
-            ]
-            _t3ai_prompt = '\n'.join(_prompt_parts)
-            with st.spinner('AI 基金經理人分析中（約 30 秒）...'):
-                _t3ai_result = gemini_call(_t3ai_prompt, max_tokens=2000)
-            st.session_state[_t3ai_key] = _t3ai_result
-        if _t3ai_cached:
-            st.markdown(_t3ai_cached)
-        elif not _t3ai_btn:
-            st.caption('▲ 點擊上方按鈕，AI 將生成投資組合強弱排序矩陣與汰弱留強建議。')
     if _fh_t3_cached:
         # ── 摘要比較表 ────────────────────────────────────────────
         st.markdown('##### 📊 體檢摘要比較表')
@@ -7326,6 +7251,82 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     st.error(f'🚩 紅旗警示：{_flags_f}')
                 else:
                     st.success('✅ 未發現財報紅旗異常')
+
+    # ── AI 投資組合綜合判讀 ───────────────────────────────────────
+    if results_t3:
+        st.markdown('---')
+        st.markdown("""<div style="margin:16px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 投資組合綜合判讀</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">台股資深基金經理人 · 強弱排序 · 汰弱留強 · 風險診斷</span></div>""", unsafe_allow_html=True)
+        _t3ai_key = 't3_port_' + '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
+        _t3ai_cached = st.session_state.get(_t3ai_key, '')
+        _t3ai_c1, _t3ai_c2 = st.columns([3, 1])
+        with _t3ai_c1:
+            _t3ai_btn = st.button('🤖 生成 AI 投資組合分析報告', key='t3_ai_gen', type='primary')
+        with _t3ai_c2:
+            if st.button('🔄 重新生成', key='t3_ai_regen'):
+                st.session_state.pop(_t3ai_key, None)
+                st.rerun()
+        if _t3ai_btn:
+            _port_lines = []
+            for _rp in results_t3:
+                _sid_p = _rp.get('stock_id', _rp.get('代碼',''))
+                _nm_p  = _rp.get('stock_name', _rp.get('名稱', _sid_p))
+                _ht_p  = _rp.get('_health', 0)
+                _sc_p  = _rp.get('total', _rp.get('舊評分', 0))
+                _fd_p  = _fund_map.get(_sid_p, {})
+                _fhp   = _fh_t3_cached.get(_sid_p, {})
+                _dna_p = _fhp.get('business_model_dna', 'N/A') if _fhp else 'N/A'
+                _fb_p  = _rp.get('foreign_buy', 0) or 0
+                _rsi_p = _rp.get('rsi', 'N/A')
+                _ma_p  = '多頭排列' if (_rp.get('ma_above', 0) or 0) >= 2 else '空頭排列'
+                _vcp_p = 'VCP突破' if _rp.get('vcp_signal') else '未突破'
+                _port_lines.append(
+                    f"[{_sid_p} {_nm_p}] 健康度={_ht_p:.0f} 評分={_sc_p:.0f} | "
+                    f"技術: 均線={_ma_p} RSI={_rsi_p} {_vcp_p} | "
+                    f"籌碼: 外資{'買超' if _fb_p>0 else '賣超'}{abs(_fb_p)/1e8:.1f}億 | "
+                    f"基本面: EPS={_fd_p.get('近4季EPS','-')} 毛利={_fd_p.get('毛利率%','-')}% | "
+                    f"財報DNA={_dna_p}"
+                )
+            _reg_p = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+            _reg_txt_p = '多頭市場（積極操作）' if _reg_p == 'bull' else ('空頭市場（縮減部位）' if _reg_p == 'bear' else '震盪整理（謹慎觀望）')
+            _exp_p = st.session_state.get('macro_state', {}).get('exposure_limit_pct', 'N/A')
+            _prompt_parts = [
+                "你是一位掌管百億資金的「台股資深基金經理人」與「量化策略師」。",
+                "專長是從投資組合高度進行資金效能最大化、汰弱留強與風險對沖。分析冷靜、客觀。",
+                "禁止出現「一定要買」「保證獲利」等字眼。統一使用繁體中文。",
+                "",
+                f"大盤格局={_reg_txt_p} | 建議持股上限={_exp_p}%",
+                "",
+                "投資組合數據：",
+            ] + _port_lines + [
+                "",
+                "請依以下格式輸出《投資組合戰略優化報告》：",
+                "",
+                "#### 一、組合強弱排序矩陣",
+                "| 梯隊 | 股票 | 核心催化劑 | 法人態度 | 綜合評分 |",
+                "|:---|:---|:---|:---|:---|",
+                "| S級（強勢領漲）| ... | ... | 偏多 | ... |",
+                "| A級（蓄勢待發）| ... | ... | 中立 | ... |",
+                "| B級（弱勢汰換）| ... | ... | 偏空 | ... |",
+                "",
+                "#### 二、投資組合體質與風險診斷",
+                "- 產業集中度分析：",
+                "- 總經環境適配度：",
+                "",
+                "#### 三、汰弱留強戰術建議（僅供策略參考，不構成投資邀約）",
+                "- 建議減碼/剔除名單：",
+                "- 建議加碼/核心名單（含資金分配比例建議）：",
+                "",
+                "#### 四、組合防禦底線",
+                "（設定整個組合的綜合防禦觀測指標）",
+            ]
+            _t3ai_prompt = '\n'.join(_prompt_parts)
+            with st.spinner('AI 基金經理人分析中（約 30 秒）...'):
+                _t3ai_result = gemini_call(_t3ai_prompt, max_tokens=2000)
+            st.session_state[_t3ai_key] = _t3ai_result
+        if _t3ai_cached:
+            st.markdown(_t3ai_cached)
+        elif not _t3ai_btn:
+            st.caption('▲ 點擊上方按鈕，AI 將生成投資組合強弱排序矩陣與汰弱留強建議。')
 
 # ══════════════════════════════════════════════════════════════
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
