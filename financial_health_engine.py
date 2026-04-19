@@ -78,6 +78,56 @@ _SURVIVAL_PROMPT = """\
   }}
 }}"""
 
+# ── Operating Module Prompt（經營能力：周轉效率 + 資金壓力）──
+_OPERATING_PROMPT = """\
+# Role: 超級數字力經營能力分析官
+
+# Core Rules
+1. 一年以 360 天計算。
+2. 直接使用期末值，不使用平均值。
+
+# Analysis Process
+
+## 模組 A：周轉效率檢驗
+- [DSO] 應收帳款天數 = 360 / (營收 / 應收帳款)
+- [DIO] 存貨在手天數 = 360 / (成本 / 存貨)
+- [DPO] 應付帳款天數 = 360 / (成本 / 應付帳款)
+
+## 模組 B：資金壓力檢驗 (做生意的週期)
+1. 做生意的完整週期 = DIO + DSO
+   - 判定：> 150 天為笨重生意；< 50 天為極速周轉。
+2. 缺錢的天數 (CCC) = 完整週期 - DPO
+   - 判定：若 < 0 天，標註具備「OPM 護城河」(拿別人的錢做生意)。
+
+## 模組 C：總資產翻桌率
+- 計算：營收 / 總資產
+- 判定：
+  - > 1.0 : 通過。
+  - < 1.0 : 檢查是否滿足 (現金佔比 > 25% OR ROE 連續三年 > 20%)。若不滿足，判定為高風險燒錢行業。
+
+# Constraint
+- 若財報欄位缺失或分母為 0，該指標輸出 "N/A"，禁止腦補。
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol (Strict JSON)
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Operating_Module": {{
+    "DSO": "XX.X 天",
+    "DIO": "XX.X 天 或 N/A",
+    "DPO": "XX.X 天",
+    "Complete_Cycle": "XX.X 天",
+    "Cash_Gap_Days": "XX.X 天",
+    "OPM_Strategy": "Yes | No",
+    "Asset_Turnover": "X.XX 趟",
+    "Verdict": "綜合評價做生意的本事（50字以內）"
+  }}
+}}"""
+
 # ── MJ 財報體檢 Prompt ──────────────────────────────────────
 _PROMPT_TEMPLATE = """\
 # Role
@@ -247,6 +297,38 @@ def analyze_survival_module(api_key: str, stock_id: str, fin_data: dict) -> dict
         return fs
 
 
+def analyze_operating_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """
+    執行經營能力模組：DSO/DIO/DPO 周轉效率 + CCC 資金壓力 + 總資產翻桌率。
+    """
+    _fs_op = {
+        "Operating_Module": {
+            "DSO": "N/A", "DIO": "N/A", "DPO": "N/A",
+            "Complete_Cycle": "N/A", "Cash_Gap_Days": "N/A",
+            "OPM_Strategy": "No", "Asset_Turnover": "N/A",
+            "Verdict": "資料載入失敗，無法分析。",
+        },
+        "error": True,
+    }
+    if not api_key or not fin_data or fin_data.get("error"):
+        return _fs_op
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _OPERATING_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        opm = result.get("Operating_Module", {})
+        print(f"[Operating] ✅ {stock_id} CCC={opm.get('Cash_Gap_Days','?')} turnover={opm.get('Asset_Turnover','?')}")
+        return result
+    except Exception as _e:
+        print(f"[Operating] ❌ {stock_id}: {_e}")
+        fs = _fs_op.copy()
+        fs["Operating_Module"]["Verdict"] = f"分析失敗：{_e}"
+        return fs
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -287,6 +369,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
         # 同步執行 Survival Module（存活能力精細版）
         _surv = analyze_survival_module(api_key, stock_id, fin_data)
         result["survival_module"] = _surv.get("Survival_Module", {})
+
+        # 同步執行 Operating Module（經營能力：周轉效率+資金壓力）
+        _oper = analyze_operating_module(api_key, stock_id, fin_data)
+        result["operating_module"] = _oper.get("Operating_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result

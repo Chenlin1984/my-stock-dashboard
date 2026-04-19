@@ -6471,6 +6471,78 @@ padding:12px 16px;margin:8px 0;">
 
                 st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
+                # ── 存活能力精細模組（Survival Module）──────────
+                _surv2 = _fh.get('survival_module', {})
+                if _surv2:
+                    st.markdown('#### 🏥 存活能力精細診斷（MJ 3大生死指標）')
+                    _sc_map = {'Pass': '#3fb950', 'Acceptable': '#d29922', 'Fail': '#f85149'}
+                    _s2c = st.columns(3)
+                    for _col2, (_key2, _lbl2) in zip(_s2c, [
+                        ('Cash_Ratio', '💰 氣長不長'), ('DSO_Speed', '⚡ 收現速度')
+                    ]):
+                        _si2 = _surv2.get(_key2, {})
+                        _sc2 = _sc_map.get(_si2.get('Status', 'Fail'), '#f85149')
+                        with _col2:
+                            st.markdown(
+                                f'<div style="background:{_sc2}18;border:1px solid {_sc2}55;'
+                                f'border-radius:8px;padding:10px;text-align:center;">'
+                                f'<div style="font-size:11px;color:#8b949e;">{_lbl2}</div>'
+                                f'<div style="font-size:20px;font-weight:900;color:{_sc2};">{_si2.get("Value","N/A")}</div>'
+                                f'<div style="font-size:11px;color:{_sc2};">{_si2.get("Status","?")}</div>'
+                                f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_si2.get("Insight","")}</div>'
+                                f'</div>', unsafe_allow_html=True)
+                    _r1102 = _surv2.get('Rule_100_100_10', {})
+                    _r110c2 = _sc_map.get(_r1102.get('Status', 'Fail'), '#f85149')
+                    with _s2c[2]:
+                        st.markdown(
+                            f'<div style="background:{_r110c2}18;border:1px solid {_r110c2}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">🔄 100/100/10</div>'
+                            f'<div style="font-size:11px;color:#c9d1d9;">'
+                            f'A:{_r1102.get("Cash_Flow_Ratio","N/A")} '
+                            f'B:{_r1102.get("Cash_Flow_Adequacy","N/A")} '
+                            f'C:{_r1102.get("Cash_Reinvestment","N/A")}</div>'
+                            f'<div style="font-size:12px;font-weight:700;color:{_r110c2};">{_r1102.get("Status","?")}</div>'
+                            f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_r1102.get("Insight","")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _v2 = _surv2.get('Final_Survival_Verdict', '')
+                    if _v2:
+                        st.caption(f'🎯 {_v2}')
+
+                # ── 經營能力模組（Operating Module）──────────────
+                _oper2 = _fh.get('operating_module', {})
+                if _oper2:
+                    st.markdown('#### ⚙️ 經營能力診斷（周轉效率 + 資金壓力）')
+                    _oc1, _oc2, _oc3, _oc4 = st.columns(4)
+                    _opm_yes = _oper2.get('OPM_Strategy', 'No') == 'Yes'
+                    _ccc_color = '#3fb950' if _opm_yes else '#d29922'
+                    with _oc1:
+                        st.metric('DSO 應收天數', _oper2.get('DSO', 'N/A'))
+                    with _oc2:
+                        st.metric('DIO 存貨天數', _oper2.get('DIO', 'N/A'))
+                    with _oc3:
+                        st.metric('DPO 應付天數', _oper2.get('DPO', 'N/A'))
+                    with _oc4:
+                        st.metric('總資產翻桌率', _oper2.get('Asset_Turnover', 'N/A'))
+                    _oc5, _oc6 = st.columns(2)
+                    with _oc5:
+                        st.markdown(
+                            f'<div style="background:#161b22;border-radius:8px;padding:10px;">'
+                            f'<div style="font-size:11px;color:#8b949e;">做生意完整週期</div>'
+                            f'<div style="font-size:18px;font-weight:900;color:#58a6ff;">{_oper2.get("Complete_Cycle","N/A")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    with _oc6:
+                        st.markdown(
+                            f'<div style="background:#161b22;border-radius:8px;padding:10px;">'
+                            f'<div style="font-size:11px;color:#8b949e;">缺錢天數 (CCC)</div>'
+                            f'<div style="font-size:18px;font-weight:900;color:{_ccc_color};">{_oper2.get("Cash_Gap_Days","N/A")}</div>'
+                            f'<div style="font-size:11px;color:{_ccc_color};">{"✅ OPM護城河：拿別人的錢做生意" if _opm_yes else "⚠️ 需自備營運資金"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    if _oper2.get('Verdict'):
+                        st.caption(f'💡 {_oper2["Verdict"]}')
+
+                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
+
                 # ── AI 白話診斷室 ─────────────────────────
                 st.markdown('#### 🤖 AI 財務長總結報告')
                 _insight = _fh.get('ai_insight', '')
@@ -7280,6 +7352,35 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     _verdict_f = _surv_f.get('Final_Survival_Verdict', '')
                     if _verdict_f:
                         st.caption(f'🎯 {_verdict_f}')
+
+                # ── 經營能力模組（Operating Module）──────────────
+                _oper_f = _fd_f.get('operating_module', {})
+                if _oper_f and not _fd_f.get('error'):
+                    st.markdown('**⚙️ 經營能力診斷（MJ DSO/DIO/DPO）**')
+                    _o4c = st.columns(4)
+                    with _o4c[0]: st.metric('DSO 應收天數', _oper_f.get('DSO', 'N/A'))
+                    with _o4c[1]: st.metric('DIO 存貨天數', _oper_f.get('DIO', 'N/A'))
+                    with _o4c[2]: st.metric('DPO 應付天數', _oper_f.get('DPO', 'N/A'))
+                    with _o4c[3]: st.metric('總資產翻桌率', _oper_f.get('Asset_Turnover', 'N/A'))
+                    _o2c = st.columns(2)
+                    with _o2c[0]:
+                        st.markdown(
+                            f'<div style="text-align:center;padding:8px;background:#161b22;border-radius:6px;">'
+                            f'<div style="font-size:11px;color:#8b949e;">完整循環天數</div>'
+                            f'<div style="font-size:18px;font-weight:900;color:#58a6ff;">{_oper_f.get("Complete_Cycle","N/A")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    with _o2c[1]:
+                        _ccc_f = str(_oper_f.get('Cash_Gap_Days', '0'))
+                        _ccc_num_f = float(''.join(c for c in _ccc_f if c in '0123456789.-') or '0')
+                        _ccc_color_f = '#3fb950' if _ccc_num_f <= 0 else ('#d29922' if _ccc_num_f <= 30 else '#f85149')
+                        _opm_yes_f = _oper_f.get('OPM_Strategy', 'No') == 'Yes'
+                        st.markdown(
+                            f'<div style="text-align:center;padding:8px;background:#161b22;border-radius:6px;">'
+                            f'<div style="font-size:11px;color:#8b949e;">現金缺口天數 {"🏰 OPM護城河" if _opm_yes_f else ""}</div>'
+                            f'<div style="font-size:18px;font-weight:900;color:{_ccc_color_f};">{_ccc_f}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    if _oper_f.get('Verdict'):
+                        st.caption(f'💡 {_oper_f["Verdict"]}')
 
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')
