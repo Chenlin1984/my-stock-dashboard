@@ -4613,8 +4613,52 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     'Sahm_Rule_Triggered': False,  # 尚無薩姆規則資料來源，預設 False
                 }
                 _system_state = calculate_system_state(_macro_numbers)
+                # ── 組裝量化原始數據字串供新版 AI 提示語使用 ──────
+                _cl_d_v = st.session_state.get('cl_data', {})
+                _inst_v = _cl_d_v.get('inst', {})
+                _fk_v   = next((k for k in _inst_v if '外資' in k), None)
+                _tk_v   = next((k for k in _inst_v if '投信' in k), None)
+                _dk_v   = next((k for k in _inst_v if '自營' in k), None)
+                _fnet_v = _inst_v.get(_fk_v, {}).get('net') if _fk_v else None
+                _tnet_v = _inst_v.get(_tk_v, {}).get('net') if _tk_v else None
+                _dnet_v = _inst_v.get(_dk_v, {}).get('net') if _dk_v else None
+                _margin_v = _cl_d_v.get('margin')
+                _adl_v   = _cl_d_v.get('adl')
+                _adl_ratio_v = None
+                if _adl_v is not None and not _adl_v.empty and 'ad_ratio' in _adl_v.columns:
+                    try: _adl_ratio_v = float(_adl_v['ad_ratio'].iloc[-1])
+                    except (ValueError, TypeError): pass
+                _leek_v2 = None
+                if _li_d is not None and not _li_d.empty and '韭菜指數' in _li_d.columns:
+                    try: _leek_v2 = float(_li_d.iloc[-1].get('韭菜指數', None))
+                    except (ValueError, TypeError): pass
+                _ctx = []
+                if _bi_d.get('bias_240') is not None:
+                    _ctx.append(f'• 大盤年線乖離率 BIAS240：{_bi_d["bias_240"]:+.1f}%（>15%偏貴、<-10%低估）')
+                if _mi_d.get('m1b_yoy') is not None:
+                    _gap_v = round(float(_mi_d['m1b_yoy']) - float(_mi_d.get('m2_yoy') or 0), 2)
+                    _ctx.append(f'• M1B={_mi_d["m1b_yoy"]:.1f}%  M2={_mi_d.get("m2_yoy",0):.1f}%  差額={_gap_v:+.2f}%（正=資金行情啟動）')
+                if _fnet_v is not None:
+                    _ctx.append(f'• 外資現貨買賣超：{_fnet_v:+.1f}億')
+                if _tnet_v is not None:
+                    _ctx.append(f'• 投信買賣超：{_tnet_v:+.1f}億')
+                if _dnet_v is not None:
+                    _ctx.append(f'• 自營商買賣超：{_dnet_v:+.1f}億')
+                if _margin_v is not None:
+                    _ctx.append(f'• 融資餘額：{_margin_v:.0f}億（>3400億危險、>2500億警戒）')
+                if _leek_v2 is not None:
+                    _ctx.append(f'• 韭菜指數（小台散戶多空比）：{_leek_v2:.0f}（>80散戶過熱、<20散戶恐慌）')
+                if _pcr_v is not None:
+                    _ctx.append(f'• 選擇權 PCR：{_pcr_v:.2f}（>1.3市場恐慌偏多訊號、<0.7過度樂觀偏空）')
+                if _adl_ratio_v is not None:
+                    _ctx.append(f'• ADR 廣度指標：{_adl_ratio_v:.0f}%（>70市場健康、<30廣度不足）')
+                if _fut_net_v is not None:
+                    _ctx.append(f'• 外資期貨淨口數：{_fut_net_v:+.0f}口（負=淨空單、<-35000強烈空頭信號）')
+                if _vix_d.get('current'):
+                    _ctx.append(f'• VIX 恐慌指數：{_vix_d["current"]}（>28警戒、>35極度恐慌）')
+                _v_macro_ctx = '\n'.join(_ctx) if _ctx else '（數據尚未載入，請先更新總經拼圖）'
                 _locker = MacroStateLocker()
-                _ok = _locker.execute_and_lock(_system_state, _v_news_titles)
+                _ok = _locker.execute_and_lock(_system_state, _v_news_titles, macro_context=_v_macro_ctx)
                 if _ok:
                     st.success('✅ AI 裁決已更新至實體狀態鎖')
                 else:
@@ -4628,6 +4672,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _cash_pct = 100 - _exp_pct
         _verdict_txt = _ms.get('analysis_summary', '')
         _ms_ts = _ms.get('timestamp', '')
+        _traffic_light  = _ms.get('traffic_light', '')
+        _market_level   = _ms.get('market_level', '')
+        _data_deep_dive = _ms.get('data_deep_dive', '')
+        _risk_warning   = _ms.get('risk_warning', '')
+        _strategy       = _ms.get('strategy', '')
 
         _srl_clr = {'安全': '#3fb950', '警告': '#d29922', '危險': '#f85149'}.get(_srl, '#8b949e')
         _reg_clr = {'多頭': '#3fb950', '震盪': '#d29922', '空頭': '#f85149'}.get(_regime, '#8b949e')
@@ -4670,6 +4719,35 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
         if not _ms_ts:
             st.info('尚未執行 AI 裁決。點擊上方「執行 AI 裁決」按鈕以生成首次分析。')
+
+        # ── 新版 4 段戰情判讀（traffic_light 存在時顯示）──────
+        if _traffic_light or _market_level:
+            _tl_clr = '#3fb950' if '🟢' in _traffic_light else ('#f85149' if '🔴' in _traffic_light else '#d29922')
+            st.markdown(
+                f'<div style="margin-top:14px;border:1px solid #21262d;border-radius:10px;overflow:hidden;">'
+                # 段一：燈號 + 大盤位階
+                f'<div style="background:#161b22;padding:12px 16px;border-left:4px solid {_tl_clr};">'
+                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🚦 市場總體燈號與水位</div>'
+                f'<div style="font-size:16px;font-weight:900;color:{_tl_clr};">{_traffic_light}</div>'
+                f'<div style="font-size:13px;color:#c9d1d9;margin-top:4px;">{_market_level}</div>'
+                f'</div>'
+                # 段二：核心數據深度解析
+                f'<div style="background:#0d1117;padding:12px 16px;border-top:1px solid #21262d;">'
+                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🔍 核心數據深度解析</div>'
+                f'<div style="font-size:13px;color:#c9d1d9;line-height:1.7;">{_data_deep_dive}</div>'
+                f'</div>'
+                # 段三：系統性風險預警
+                f'<div style="background:#161b22;padding:12px 16px;border-top:1px solid #21262d;">'
+                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🛡️ 系統性風險預警</div>'
+                f'<div style="font-size:13px;color:#f0883e;line-height:1.7;">{_risk_warning}</div>'
+                f'</div>'
+                # 段四：大盤戰略與資金配置建議
+                f'<div style="background:#0d1117;padding:12px 16px;border-top:1px solid #21262d;">'
+                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">💼 大盤戰略與資金配置建議</div>'
+                f'<div style="font-size:13px;color:#58a6ff;line-height:1.7;">{_strategy}</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
