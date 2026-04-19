@@ -1955,58 +1955,417 @@ def _check_etf_health(ticker: str) -> dict:
 
 def render_data_health():
     st.markdown('### 🔎 資料健診儀表板')
-    st.caption('掃描全系統資料源狀態，確認每個資料均有真實抓取，避免沙盒/空值假象。')
+    st.caption('顯示全系統每項資料的實際數值，確認為真實市場資料（非沙盒/空值）。點擊「更新全部總經數據」後再來此頁驗證。')
 
-    # ── ① Session State 資料檢查 ──────────────────────────────
-    st.markdown('#### 🧠 系統快取資料（session_state）')
-    ss_rows = []
-    for key, label, checker in _HEALTH_CHECKS['session_state']:
-        val  = st.session_state.get(key)
-        ok   = False
-        note = '尚未載入'
-        try:
-            ok = checker(val)
-            if ok:
-                if key == 'mkt_info':
-                    note = f'regime={val.get("regime")} score={val.get("score")}'
-                elif key == 'li_latest':
-                    note = f'{len(val)} 筆指標，最新={str(val.index[-1].date()) if hasattr(val.index[-1], "date") else val.index[-1]}' if not val.empty else '空表'
-                elif key == 'etf_single_data':
-                    note = f'{val.get("ticker")} | 殖利率={val.get("cur_yield"):.1f}%'
-                elif key == 'etf_portfolio_data':
-                    note = f'{len(val.get("rows",[]))} 檔ETF | 總資產={val.get("total_value",0):,.0f}元'
-                elif key == 'etf_backtest_data':
-                    note = f'CAGR={val.get("cagr"):.1f}% | MDD={val.get("mdd"):.1f}%'
-                else:
-                    note = '有資料'
+    _cl    = st.session_state.get('cl_data', {})
+    _cl_ts = st.session_state.get('cl_ts', '尚未更新')
+
+    # ── 整體健康度概覽 ────────────────────────────────────────
+    _chk = [
+        bool(_cl.get('intl')), bool(_cl.get('tw')), bool(_cl.get('tech')),
+        bool(_cl.get('inst')), _cl.get('margin') is not None,
+        _cl.get('adl') is not None and not (hasattr(_cl.get('adl'), 'empty') and _cl['adl'].empty),
+        st.session_state.get('li_latest') is not None,
+        bool(st.session_state.get('m1b_m2_info')),
+        bool(st.session_state.get('bias_info')),
+        bool(st.session_state.get('macro_info')),
+        bool(st.session_state.get('mkt_info')),
+    ]
+    _n_ok = sum(_chk); _n_total = len(_chk)
+    _hclr = '#3fb950' if _n_ok >= _n_total * 0.8 else ('#d29922' if _n_ok >= _n_total * 0.5 else '#f85149')
+    st.markdown(
+        f'<div style="background:#0d1117;border:2px solid {_hclr};border-radius:10px;'
+        f'padding:12px 16px;margin-bottom:16px;">'
+        f'<span style="font-size:15px;font-weight:900;color:{_hclr};">系統資料健康度：{_n_ok}/{_n_total} 項已載入</span>'
+        f'<span style="font-size:11px;color:#8b949e;margin-left:12px;">最後更新：{_cl_ts}</span>'
+        f'<div style="font-size:11px;color:#8b949e;margin-top:4px;">'
+        f'{"✅ 全部就緒" if _n_ok == _n_total else "⚠️ 部分未載入，請先點擊「更新全部總經數據」"}</div>'
+        f'</div>', unsafe_allow_html=True)
+
+    # ── 1. 國際市場指數 ───────────────────────────────────────
+    _intl = _cl.get('intl', {})
+    with st.expander(f'🌍 國際市場指數（DJI/SOX/TNX/DXY）  {"✅" if _intl else "❌ 尚未載入"}', expanded=bool(_intl)):
+        if _intl:
+            _rows = []
+            for _name, _v in _intl.items():
+                if not _v:
+                    _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
+                    continue
+                _rows.append({
+                    '名稱': _name,
+                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
+                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
+                    '狀態': _v.get('status', '-'),
+                })
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入，請點擊「🔄 更新全部總經數據」')
+
+    # ── 2. 台股大盤 ──────────────────────────────────────────
+    _tw = _cl.get('tw', {})
+    with st.expander(f'🇹🇼 台股大盤（加權/OTC/匯率）  {"✅" if _tw else "❌ 尚未載入"}', expanded=bool(_tw)):
+        if _tw:
+            _rows = []
+            for _name, _v in _tw.items():
+                if not _v:
+                    _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
+                    continue
+                _rows.append({
+                    '名稱': _name,
+                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
+                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
+                    '狀態': _v.get('status', '-'),
+                })
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入')
+
+    # ── 3. 科技股 ────────────────────────────────────────────
+    _tech = _cl.get('tech', {})
+    with st.expander(f'🖥️ 科技股（NVDA/MSFT/AAPL/GOOGL/AMD/TSM）  {"✅" if _tech else "❌ 尚未載入"}', expanded=bool(_tech)):
+        if _tech:
+            _rows = []
+            for _name, _v in _tech.items():
+                if not _v:
+                    _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
+                    continue
+                _rows.append({
+                    '名稱': _name,
+                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
+                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
+                    '狀態': _v.get('status', '-'),
+                })
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入')
+
+    # ── 4. 三大法人籌碼 ───────────────────────────────────────
+    _inst = _cl.get('inst', {})
+    _inst_date = _cl.get('inst_date', '-')
+    with st.expander(f'💼 三大法人籌碼  {"✅" if _inst else "❌ 尚未載入"}  {_inst_date or ""}', expanded=bool(_inst)):
+        if _inst:
+            _rows = []
+            for _nm, _v in _inst.items():
+                _net = _v.get('net') if isinstance(_v, dict) else _v
+                _dir = '🔴 買超' if (_net or 0) > 0 else ('🟢 賣超' if (_net or 0) < 0 else '─ 持平')
+                _rows.append({'法人': _nm, '淨買賣（億）': f'{_net:+.1f}' if _net is not None else '-',
+                               '日期': str(_inst_date or '-'), '方向': _dir})
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入（TWSE 封鎖，FinMind 備援）')
+
+    # ── 5. 融資餘額 ──────────────────────────────────────────
+    _margin = _cl.get('margin')
+    with st.expander(f'📊 融資餘額  {"✅" if _margin is not None else "❌ 尚未載入"}', expanded=False):
+        if _margin is not None:
+            _mc = '#f85149' if _margin > 3400 else ('#d29922' if _margin > 2500 else '#3fb950')
+            st.markdown(
+                f'<div style="text-align:center;padding:12px;">'
+                f'<div style="font-size:11px;color:#484f58;">融資餘額</div>'
+                f'<div style="font-size:40px;font-weight:900;color:{_mc};">{_margin:,.0f}'
+                f'<span style="font-size:16px;"> 億元</span></div>'
+                f'<div style="font-size:11px;color:#8b949e;">>3400億=危險 ／ >2500億=警戒</div>'
+                f'</div>', unsafe_allow_html=True)
+        else:
+            st.warning('尚未載入（TWSE 封鎖，FinMind 備援）')
+
+    # ── 6. ADL 廣度 ──────────────────────────────────────────
+    _adl = _cl.get('adl')
+    _adl_ok = _adl is not None and hasattr(_adl, 'empty') and not _adl.empty
+    with st.expander(f'📉 ADL 廣度指標  {"✅" if _adl_ok else "❌ 尚未載入"}', expanded=False):
+        if _adl_ok:
+            st.dataframe(_adl.tail(3), use_container_width=True)
+            if 'ad_ratio' in _adl.columns:
+                _r = float(_adl['ad_ratio'].iloc[-1])
+                _rc = '#3fb950' if _r > 60 else ('#d29922' if _r > 30 else '#f85149')
+                st.markdown(f'最新 ADR = <b style="color:{_rc};">{_r:.1f}%</b>（>70 市場健康 ／ <30 廣度不足）', unsafe_allow_html=True)
+        else:
+            _adbg = st.session_state.get('adl_debug_msg', '')
+            st.warning(f'尚未載入{f"（{_adbg}）" if _adbg else ""}')
+
+    # ── 7. 先行指標 ──────────────────────────────────────────
+    _li = st.session_state.get('li_latest')
+    _li_ok = _li is not None and hasattr(_li, 'empty') and not _li.empty
+    with st.expander(f'📈 先行指標（期貨/選PCR/ADL/韭菜指數）  {"✅" if _li_ok else "❌ 尚未載入"}', expanded=_li_ok):
+        if _li_ok:
+            st.dataframe(_li.tail(3), use_container_width=True)
+        else:
+            st.warning('尚未載入（需 FinMind token 且已更新數據）')
+
+    # ── 8. M1B-M2 貨幣 ───────────────────────────────────────
+    _mi = st.session_state.get('m1b_m2_info', {})
+    with st.expander(f'💰 M1B-M2 貨幣動能  {"✅" if _mi else "❌ 尚未載入"}', expanded=bool(_mi)):
+        if _mi:
+            _m1b = _mi.get('m1b_yoy'); _m2 = _mi.get('m2_yoy')
+            _gap = round(_m1b - _m2, 2) if (_m1b is not None and _m2 is not None) else None
+            _gc  = '#3fb950' if (_gap or 0) >= 1 else ('#d29922' if (_gap or 0) >= 0 else '#f85149')
+            _rows = [
+                {'指標': 'M1B YoY',  '數值': f'{_m1b:.2f}%' if _m1b is not None else '-', '說明': '狹義貨幣供給年增率'},
+                {'指標': 'M2 YoY',   '數值': f'{_m2:.2f}%'  if _m2  is not None else '-', '說明': '廣義貨幣供給年增率'},
+                {'指標': 'Gap',      '數值': f'{_gap:+.2f}%' if _gap is not None else '-', '說明': '>1%=熱錢進場訊號'},
+                {'指標': '資料來源', '數值': _mi.get('source', '-'), '說明': 'CBC / FinMind'},
+            ]
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+            if _gap is not None:
+                st.markdown(f'<b style="color:{_gc};">M1B-M2 Gap = {_gap:+.2f}%</b>', unsafe_allow_html=True)
+        else:
+            st.warning('尚未載入（CBC/FinMind，序列任務，需完整更新）')
+
+    # ── 9. 乖離率 ────────────────────────────────────────────
+    _bi = st.session_state.get('bias_info', {})
+    with st.expander(f'📐 年線乖離率（BIAS）  {"✅" if _bi else "❌ 尚未載入"}', expanded=bool(_bi)):
+        if _bi:
+            _rows = [
+                {'項目': 'BIAS20',   '值': f'{_bi.get("bias_20",  0):+.2f}%', '說明': '20日乖離率'},
+                {'項目': 'BIAS60',   '值': f'{_bi.get("bias_60",  0):+.2f}%', '說明': '60日乖離率'},
+                {'項目': 'BIAS240',  '值': f'{_bi.get("bias_240", 0):+.2f}%', '說明': '>15%偏貴 <-10%低估'},
+                {'項目': 'MA240',    '值': f'{_bi.get("ma240",    0):,.0f}',   '說明': '年線點位'},
+                {'項目': '大盤現價', '值': f'{_bi.get("price",    0):,.0f}',   '說明': '台股加權收盤'},
+                {'項目': '資料天數', '值': str(_bi.get('data_days', '-')),     '說明': ''},
+            ]
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入（yfinance TWII 2年資料）')
+
+    # ── 10. 總經快照 ─────────────────────────────────────────
+    _ma = st.session_state.get('macro_info', {})
+    with st.expander(f'🌏 總經快照（VIX / CPI / PMI / NDC / 外銷訂單）  {"✅" if _ma else "❌ 尚未載入"}', expanded=bool(_ma)):
+        if _ma:
+            _vix = _ma.get('vix') or {}; _cpi = _ma.get('us_core_cpi') or {}
+            _pmi = _ma.get('ism_pmi') or {}; _ndc = _ma.get('ndc_signal') or {}
+            _exp = _ma.get('tw_export') or {}
+            _rows = [
+                {'指標': 'VIX 恐慌指數',
+                 '數值': str(_vix.get('current', '-')),
+                 '日期': str(_vix.get('dates', ['-'])[-1])[:10] if _vix.get('dates') else '-',
+                 '來源': 'Yahoo Finance'},
+                {'指標': 'VIX MA20',
+                 '數值': str(_vix.get('ma20', '-')),
+                 '日期': '-', '來源': '-'},
+                {'指標': '美國核心 CPI YoY',
+                 '數值': f'{_cpi["yoy"]:+.1f}%' if _cpi.get('yoy') is not None else '-',
+                 '日期': str(_cpi.get('date', '-')),
+                 '來源': 'FRED / DB.nomics'},
+                {'指標': 'ISM PMI / OECD CLI',
+                 '數值': str(_pmi.get('value', '-')),
+                 '日期': str(_pmi.get('date', '-')),
+                 '來源': 'OECD CLI' if _pmi.get('is_oecd_cli') else 'FRED ISM'},
+                {'指標': 'NDC 景氣燈號分數',
+                 '數值': f'{_ndc["score"]:.0f}/45' if _ndc.get('score') is not None else '-',
+                 '日期': str(_ndc.get('date', '-')),
+                 '來源': 'OECD代理估算' if _ndc.get('_is_proxy') else 'data.gov.tw'},
+                {'指標': '台灣外銷訂單 YoY',
+                 '數值': f'{_exp["yoy"]:+.1f}%' if _exp.get('yoy') is not None else '-',
+                 '日期': str(_exp.get('date', '-')),
+                 '來源': str(_exp.get('source', '-'))},
+            ]
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.warning('尚未載入，請點擊「更新全部總經數據」')
+
+    # ── 11. 旌旗指數 + 市場評估 ─────────────────────────────
+    _jq = st.session_state.get('jingqi_info', {})
+    _mk = st.session_state.get('mkt_info', {})
+    with st.expander(f'🎌 旌旗指數 + 市場評估  {"✅" if _mk else "❌ 尚未載入"}', expanded=bool(_mk)):
+        c_jq, c_mk = st.columns(2)
+        with c_jq:
+            st.markdown('**旌旗指數（市場廣度）**')
+            if _jq:
+                st.markdown(f'廣度均值 = **{_jq.get("avg", 0):.1f}%**（>60% 多頭健康）')
+                st.markdown(f'Regime = **{_jq.get("regime", "-")}**')
             else:
-                note = '空值或格式異常'
-        except Exception as e:
-            note = f'檢查失敗：{e}'
-        ss_rows.append({'狀態': '✅ 正常' if ok else '❌ 未載入',
-                         '模組': label, 'Key': key, '說明': note})
-    ss_df = pd.DataFrame(ss_rows)
-    st.dataframe(ss_df, use_container_width=True, hide_index=True)
+                st.caption('尚未載入')
+        with c_mk:
+            st.markdown('**市場評估**')
+            if _mk:
+                _rows2 = [
+                    {'項目': 'Regime',   '值': str(_mk.get('regime', '-'))},
+                    {'項目': '市場評分', '值': str(_mk.get('market_score', _mk.get('score', '-')))},
+                    {'項目': '建議曝險', '值': f'{_mk.get("exposure_pct", _mk.get("exposure_limit_pct", "-"))}%'},
+                    {'項目': '大盤 MA5', '值': str(_mk.get('ma5', '-'))},
+                    {'項目': '跌破MA5',  '值': '是 ⚠️' if _mk.get('index_below_ma5') else '否'},
+                ]
+                st.dataframe(pd.DataFrame(_rows2), use_container_width=True, hide_index=True)
+            else:
+                st.caption('尚未載入')
 
-    ok_count = sum(1 for r in ss_rows if '✅' in r['狀態'])
-    total    = len(ss_rows)
-    bar_color = 'green' if ok_count == total else ('yellow' if ok_count > total // 2 else 'red')
-    _colored_box(
-        f'系統快取健康度：<b>{ok_count}/{total}</b> 項正常'
-        + (' — 全部就緒 🎉' if ok_count == total else ' — 請先到對應 Tab 執行分析'),
-        bar_color)
+    # ── 12. AI 裁決報告狀態 ─────────────────────────────────
+    _ai_ts  = st.session_state.get('_macro_ai_ts', '')
+    _ai_rpt = st.session_state.get('_macro_ai_report', '')
+    with st.expander(f'🤖 AI 裁決報告  {"✅ " + _ai_ts if _ai_rpt else "❌ 尚未執行"}', expanded=False):
+        if _ai_rpt:
+            st.markdown(f'**分析時間：** {_ai_ts}')
+            st.markdown('**報告預覽（前300字）：**')
+            st.markdown(_ai_rpt[:300] + '...')
+        else:
+            st.info('尚未執行 AI 裁決，前往「🌍 總經」Tab → Section 十 → 點擊「執行 AI 裁決」')
 
-    # ── ② ETF 資料源即時健診 ─────────────────────────────────
+    # ── 13. 個股分析（Tab 2）────────────────────────────────
+    _t2d = st.session_state.get('t2_data', {})
+    _t2_sid  = _t2d.get('sid', '')
+    _t2_name = _t2d.get('name', '')
+    _t2_ok   = bool(_t2d and _t2_sid)
+    with st.expander(
+        f'🔬 個股分析 — {_t2_sid} {_t2_name}  {"✅" if _t2_ok else "❌ 尚未載入"}',
+        expanded=_t2_ok):
+        if _t2_ok:
+            _t2_price  = _t2d.get('price', 0)
+            _t2_health = _t2d.get('health', 0)
+            _t2_rsi    = _t2d.get('rsi')
+            _t2_k      = _t2d.get('k')
+            _t2_d      = _t2d.get('d')
+            _t2_vcp    = _t2d.get('vcp')
+            _t2_div    = _t2d.get('avg_div', 0)
+            _t2_cl     = _t2d.get('cl')
+            _t2_cx     = _t2d.get('cx')
+            _t2_df     = _t2d.get('df')
+            _t2_rev    = _t2d.get('rev')
+            _t2_qtr    = _t2d.get('qtr')
+            # 技術指標表
+            _rows_t2 = [
+                {'項目': '現價',     '數值': f'{_t2_price:.2f}',        '說明': '最新收盤'},
+                {'項目': '健康度',   '數值': f'{_t2_health:.0f}/100',   '說明': '多因子評分'},
+                {'項目': 'RSI14',    '數值': f'{_t2_rsi:.1f}' if _t2_rsi else '-', '說明': '>70超買 <30超賣'},
+                {'項目': 'KD-K',     '數值': f'{_t2_k:.1f}'  if _t2_k  else '-', '說明': '隨機指標 K'},
+                {'項目': 'KD-D',     '數值': f'{_t2_d:.1f}'  if _t2_d  else '-', '說明': '隨機指標 D'},
+                {'項目': 'VCP訊號',  '數值': '✅ 突破' if (isinstance(_t2_vcp, dict) and _t2_vcp.get('signal')) else ('整理中' if _t2_vcp else '-'), '說明': '波幅收縮型態'},
+                {'項目': '平均股利',  '數值': f'{_t2_div:.2f}' if _t2_div else '-', '說明': '元/股'},
+                {'項目': '合約負債',  '數值': f'{_t2_cl/1e8:.1f}億' if _t2_cl else '-', '說明': '預收款項'},
+                {'項目': '資本支出',  '數值': f'{_t2_cx/1e8:.1f}億' if _t2_cx else '-', '說明': ''},
+                {'項目': 'K線筆數',   '數值': f'{len(_t2_df)}筆' if _t2_df is not None and not _t2_df.empty else '-', '說明': ''},
+                {'項目': '月營收筆數','數值': f'{len(_t2_rev)}筆' if _t2_rev is not None and not _t2_rev.empty else '-', '說明': ''},
+                {'項目': '季財報筆數','數值': f'{len(_t2_qtr)}筆' if _t2_qtr is not None and not _t2_qtr.empty else '-', '說明': ''},
+            ]
+            st.dataframe(pd.DataFrame(_rows_t2), use_container_width=True, hide_index=True)
+            # 財報體檢
+            _fh = st.session_state.get(f'_fh_{_t2_sid}', {})
+            if _fh and not _fh.get('error'):
+                st.markdown('**MJ財報體檢：**')
+                _rs = _fh.get('radar_scores', {})
+                _fh_rows = [
+                    {'項目': '現金水位', '燈號': _fh.get('cash_ratio_status', '-'), '數值': _fh.get('cash_ratio_value', '-')},
+                    {'項目': 'OCF',      '燈號': _fh.get('ocf_status', '-'),        '數值': _fh.get('ocf_value', '-')},
+                    {'項目': '負債比',   '燈號': _fh.get('debt_ratio_status', '-'), '數值': _fh.get('debt_ratio_value', '-')},
+                    {'項目': '企業DNA',  '燈號': '',                                '數值': _fh.get('business_model_dna', '-')},
+                    {'項目': '雷達均分', '燈號': '',                                '數值': f'{sum(_rs.values())/len(_rs):.1f}' if _rs else '-'},
+                ]
+                st.dataframe(pd.DataFrame(_fh_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未載入個股。前往「🔬 台股 → 個股分析」輸入代碼並點擊「載入完整分析」')
+
+    # ── 14. ETF 單支診斷 ──────────────────────────────────────
+    _etf1 = st.session_state.get('etf_single_data', {})
+    _etf1_ok = bool(_etf1 and _etf1.get('ticker'))
+    with st.expander(
+        f'🏦 ETF 單支診斷 — {_etf1.get("ticker","") if _etf1_ok else ""}  {"✅" if _etf1_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etf1_ok:
+            _e1_vcp  = _etf1.get('vcp', {})
+            _e1_prem = _etf1.get('premium', {})
+            _rows_e1 = [
+                {'指標': 'ETF 代號',       '數值': _etf1.get('ticker', '-'),     '說明': ''},
+                {'指標': '名稱',           '數值': _etf1.get('name', '-'),       '說明': ''},
+                {'指標': '現金殖利率',     '數值': f'{_etf1.get("cur_yield", 0):.2f}%',  '說明': '最近一次配息換算'},
+                {'指標': '近5年平均殖利率','數值': f'{_etf1.get("avg_yield", 0):.2f}%',  '說明': '357估值基礎'},
+                {'指標': '近1年含息總報酬','數值': f'{_etf1.get("total_ret", 0):.2f}%',  '說明': ''},
+                {'指標': '折溢價率',       '數值': f'{_e1_prem.get("premium_pct", "N/A")}%' if isinstance(_e1_prem, dict) else '-', '說明': 'NAV 偏離'},
+                {'指標': '追蹤誤差 TE',    '數值': f'{_etf1.get("te", 0):.2f}%' if _etf1.get("te") is not None else '-', '說明': ''},
+                {'指標': 'VCP 突破',       '數值': '✅ 有' if (isinstance(_e1_vcp, dict) and _e1_vcp.get('signal')) else '無', '說明': ''},
+                {'指標': '大盤狀態',       '數值': _etf1.get('regime', '-'),     '說明': 'bull/neutral/bear'},
+            ]
+            st.dataframe(pd.DataFrame(_rows_e1), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未載入 ETF。前往「🏦 ETF → ETF 診斷」選擇 ETF 並點擊「開始診斷」')
+
+    # ── 15. ETF 組合配置 ──────────────────────────────────────
+    _etfp = st.session_state.get('etf_portfolio_data', {})
+    _etfp_ok = bool(_etfp and _etfp.get('rows'))
+    with st.expander(
+        f'⚖️ ETF 組合配置  {"✅ " + str(len(_etfp.get("rows",[]))) + " 檔" if _etfp_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etfp_ok:
+            _p_rows = _etfp.get('rows', [])
+            _display_p = [
+                {'ETF': r.get('ticker','-'),
+                 '目標%': f'{r.get("target_pct",0):.0f}%',
+                 '實際%': f'{r.get("actual_pct",0):.1f}%',
+                 '偏離%': f'{r.get("deviation",0):+.1f}%',
+                 '再平衡': '⚠️ 需調整' if abs(r.get('deviation',0)) > 10 else '✅'}
+                for r in _p_rows]
+            st.dataframe(pd.DataFrame(_display_p), use_container_width=True, hide_index=True)
+            c_tv, c_lp, c_rb = st.columns(3)
+            c_tv.metric('總資產', f'{_etfp.get("total_value",0):,.0f}元')
+            c_lp.metric('壓力測試損失', f'{_etfp.get("loss_pct",0):.1f}%')
+            c_rb.metric('再平衡筆數', len(_etfp.get('rebal_actions',[])))
+        else:
+            st.info('尚未建立組合。前往「🏦 ETF → ETF 組合」設定並點擊「計算組合」')
+
+    # ── 16. ETF 回測績效 ──────────────────────────────────────
+    _etfb = st.session_state.get('etf_backtest_data', {})
+    _etfb_ok = bool(_etfb and _etfb.get('cagr') is not None)
+    with st.expander(
+        f'📈 ETF 回測績效  {"✅ CAGR=" + str(round(_etfb.get("cagr",0),2)) + "%" if _etfb_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etfb_ok:
+            _w = _etfb.get('weights', {})
+            _rows_b = [
+                {'指標': '組合權重',   '數值': ' | '.join(f'{t}:{v*100:.0f}%' for t,v in _w.items()), '說明': ''},
+                {'指標': '回測期間',   '數值': _etfb.get('period', '-'),    '說明': ''},
+                {'指標': '初始資金',   '數值': f'{_etfb.get("initial",0):,.0f}元', '說明': ''},
+                {'指標': 'CAGR',       '數值': f'{_etfb.get("cagr",0):.2f}%',     '說明': '年化報酬率'},
+                {'指標': 'Sharpe',     '數值': f'{_etfb.get("sharpe",0):.2f}',     '說明': '>1 為優秀'},
+                {'指標': 'MDD',        '數值': f'{_etfb.get("mdd",0):.1f}%',       '說明': '最大回撤'},
+                {'指標': '年化波動率', '數值': f'{_etfb.get("vol",0):.2f}%',       '說明': ''},
+                {'指標': '大盤狀態',   '數值': _etfb.get('regime', '-'),    '說明': ''},
+            ]
+            st.dataframe(pd.DataFrame(_rows_b), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未執行回測。前往「🏦 ETF → ETF 回測」設定並點擊「開始回測」')
+
+    # ── 17. 財經新聞 RSS 即時驗證 ────────────────────────────
+
     st.markdown('---')
-    st.markdown('#### 📡 ETF 資料源即時健診（yfinance）')
+    st.markdown('#### 📰 財經新聞 RSS 即時驗證')
+    st.caption('新聞來源（依優先順序）：Google News → Yahoo Finance → Reuters → CNBC Economy')
+    if st.button('📡 即時抓取 RSS 驗證（繞過快取）', key='health_news_btn', use_container_width=True):
+        try:
+            import feedparser as _fp2, html as _h2
+            _feeds2 = [
+                ('Google News',  'https://news.google.com/rss/search?q=stock+market+economy+fed+interest+rate&hl=en-US&gl=US&ceid=US:en'),
+                ('Yahoo Finance','https://finance.yahoo.com/news/rssindex'),
+                ('Reuters Biz',  'https://feeds.reuters.com/reuters/businessNews'),
+                ('CNBC Economy', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258'),
+            ]
+            _nrows = []
+            for _src2, _url2 in _feeds2:
+                try:
+                    _fd2 = _fp2.parse(_url2)
+                    _cnt2 = len(_fd2.entries)
+                    if _cnt2 > 0:
+                        _t2 = _h2.unescape(_fd2.entries[0].get('title', '')).strip()[:80]
+                        _nrows.append({'來源': _src2, '狀態': '✅ 正常', '則數': _cnt2, '最新標題': _t2})
+                    else:
+                        _nrows.append({'來源': _src2, '狀態': '⚠️ 空', '則數': 0, '最新標題': '-'})
+                except Exception as _ne3:
+                    _nrows.append({'來源': _src2, '狀態': f'❌ {str(_ne3)[:40]}', '則數': 0, '最新標題': '-'})
+            st.dataframe(pd.DataFrame(_nrows), use_container_width=True, hide_index=True)
+        except ImportError:
+            st.error('feedparser 未安裝，執行 pip install feedparser')
+    else:
+        if _ai_ts:
+            st.success(f'✅ 上次 AI 裁決執行於 {_ai_ts}（執行裁決時同步抓取新聞）')
+        else:
+            st.info('點擊按鈕執行即時 RSS 驗證，或前往總經 Tab 執行 AI 裁決。')
 
-    col_tw, col_us = st.columns(2)
+    # ── ② ETF yfinance 資料源健診（保留原版）────────────────
+    st.markdown('---')
+    st.markdown('#### 📡 ETF yfinance 資料源即時健診')
+
     custom_input   = st.text_input(
         '➕ 額外檢測代號（用逗號分隔，如 00919.TW,NVDA）',
         value='', key='health_custom')
     custom_tickers = [t.strip().upper() for t in custom_input.split(',') if t.strip()]
 
-    # 讀取已在其他 Tab 使用的 tickers
     used_tickers = set()
     if st.session_state.get('etf_portfolio_data'):
         for r in st.session_state['etf_portfolio_data'].get('rows', []):
@@ -2016,57 +2375,47 @@ def render_data_health():
     if st.session_state.get('etf_single_data'):
         used_tickers.add(st.session_state['etf_single_data']['ticker'])
 
-    scan_tickers = list(set(_HEALTH_ETF_TW + _HEALTH_ETF_US)
-                        | used_tickers | set(custom_tickers))
+    scan_tickers = list(set(_HEALTH_ETF_TW + _HEALTH_ETF_US) | used_tickers | set(custom_tickers))
 
     if not st.button('🔬 開始全面掃描', key='health_scan_btn', use_container_width=True):
         st.info(f'將掃描 {len(scan_tickers)} 個 ETF，點擊「開始全面掃描」執行')
         st.caption('掃描列表：' + ' / '.join(scan_tickers))
-        return
+    else:
+        results = []
+        progress = st.progress(0, text='掃描中...')
+        for i, ticker in enumerate(scan_tickers):
+            progress.progress((i + 1) / len(scan_tickers), text=f'掃描 {ticker}...')
+            r = _check_etf_health(ticker)
+            results.append(r)
+        progress.empty()
 
-    results = []
-    progress = st.progress(0, text='掃描中...')
-    for i, ticker in enumerate(scan_tickers):
-        progress.progress((i + 1) / len(scan_tickers), text=f'掃描 {ticker}...')
-        r = _check_etf_health(ticker)
-        results.append(r)
-    progress.empty()
+        display_rows = []
+        for r in results:
+            p_icon = _check_icon(r['price_ok'])
+            d_icon = _check_icon(r['div_ok'], warn=True)
+            i_icon = _check_icon(r['info_ok'])
+            overall = '✅' if (r['price_ok'] and r['info_ok']) else ('⚠️' if r['price_ok'] else '❌')
+            display_rows.append({
+                '整體': overall, 'ETF': r['ticker'],
+                '價格資料': f"{p_icon} {r['price_rows']}筆 ({r['price_last'] or '-'})",
+                '配息紀錄': f"{d_icon} {r['div_count']}筆",
+                'Info欄位': f"{i_icon} {r['info_fields']}項",
+                '異常': r['error'] or '-',
+            })
+        st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
 
-    # 顯示結果表
-    display_rows = []
-    for r in results:
-        p_icon = _check_icon(r['price_ok'])
-        d_icon = _check_icon(r['div_ok'], warn=True)   # 無配息是正常的（成長型ETF）
-        i_icon = _check_icon(r['info_ok'])
-        overall = '✅' if (r['price_ok'] and r['info_ok']) else ('⚠️' if r['price_ok'] else '❌')
-        display_rows.append({
-            '整體': overall,
-            'ETF': r['ticker'],
-            '價格資料': f"{p_icon} {r['price_rows']}筆 ({r['price_last'] or '-'})",
-            '配息紀錄': f"{d_icon} {r['div_count']}筆",
-            'Info欄位': f"{i_icon} {r['info_fields']}項",
-            '異常': r['error'] or '-',
-        })
+        ok_etf  = sum(1 for r in results if r['price_ok'] and r['info_ok'])
+        warn_etf= sum(1 for r in results if r['price_ok'] and not r['info_ok'])
+        fail_etf= sum(1 for r in results if not r['price_ok'])
+        c1, c2, c3 = st.columns(3)
+        c1.metric('✅ 完全正常',  ok_etf)
+        c2.metric('⚠️ 部分缺失', warn_etf)
+        c3.metric('❌ 資料抓取失敗', fail_etf)
+        if fail_etf > 0:
+            failed = [r['ticker'] for r in results if not r['price_ok']]
+            _colored_box(f'⚠️ 以下代號無法抓取：<b>{", ".join(failed)}</b>', 'red')
 
-    result_df = pd.DataFrame(display_rows)
-    st.dataframe(result_df, use_container_width=True, hide_index=True)
-
-    ok_etf  = sum(1 for r in results if r['price_ok'] and r['info_ok'])
-    warn_etf= sum(1 for r in results if r['price_ok'] and not r['info_ok'])
-    fail_etf= sum(1 for r in results if not r['price_ok'])
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric('✅ 完全正常',  ok_etf)
-    c2.metric('⚠️ 部分缺失', warn_etf)
-    c3.metric('❌ 資料抓取失敗', fail_etf)
-
-    if fail_etf > 0:
-        failed = [r['ticker'] for r in results if not r['price_ok']]
-        _colored_box(
-            f'⚠️ 以下代號無法抓取，請確認代號正確或網路連線：<b>{", ".join(failed)}</b>',
-            'red')
-
-    # ── ③ 快取清除工具 ───────────────────────────────────────
+    # ── ③ 快取管理 ───────────────────────────────────────────
     st.markdown('---')
     st.markdown('#### 🧹 快取管理')
     col_clr1, col_clr2 = st.columns(2)

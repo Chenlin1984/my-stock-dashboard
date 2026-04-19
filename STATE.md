@@ -2,8 +2,30 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.8 | main `4884843`
-- **最新異動**: fix Tab3 財報體檢 N/A + 排序問題（PR #27 ✅）
+- **版本**: v7.9 | branch `claude/analyze-test-coverage-070Kf` `f5b9d20`
+- **最新異動**: 資料診斷 Tab 全面改版：新增個股/ETF診斷區塊（Section 13-16）
+
+## ✅ 已完成任務：資料診斷 Tab 全面擴展（v7.9）
+
+| 項目 | 內容 |
+|------|------|
+| `render_data_health()` 全面改寫 | 從 6 項 session_state 擴展為 17 個展開區塊，顯示所有資料實際數值 |
+| Section 1-12 | 國際市場/台股大盤/科技股/法人籌碼/融資餘額/ADL/先行指標/M1B-M2/乖離率/總經快照/旌旗評估/AI裁決報告 |
+| Section 13 個股分析 | t2_data 技術指標表（Price/RSI/KD/VCP/月營收/季財報）+ MJ財報體檢 |
+| Section 14 ETF 單支診斷 | etf_single_data：殖利率/溢折價/追蹤誤差/市場環境 |
+| Section 15 ETF 組合配置 | etf_portfolio_data：持倉明細表 + 總值/虧損比/再平衡日 |
+| Section 16 ETF 回測績效 | etf_backtest_data：CAGR/Sharpe/MDD/波動度 |
+| Section 17 財經新聞 RSS | 4 個 RSS 來源即時驗證按鈕 |
+| Commit | `f5b9d20` (Section 13-16)、`9eb69b3` (Section 1-12) |
+
+## ✅ 已完成任務：總經 Tab AI 裁決改版（v7.8.1）
+
+| 項目 | 內容 |
+|------|------|
+| AI 裁決 Fail-safe 修復 | 改用 `lock_system_state_only()` 寫入 Python 規則狀態，`gemini_call()` 輸出 Markdown 報告 |
+| 清除報告按鈕 | 新增「🗑️ 清除報告」按鈕，清除 session_state `_macro_ai_report/ts` |
+| `st.rerun()` | 在 `if _do_verdict:` 區塊尾端加 `st.rerun()`，確保頂部方塊更新 |
+| Commit | `2814ed0` |
 
 ## ✅ 已完成任務：Tab3 財報體檢 N/A + 排序修復（v7.8，PR #27）
 
