@@ -1673,7 +1673,7 @@ border-radius:12px;padding:14px;text-align:center;">
     _ov_margin = _ov_cd.get('margin')
     _ov_bias = st.session_state.get('bias_info', {})
 
-    if any([_ov_mkt, _ov_jq, _ov_cd]):
+    if _cache_fresh and any([_ov_mkt, _ov_jq, _ov_cd]):
         _ov_cols = st.columns(4)
         # 大盤
         with _ov_cols[0]:
@@ -1734,7 +1734,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     _wr_reg  = _tl_eff_reg or (_wr_mkt.get('regime','neutral') if _wr_mkt else 'neutral')
     _wr_exp  = ('≤20%' if _wr_reg == 'bear' else (_wr_mkt.get('exposure_pct','--') if _wr_mkt else '--'))
 
-    if _wr_mkt or _wr_cd:
+    if _cache_fresh and (_wr_mkt or _wr_cd):
         # ── 今日唯一結論（大字顯示）──────────────────────────
         _wr_action = '請先更新總經數據'
         _wr_action_color = '#484f58'
