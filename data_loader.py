@@ -1506,10 +1506,16 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
     liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
+    cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債"])
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款"])
     ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
                              "NoteAndAccountsPayable", "應付帳款及票據應付款"])
+    inv    = _v(_bs, _lat, ["Inventories", "存貨", "存貨淨額"])
+    inv_p  = _v(_bs, _prv, ["Inventories", "存貨", "存貨淨額"])
+    ppe    = _v(_bs, _lat, ["PropertyPlantAndEquipmentNet", "不動產、廠房及設備淨額",
+                             "固定資產淨額", "不動產廠房及設備"])
+    lt_inv = _v(_bs, _lat, ["LongTermInvestments", "長期投資", "採權益法之投資"])
 
     ocf    = _v(_cf, _lat, ["CashFlowsFromOperatingActivities",
                              "營業活動之淨現金流入（流出）", "來自營業活動之現金流量"])
@@ -1519,6 +1525,7 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                              "籌資活動之淨現金流入（流出）", "來自籌資活動之現金流量"])
     capex  = abs(_v(_cf, _lat, ["AcquisitionOfPropertyPlantAndEquipment",
                                  "取得不動產、廠房及設備", "資本支出"]))
+    div_paid = abs(_v(_cf, _lat, ["CashDividendsPaid", "發放現金股利", "現金股利"]))
 
     rev    = _v(_is, _lat, ["Revenue", "營業收入合計", "營業收入", "NetRevenue"])
     cogs   = abs(_v(_is, _lat, ["CostOfGoodsSold", "營業成本", "銷售成本"]))
@@ -1561,4 +1568,10 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "營收季增率(%)":     rev_chg,
         "總資產(千)":        round(assets),
         "總負債(千)":        round(liab),
+        "流動負債(千)":      round(cur_liab),
+        "存貨(千)":          round(inv),
+        "存貨前期(千)":      round(inv_p),
+        "現金股利(千)":      round(div_paid),
+        "固定資產(千)":      round(ppe),
+        "長期投資(千)":      round(lt_inv),
     }
