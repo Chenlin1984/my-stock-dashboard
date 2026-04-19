@@ -2717,6 +2717,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             except Exception as _me:
                 print(f'[市場評估 ERROR] {_me}')
                 import traceback; traceback.print_exc()
+        st.rerun()  # 資料更新完成，重跑腳本讓頂部看板讀取最新 session_state
 
     cd     = st.session_state.get('cl_data', {})
     intl   = {n:s for n,s in cd.get('intl',{}).items() if s is not None and not s.empty}
