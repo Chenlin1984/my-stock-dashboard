@@ -2,8 +2,16 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.9 | branch `claude/analyze-test-coverage-070Kf` `f5b9d20`
-- **最新異動**: 資料診斷 Tab 全面改版：新增個股/ETF診斷區塊（Section 13-16）
+- **版本**: v7.9.1 | main `dc6dac9`
+- **最新異動**: 修復資料診斷 Section 1-3 DataFrame ValueError（PR #30）
+
+## ✅ 已完成任務：資料診斷 Section 1-3 DataFrame 修復（v7.9.1，PR #30）
+
+| 項目 | 內容 |
+|------|------|
+| 根因 | `cl_data['intl'/'tw'/'tech']` 值為 yfinance DataFrame，`if not _v:` 觸發 pandas ValueError |
+| 修復 | 新增 `from daily_checklist import calc_stats`；三段迴圈改為 `_s = calc_stats(_df)` 後再讀 last/pct/status |
+| Commit | `7ae2e4e` |
 
 ## ✅ 已完成任務：資料診斷 Tab 全面擴展（v7.9）
 
