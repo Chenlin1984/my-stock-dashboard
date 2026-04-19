@@ -2,8 +2,15 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.5 | branch `claude/analyze-test-coverage-070Kf`
-- **最新異動**: Tab1 總經 AI 改版為「台股AI戰情室」4段判讀提示語 ✅
+- **版本**: v7.6 | main `f1f1d6a`
+- **最新異動**: fix Tab3 NameError results_t3（`1986fc4` → PR #23 ✅）
+
+## ✅ 已完成任務：Tab3 NameError 修復（v7.6，PR #23）
+
+| 項目 | 內容 |
+|------|------|
+| 根因 | `results_t3` 僅在 `if t3_data:` 內定義，line 7094 在區塊外引用 → Streamlit Cloud 首次渲染崩潰 |
+| 修復 | `if t3_data:` 前加 `results_t3 = []` 安全初始值 |
 
 ## ✅ 已完成任務：Tab1 總經 AI 改版（v7.5）
 
