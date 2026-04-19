@@ -2,8 +2,16 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.7 | main `b7cfe00`
-- **最新異動**: fix Tab1 頂部看板不更新（加 st.rerun()，PR #25 ✅）
+- **版本**: v7.8 | main `4884843`
+- **最新異動**: fix Tab3 財報體檢 N/A + 排序問題（PR #27 ✅）
+
+## ✅ 已完成任務：Tab3 財報體檢 N/A + 排序修復（v7.8，PR #27）
+
+| 項目 | 內容 |
+|------|------|
+| Token bug | `_gk3/_fk3` 改用全域 `api_key`/`FINMIND_TOKEN`（含 os.environ fallback） |
+| df_cmp 排序 | 加 `健康度` 為次要鍵，避免舊評分同分時順序任意 |
+| 體檢摘要表 | 加 `sort_values('雷達均分')` 降序，高分排前 |
 
 ## ✅ 已完成任務：Tab1 頂部看板資料延遲顯示修復（v7.7，PR #25）
 
