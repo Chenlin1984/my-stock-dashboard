@@ -2,8 +2,16 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.9.1 | main `dc6dac9`
-- **最新異動**: 修復資料診斷 Section 1-3 DataFrame ValueError（PR #30）
+- **版本**: v7.9.2 | main `944a018`
+- **最新異動**: 修復交通燈與今日市場卡片結論不一致（PR #32）
+
+## ✅ 已完成任務：Tab1 交通燈結論統一（v7.9.2，PR #32）
+
+| 項目 | 內容 |
+|------|------|
+| 根因 | `_calc_traffic_light()` health<40 觸發「空頭防禦」，但下方卡片直接讀 raw regime 顯示「震盪」，兩個矛盾結論並存 |
+| 修復 | 新增 `_tl_eff_reg`（從 icon 推導）；今日市場狀態卡 + 今日作戰室 + 5分鐘清單皆改用統一 regime；bear mode 自動顯示 ≤20% 持股 |
+| Commit | `d4aa95e` |
 
 ## ✅ 已完成任務：資料診斷 Section 1-3 DataFrame 修復（v7.9.1，PR #30）
 
