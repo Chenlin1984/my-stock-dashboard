@@ -6858,6 +6858,7 @@ with tab3_compare:
 
     # ══ 顯示結果 ════════════════════════════════════════════════
     t3_data = st.session_state.get('t3_data')
+    results_t3 = []  # 確保 results_t3 在 if t3_data 外部也有定義
 
     if t3_data:
         results_t3  = t3_data['results']
