@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import yfinance as yf
 from datetime import timedelta
 from unified_decision import render_unified_decision
+from daily_checklist import calc_stats
 
 # ── 總經連動配置建議表 ────────────────────────────────────────
 MACRO_ALLOC = {
@@ -1987,15 +1988,16 @@ def render_data_health():
     with st.expander(f'🌍 國際市場指數（DJI/SOX/TNX/DXY）  {"✅" if _intl else "❌ 尚未載入"}', expanded=bool(_intl)):
         if _intl:
             _rows = []
-            for _name, _v in _intl.items():
-                if not _v:
+            for _name, _df in _intl.items():
+                _s = calc_stats(_df)
+                if _s is None:
                     _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
                     continue
                 _rows.append({
                     '名稱': _name,
-                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
-                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
-                    '狀態': _v.get('status', '-'),
+                    '最新值': f"{_s['last']:,.2f}",
+                    '漲跌%': f"{_s['pct']:+.2f}%",
+                    '狀態': _s.get('status', '-'),
                 })
             st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
         else:
@@ -2006,15 +2008,16 @@ def render_data_health():
     with st.expander(f'🇹🇼 台股大盤（加權/OTC/匯率）  {"✅" if _tw else "❌ 尚未載入"}', expanded=bool(_tw)):
         if _tw:
             _rows = []
-            for _name, _v in _tw.items():
-                if not _v:
+            for _name, _df in _tw.items():
+                _s = calc_stats(_df)
+                if _s is None:
                     _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
                     continue
                 _rows.append({
                     '名稱': _name,
-                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
-                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
-                    '狀態': _v.get('status', '-'),
+                    '最新值': f"{_s['last']:,.2f}",
+                    '漲跌%': f"{_s['pct']:+.2f}%",
+                    '狀態': _s.get('status', '-'),
                 })
             st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
         else:
@@ -2025,15 +2028,16 @@ def render_data_health():
     with st.expander(f'🖥️ 科技股（NVDA/MSFT/AAPL/GOOGL/AMD/TSM）  {"✅" if _tech else "❌ 尚未載入"}', expanded=bool(_tech)):
         if _tech:
             _rows = []
-            for _name, _v in _tech.items():
-                if not _v:
+            for _name, _df in _tech.items():
+                _s = calc_stats(_df)
+                if _s is None:
                     _rows.append({'名稱': _name, '最新值': '❌', '漲跌%': '-', '狀態': '無資料'})
                     continue
                 _rows.append({
                     '名稱': _name,
-                    '最新值': f"{_v.get('last', 0):,.2f}" if _v.get('last') else '-',
-                    '漲跌%': f"{_v.get('pct', 0):+.2f}%" if _v.get('pct') is not None else '-',
-                    '狀態': _v.get('status', '-'),
+                    '最新值': f"{_s['last']:,.2f}",
+                    '漲跌%': f"{_s['pct']:+.2f}%",
+                    '狀態': _s.get('status', '-'),
                 })
             st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
         else:
