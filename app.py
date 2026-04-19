@@ -1602,7 +1602,11 @@ border-radius:12px;padding:14px;text-align:center;">
         except Exception:
             _cache_fresh = False
 
-    if _cache_fresh:
+    # 刷新進行中時隱藏舊資料（避免更新期間顯示過期結論）
+    _is_refreshing = st.session_state.get('_is_refreshing', False)
+    _show_market_data = _cache_fresh and not _is_refreshing
+
+    if _cache_fresh and not _is_refreshing:
         # 快取新鮮 → 立即計算燈號（含資料新鮮度標記）
         _tm_mkt_init = st.session_state.get('mkt_info', {})
         _tm_jq_init  = st.session_state.get('jingqi_info', {})
@@ -1673,7 +1677,7 @@ border-radius:12px;padding:14px;text-align:center;">
     _ov_margin = _ov_cd.get('margin')
     _ov_bias = st.session_state.get('bias_info', {})
 
-    if _cache_fresh and any([_ov_mkt, _ov_jq, _ov_cd]):
+    if _show_market_data and any([_ov_mkt, _ov_jq, _ov_cd]):
         _ov_cols = st.columns(4)
         # 大盤
         with _ov_cols[0]:
@@ -1734,7 +1738,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     _wr_reg  = _tl_eff_reg or (_wr_mkt.get('regime','neutral') if _wr_mkt else 'neutral')
     _wr_exp  = ('≤20%' if _wr_reg == 'bear' else (_wr_mkt.get('exposure_pct','--') if _wr_mkt else '--'))
 
-    if _cache_fresh and (_wr_mkt or _wr_cd):
+    if _show_market_data and (_wr_mkt or _wr_cd):
         # ── 今日唯一結論（大字顯示）──────────────────────────
         _wr_action = '請先更新總經數據'
         _wr_action_color = '#484f58'
@@ -1847,9 +1851,14 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     else:
         st.success(f'✅ FinMind Token 已設定（{_fm_tok_now[:12]}...）', icon='🔑')
 
+    def _on_refresh_click():
+        """on_click callback：在腳本重跑前就設旗標，確保當次 run 就隱藏舊資料。"""
+        st.session_state['_is_refreshing'] = True
+
     cb1, cb2 = st.columns([2,5])
     with cb1:
-        do_refresh = st.button('🔄 更新全部總經數據', key='cl_refresh', use_container_width=True)
+        do_refresh = st.button('🔄 更新全部總經數據', key='cl_refresh',
+                               on_click=_on_refresh_click, use_container_width=True)
     # ── 使用者點了更新 → 立即清除舊燈號，避免誤導 ──
     if do_refresh:
         _tl_placeholder.info(
@@ -2050,6 +2059,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 inst=inst, inst_date=inst_date, margin=margin,
                 adl=df_adl_raw)
             st.session_state['cl_ts'] = _tw_now_str()
+            st.session_state['_is_refreshing'] = False  # 資料就位，解除刷新鎖
             # 快取最後一次有效的法人/融資資料，供 API 失敗時 fallback 使用
             if inst:
                 st.session_state['_last_inst'] = inst
