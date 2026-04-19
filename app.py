@@ -4553,19 +4553,24 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.markdown(section_header('十', '🤖 AI 總裁決', '🤖'), unsafe_allow_html=True)
 
     with st.expander('🤖 AI 總裁決 — 實體狀態鎖架構（唯讀）', expanded=True):
-        _verdict_hdr_c1, _verdict_hdr_c2 = st.columns([4, 1])
+        _verdict_hdr_c1, _verdict_hdr_c2, _verdict_hdr_c3 = st.columns([4, 1, 1])
         with _verdict_hdr_c1:
             st.markdown(
                 '<div style="font-size:12px;color:#8b949e;padding:4px 0;">'
                 '整合即時國際財經新聞（RSS）與當前量化總經數據，'
-                '由 Gemini AI 寫入實體狀態鎖（macro_state.json）。'
-                '前端唯讀渲染，杜絕多重矛盾結論。'
+                '由 Gemini AI 生成 Markdown 戰情報告。'
+                '曝險上限由 Python 規則引擎計算，AI 負責解讀。'
                 '<br><span style="color:#484f58;">需設定 Streamlit Secrets：'
                 '<code>GEMINI_API_KEY = "AIza..."</code></span></div>',
                 unsafe_allow_html=True)
         with _verdict_hdr_c2:
             _do_verdict = st.button('🔒 執行 AI 裁決', key='btn_run_verdict',
                                     use_container_width=True, type='primary')
+        with _verdict_hdr_c3:
+            if st.button('🗑️ 清除報告', key='btn_clear_verdict', use_container_width=True):
+                st.session_state.pop('_macro_ai_report', None)
+                st.session_state.pop('_macro_ai_ts', None)
+                st.rerun()
 
         # ── 觸發：呼叫 MacroStateLocker 寫入 macro_state.json ──
         if _do_verdict:
@@ -4659,25 +4664,58 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _ctx.append(f'• VIX 恐慌指數：{_vix_d["current"]}（>28警戒、>35極度恐慌）')
                 _v_macro_ctx = '\n'.join(_ctx) if _ctx else '（數據尚未載入，請先更新總經拼圖）'
                 _locker = MacroStateLocker()
-                _ok = _locker.execute_and_lock(_system_state, _v_news_titles, macro_context=_v_macro_ctx)
-                if _ok:
-                    st.success('✅ AI 裁決已更新至實體狀態鎖')
-                else:
-                    st.error('❌ AI 裁決失敗，已啟動 Fail-safe（曝險 0%）')
+                _locker.lock_system_state_only(_system_state)
+                # 組裝 Markdown 提示語（不依賴 JSON 解析，與 Tab 2 AI 首席顧問同風格）
+                _v_state_json = json.dumps(_system_state, ensure_ascii=False, indent=2)
+                _v_news_str = '\n'.join(f'- {t}' for t in _v_news_titles) if _v_news_titles else '（無法取得新聞）'
+                _macro_ai_prompt = (
+                    '你是一位擁有 20 年台股與全球宏觀研究經驗的「台股AI戰情室」首席總經分析師。'
+                    '你的分析風格冷靜、精準，且強調風險控管。\n\n'
+                    '## 資訊隔離約束（絕對遵守）\n'
+                    '- 禁止使用預訓練知識中的具體數字，解讀必須 100% 基於下方 Input Data 的內容\n'
+                    '- 禁止建議任何個股、ETF 或特定標的\n'
+                    '- 不得出現任何具體持股百分比數字\n\n'
+                    '## Input Data\n\n'
+                    f'【系統狀態（Python 規則引擎計算結果）】\n{_v_state_json}\n\n'
+                    f'【量化數據快照】\n{_v_macro_ctx if _v_macro_ctx else "（數據尚未載入，請先更新總經拼圖）"}\n\n'
+                    f'【即時財經新聞】\n{_v_news_str}\n\n'
+                    '## 輸出格式\n'
+                    '使用 Markdown 語法，生成以下架構的台股大盤戰情研判報告：\n\n'
+                    '## 📊 台股大盤戰情研判報告\n\n'
+                    '### 一、市場五維診斷（0-10 評分）\n'
+                    '- **景氣循環**：（得分/10，依據 PMI/OECD CLI）\n'
+                    '- **資金動能**：（得分/10，依據 M1B-M2 Gap）\n'
+                    '- **市場情緒**：（得分/10，依據 VIX/PCR）\n'
+                    '- **籌碼趨勢**：（得分/10，依據外資/融資/期貨淨部位）\n'
+                    '- **美股連動**：（得分/10，依據 SOX/VIX）\n\n'
+                    '### 二、核心洞察（50 字以內）\n'
+                    '（當前大盤處於哪個操作階段及核心邏輯）\n\n'
+                    '### 三、深度解析\n'
+                    '- **資金流向**：\n'
+                    '- **籌碼博弈**：\n'
+                    '- **潛在隱患**：\n\n'
+                    '### 四、大盤戰略建議\n'
+                    '⚠️ 僅供學術研究，不構成投資建議，盈虧自負。\n'
+                    '- **操作方向**：\n'
+                    '- **防禦策略**：\n'
+                    '- **追蹤指標**：\n\n'
+                    '### 五、警示旗語\n'
+                    '（列出可能破壞此分析邏輯的關鍵風險因子）\n\n'
+                    '【語言規範】統一使用繁體中文。禁止出現任何持股百分比數字。'
+                )
+                _ai_rpt = gemini_call(_macro_ai_prompt, max_tokens=1800)
+                _tz8 = datetime.timezone(datetime.timedelta(hours=8))
+                st.session_state['_macro_ai_report'] = _ai_rpt
+                st.session_state['_macro_ai_ts'] = datetime.datetime.now(_tz8).strftime('%Y-%m-%d %H:%M:%S')
+            st.rerun()
 
-        # ── 唯讀渲染：從 macro_state.json 讀取並顯示 ────────────
+        # ── 唯讀渲染：從 macro_state.json 讀取曝險數據 ────────────
         _ms = load_macro_state()
         _srl = _ms.get('systemic_risk_level', '危險')
         _regime = _ms.get('market_regime', '系統異常')
         _exp_pct = int(_ms.get('exposure_limit_pct', 0))
         _cash_pct = 100 - _exp_pct
-        _verdict_txt = _ms.get('analysis_summary', '')
         _ms_ts = _ms.get('timestamp', '')
-        _traffic_light  = _ms.get('traffic_light', '')
-        _market_level   = _ms.get('market_level', '')
-        _data_deep_dive = _ms.get('data_deep_dive', '')
-        _risk_warning   = _ms.get('risk_warning', '')
-        _strategy       = _ms.get('strategy', '')
 
         _srl_clr = {'安全': '#3fb950', '警告': '#d29922', '危險': '#f85149'}.get(_srl, '#8b949e')
         _reg_clr = {'多頭': '#3fb950', '震盪': '#d29922', '空頭': '#f85149'}.get(_regime, '#8b949e')
@@ -4685,9 +4723,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.markdown(
             f'<div style="background:#0d1117;border:2px solid {_srl_clr};'
             f'border-radius:12px;padding:18px 20px;margin:10px 0;">'
-            # 頂部：市場體制 + 系統風險等級
             f'<div style="display:flex;align-items:center;justify-content:space-between;'
-            f'flex-wrap:wrap;gap:8px;margin-bottom:14px;">'
+            f'flex-wrap:wrap;gap:8px;margin-bottom:10px;">'
             f'<div>'
             f'<span style="font-size:11px;color:#484f58;">市場體制</span><br>'
             f'<span style="font-size:22px;font-weight:900;color:{_reg_clr};">{_regime}</span>'
@@ -4700,55 +4737,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             f'裁決時間：{_ms_ts if _ms_ts else "尚未執行"}</div>'
             f'</div>'
             f'</div>'
-            # 曝險水位列
-            f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
-            f'<div style="flex:1;min-width:120px;background:#161b22;border-radius:8px;'
-            f'padding:12px;text-align:center;">'
+            f'<div style="text-align:center;padding:8px 0;">'
             f'<div style="font-size:10px;color:#484f58;">建議股票型基金曝險</div>'
-            f'<div style="font-size:32px;font-weight:900;color:{_srl_clr};">'
-            f'{_exp_pct}<span style="font-size:14px;">%</span></div>'
-            f'<div style="font-size:10px;color:#8b949e;">現金/防禦型資產 {_cash_pct}%</div>'
-            f'</div>'
-            # 最終裁決文字
-            f'<div style="flex:3;min-width:200px;background:#161b22;border-radius:8px;padding:12px;">'
-            f'<div style="font-size:10px;color:#484f58;margin-bottom:6px;">🔒 AI 解讀分析（實體鎖）</div>'
-            f'<div style="font-size:13px;color:#e6edf3;line-height:1.7;">{_verdict_txt}</div>'
-            f'</div>'
+            f'<div style="font-size:48px;font-weight:900;color:{_srl_clr};">'
+            f'{_exp_pct}<span style="font-size:18px;">%</span></div>'
+            f'<div style="font-size:11px;color:#8b949e;">現金/防禦型資產 {_cash_pct}%</div>'
             f'</div>'
             f'</div>',
             unsafe_allow_html=True)
 
-        if not _ms_ts:
-            st.info('尚未執行 AI 裁決。點擊上方「執行 AI 裁決」按鈕以生成首次分析。')
-
-        # ── 新版 4 段戰情判讀（traffic_light 存在時顯示）──────
-        if _traffic_light or _market_level:
-            _tl_clr = '#3fb950' if '🟢' in _traffic_light else ('#f85149' if '🔴' in _traffic_light else '#d29922')
+        # ── Markdown AI 戰情報告（與 Tab 2 AI 首席顧問同風格）────
+        _macro_ai_rpt = st.session_state.get('_macro_ai_report', '')
+        _macro_ai_ts  = st.session_state.get('_macro_ai_ts', '')
+        if _macro_ai_rpt:
             st.markdown(
-                f'<div style="margin-top:14px;border:1px solid #21262d;border-radius:10px;overflow:hidden;">'
-                # 段一：燈號 + 大盤位階
-                f'<div style="background:#161b22;padding:12px 16px;border-left:4px solid {_tl_clr};">'
-                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🚦 市場總體燈號與水位</div>'
-                f'<div style="font-size:16px;font-weight:900;color:{_tl_clr};">{_traffic_light}</div>'
-                f'<div style="font-size:13px;color:#c9d1d9;margin-top:4px;">{_market_level}</div>'
-                f'</div>'
-                # 段二：核心數據深度解析
-                f'<div style="background:#0d1117;padding:12px 16px;border-top:1px solid #21262d;">'
-                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🔍 核心數據深度解析</div>'
-                f'<div style="font-size:13px;color:#c9d1d9;line-height:1.7;">{_data_deep_dive}</div>'
-                f'</div>'
-                # 段三：系統性風險預警
-                f'<div style="background:#161b22;padding:12px 16px;border-top:1px solid #21262d;">'
-                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">🛡️ 系統性風險預警</div>'
-                f'<div style="font-size:13px;color:#f0883e;line-height:1.7;">{_risk_warning}</div>'
-                f'</div>'
-                # 段四：大盤戰略與資金配置建議
-                f'<div style="background:#0d1117;padding:12px 16px;border-top:1px solid #21262d;">'
-                f'<div style="font-size:11px;color:#484f58;margin-bottom:4px;">💼 大盤戰略與資金配置建議</div>'
-                f'<div style="font-size:13px;color:#58a6ff;line-height:1.7;">{_strategy}</div>'
-                f'</div>'
-                f'</div>',
+                f'<div style="margin:14px 0 8px;padding:8px 16px;'
+                f'background:linear-gradient(90deg,#76e3ea18,#0d1117);'
+                f'border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;">'
+                f'<span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席總經分析師報告</span>'
+                f'<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
+                f'分析時間：{_macro_ai_ts}</span></div>',
                 unsafe_allow_html=True)
+            st.markdown(_macro_ai_rpt)
+        elif not _ms_ts:
+            st.info('尚未執行 AI 裁決。點擊上方「執行 AI 裁決」按鈕以生成首次分析。')
+        else:
+            st.caption('▲ 點擊上方「執行 AI 裁決」，AI 將綜合量化數據與即時新聞生成完整戰情報告。')
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 

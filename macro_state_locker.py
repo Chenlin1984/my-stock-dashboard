@@ -189,6 +189,16 @@ class MacroStateLocker:
             self._write_state_lock(_fs)
             return False
 
+    def lock_system_state_only(self, system_state: dict) -> None:
+        """Write rule-based system_state to the state lock without calling AI."""
+        final = {
+            **system_state,
+            "exposure_limit_pct": max(0, min(100, int(system_state.get("exposure_limit_pct", 0)))),
+            "analysis_summary": f"曝險上限 {system_state.get('exposure_limit_pct', 0)}%（Python 規則引擎計算）",
+            "timestamp": _now_str(),
+        }
+        self._write_state_lock(final)
+
     # ── 內部方法 ────────────────────────────────────────────
     def _build_prompt(self, state_json_str: str, news_str: str, macro_context: str = "") -> str:
         return _PROMPT_TEMPLATE.format(
