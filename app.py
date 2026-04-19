@@ -1620,6 +1620,12 @@ border-radius:12px;padding:14px;text-align:center;">
         )
         _tl_init = None
 
+    # 統一有效市場 regime（確保交通燈與下方卡片結論一致）
+    # 🔴 對應 bear，🟢 對應 bull，🟡 對應 neutral
+    _tl_eff_reg = {'🔴': 'bear', '🟢': 'bull', '🟡': 'neutral'}.get(
+        (_tl_init or {}).get('icon', ''), None
+    )
+
     # ── 同步寫入 session_state（其他頁面需要的值）────────────
     if _tl_init:
         st.session_state['defense_mode'] = _tl_init['defense']
@@ -1671,8 +1677,9 @@ border-radius:12px;padding:14px;text-align:center;">
         _ov_cols = st.columns(4)
         # 大盤
         with _ov_cols[0]:
-            _ov_reg = _ov_mkt.get('regime','neutral') if _ov_mkt else 'neutral'
-            _ov_lbl = {'bull':'🟢 多頭','neutral':'🟡 震盪','bear':'🔴 空頭'}.get(_ov_reg,'⚪')
+            # 以交通燈有效 regime 為主，確保與頂部卡片結論一致
+            _ov_reg = _tl_eff_reg or (_ov_mkt.get('regime','neutral') if _ov_mkt else 'neutral')
+            _ov_lbl = {'bull':'🟢 多頭','neutral':'🟡 震盪','bear':'🔴 空頭防禦'}.get(_ov_reg,'⚪')
             _ov_exp = _ov_mkt.get('exposure_pct','--') if _ov_mkt else '--'
             st.markdown(beginner_kpi('今日市場狀態', _ov_lbl, f'建議持股比例 {_ov_exp}',
                             '#3fb950' if _ov_reg=='bull' else ('#f85149' if _ov_reg=='bear' else '#d29922'),
@@ -1723,8 +1730,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     _wr_margin = _wr_cd.get('margin')
     _wr_adl  = _wr_cd.get('adl')
     _wr_ts   = st.session_state.get('cl_ts','')
-    _wr_reg  = _wr_mkt.get('regime','neutral') if _wr_mkt else 'neutral'
-    _wr_exp  = _wr_mkt.get('exposure_pct','--') if _wr_mkt else '--'
+    # 以交通燈有效 regime 為主，確保與頂部卡片結論一致
+    _wr_reg  = _tl_eff_reg or (_wr_mkt.get('regime','neutral') if _wr_mkt else 'neutral')
+    _wr_exp  = ('≤20%' if _wr_reg == 'bear' else (_wr_mkt.get('exposure_pct','--') if _wr_mkt else '--'))
 
     if _wr_mkt or _wr_cd:
         # ── 今日唯一結論（大字顯示）──────────────────────────
@@ -1775,7 +1783,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         # 今日5分鐘清單
         st.markdown('##### ✅ 今日操作前 5 分鐘清單')
         _cl_items = [
-            ('大盤燈號', '🟢 多頭' if _wr_reg=='bull' else ('🔴 空頭' if _wr_reg=='bear' else '🟡 震盪'),
+            ('大盤燈號', '🟢 多頭' if _wr_reg=='bull' else ('🔴 空頭防禦' if _wr_reg=='bear' else '🟡 震盪'),
              _wr_reg=='bull', '多頭才積極操作'),
             ('外資方向', f'{"買超" if (_wr_fnet or 0)>0 else "賣超"} {abs(_wr_fnet or 0):.0f}億' if _wr_fnet is not None else '未知',
              (_wr_fnet or 0) > 0, '外資買超=跟著走'),
