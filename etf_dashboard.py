@@ -2200,7 +2200,130 @@ def render_data_health():
         else:
             st.info('尚未執行 AI 裁決，前往「🌍 總經」Tab → Section 十 → 點擊「執行 AI 裁決」')
 
-    # ── 13. 財經新聞 RSS 即時驗證 ────────────────────────────
+    # ── 13. 個股分析（Tab 2）────────────────────────────────
+    _t2d = st.session_state.get('t2_data', {})
+    _t2_sid  = _t2d.get('sid', '')
+    _t2_name = _t2d.get('name', '')
+    _t2_ok   = bool(_t2d and _t2_sid)
+    with st.expander(
+        f'🔬 個股分析 — {_t2_sid} {_t2_name}  {"✅" if _t2_ok else "❌ 尚未載入"}',
+        expanded=_t2_ok):
+        if _t2_ok:
+            _t2_price  = _t2d.get('price', 0)
+            _t2_health = _t2d.get('health', 0)
+            _t2_rsi    = _t2d.get('rsi')
+            _t2_k      = _t2d.get('k')
+            _t2_d      = _t2d.get('d')
+            _t2_vcp    = _t2d.get('vcp')
+            _t2_div    = _t2d.get('avg_div', 0)
+            _t2_cl     = _t2d.get('cl')
+            _t2_cx     = _t2d.get('cx')
+            _t2_df     = _t2d.get('df')
+            _t2_rev    = _t2d.get('rev')
+            _t2_qtr    = _t2d.get('qtr')
+            # 技術指標表
+            _rows_t2 = [
+                {'項目': '現價',     '數值': f'{_t2_price:.2f}',        '說明': '最新收盤'},
+                {'項目': '健康度',   '數值': f'{_t2_health:.0f}/100',   '說明': '多因子評分'},
+                {'項目': 'RSI14',    '數值': f'{_t2_rsi:.1f}' if _t2_rsi else '-', '說明': '>70超買 <30超賣'},
+                {'項目': 'KD-K',     '數值': f'{_t2_k:.1f}'  if _t2_k  else '-', '說明': '隨機指標 K'},
+                {'項目': 'KD-D',     '數值': f'{_t2_d:.1f}'  if _t2_d  else '-', '說明': '隨機指標 D'},
+                {'項目': 'VCP訊號',  '數值': '✅ 突破' if (isinstance(_t2_vcp, dict) and _t2_vcp.get('signal')) else ('整理中' if _t2_vcp else '-'), '說明': '波幅收縮型態'},
+                {'項目': '平均股利',  '數值': f'{_t2_div:.2f}' if _t2_div else '-', '說明': '元/股'},
+                {'項目': '合約負債',  '數值': f'{_t2_cl/1e8:.1f}億' if _t2_cl else '-', '說明': '預收款項'},
+                {'項目': '資本支出',  '數值': f'{_t2_cx/1e8:.1f}億' if _t2_cx else '-', '說明': ''},
+                {'項目': 'K線筆數',   '數值': f'{len(_t2_df)}筆' if _t2_df is not None and not _t2_df.empty else '-', '說明': ''},
+                {'項目': '月營收筆數','數值': f'{len(_t2_rev)}筆' if _t2_rev is not None and not _t2_rev.empty else '-', '說明': ''},
+                {'項目': '季財報筆數','數值': f'{len(_t2_qtr)}筆' if _t2_qtr is not None and not _t2_qtr.empty else '-', '說明': ''},
+            ]
+            st.dataframe(pd.DataFrame(_rows_t2), use_container_width=True, hide_index=True)
+            # 財報體檢
+            _fh = st.session_state.get(f'_fh_{_t2_sid}', {})
+            if _fh and not _fh.get('error'):
+                st.markdown('**MJ財報體檢：**')
+                _rs = _fh.get('radar_scores', {})
+                _fh_rows = [
+                    {'項目': '現金水位', '燈號': _fh.get('cash_ratio_status', '-'), '數值': _fh.get('cash_ratio_value', '-')},
+                    {'項目': 'OCF',      '燈號': _fh.get('ocf_status', '-'),        '數值': _fh.get('ocf_value', '-')},
+                    {'項目': '負債比',   '燈號': _fh.get('debt_ratio_status', '-'), '數值': _fh.get('debt_ratio_value', '-')},
+                    {'項目': '企業DNA',  '燈號': '',                                '數值': _fh.get('business_model_dna', '-')},
+                    {'項目': '雷達均分', '燈號': '',                                '數值': f'{sum(_rs.values())/len(_rs):.1f}' if _rs else '-'},
+                ]
+                st.dataframe(pd.DataFrame(_fh_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未載入個股。前往「🔬 台股 → 個股分析」輸入代碼並點擊「載入完整分析」')
+
+    # ── 14. ETF 單支診斷 ──────────────────────────────────────
+    _etf1 = st.session_state.get('etf_single_data', {})
+    _etf1_ok = bool(_etf1 and _etf1.get('ticker'))
+    with st.expander(
+        f'🏦 ETF 單支診斷 — {_etf1.get("ticker","") if _etf1_ok else ""}  {"✅" if _etf1_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etf1_ok:
+            _e1_vcp  = _etf1.get('vcp', {})
+            _e1_prem = _etf1.get('premium', {})
+            _rows_e1 = [
+                {'指標': 'ETF 代號',       '數值': _etf1.get('ticker', '-'),     '說明': ''},
+                {'指標': '名稱',           '數值': _etf1.get('name', '-'),       '說明': ''},
+                {'指標': '現金殖利率',     '數值': f'{_etf1.get("cur_yield", 0):.2f}%',  '說明': '最近一次配息換算'},
+                {'指標': '近5年平均殖利率','數值': f'{_etf1.get("avg_yield", 0):.2f}%',  '說明': '357估值基礎'},
+                {'指標': '近1年含息總報酬','數值': f'{_etf1.get("total_ret", 0):.2f}%',  '說明': ''},
+                {'指標': '折溢價率',       '數值': f'{_e1_prem.get("premium_pct", "N/A")}%' if isinstance(_e1_prem, dict) else '-', '說明': 'NAV 偏離'},
+                {'指標': '追蹤誤差 TE',    '數值': f'{_etf1.get("te", 0):.2f}%' if _etf1.get("te") is not None else '-', '說明': ''},
+                {'指標': 'VCP 突破',       '數值': '✅ 有' if (isinstance(_e1_vcp, dict) and _e1_vcp.get('signal')) else '無', '說明': ''},
+                {'指標': '大盤狀態',       '數值': _etf1.get('regime', '-'),     '說明': 'bull/neutral/bear'},
+            ]
+            st.dataframe(pd.DataFrame(_rows_e1), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未載入 ETF。前往「🏦 ETF → ETF 診斷」選擇 ETF 並點擊「開始診斷」')
+
+    # ── 15. ETF 組合配置 ──────────────────────────────────────
+    _etfp = st.session_state.get('etf_portfolio_data', {})
+    _etfp_ok = bool(_etfp and _etfp.get('rows'))
+    with st.expander(
+        f'⚖️ ETF 組合配置  {"✅ " + str(len(_etfp.get("rows",[]))) + " 檔" if _etfp_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etfp_ok:
+            _p_rows = _etfp.get('rows', [])
+            _display_p = [
+                {'ETF': r.get('ticker','-'),
+                 '目標%': f'{r.get("target_pct",0):.0f}%',
+                 '實際%': f'{r.get("actual_pct",0):.1f}%',
+                 '偏離%': f'{r.get("deviation",0):+.1f}%',
+                 '再平衡': '⚠️ 需調整' if abs(r.get('deviation',0)) > 10 else '✅'}
+                for r in _p_rows]
+            st.dataframe(pd.DataFrame(_display_p), use_container_width=True, hide_index=True)
+            c_tv, c_lp, c_rb = st.columns(3)
+            c_tv.metric('總資產', f'{_etfp.get("total_value",0):,.0f}元')
+            c_lp.metric('壓力測試損失', f'{_etfp.get("loss_pct",0):.1f}%')
+            c_rb.metric('再平衡筆數', len(_etfp.get('rebal_actions',[])))
+        else:
+            st.info('尚未建立組合。前往「🏦 ETF → ETF 組合」設定並點擊「計算組合」')
+
+    # ── 16. ETF 回測績效 ──────────────────────────────────────
+    _etfb = st.session_state.get('etf_backtest_data', {})
+    _etfb_ok = bool(_etfb and _etfb.get('cagr') is not None)
+    with st.expander(
+        f'📈 ETF 回測績效  {"✅ CAGR=" + str(round(_etfb.get("cagr",0),2)) + "%" if _etfb_ok else "❌ 尚未載入"}',
+        expanded=False):
+        if _etfb_ok:
+            _w = _etfb.get('weights', {})
+            _rows_b = [
+                {'指標': '組合權重',   '數值': ' | '.join(f'{t}:{v*100:.0f}%' for t,v in _w.items()), '說明': ''},
+                {'指標': '回測期間',   '數值': _etfb.get('period', '-'),    '說明': ''},
+                {'指標': '初始資金',   '數值': f'{_etfb.get("initial",0):,.0f}元', '說明': ''},
+                {'指標': 'CAGR',       '數值': f'{_etfb.get("cagr",0):.2f}%',     '說明': '年化報酬率'},
+                {'指標': 'Sharpe',     '數值': f'{_etfb.get("sharpe",0):.2f}',     '說明': '>1 為優秀'},
+                {'指標': 'MDD',        '數值': f'{_etfb.get("mdd",0):.1f}%',       '說明': '最大回撤'},
+                {'指標': '年化波動率', '數值': f'{_etfb.get("vol",0):.2f}%',       '說明': ''},
+                {'指標': '大盤狀態',   '數值': _etfb.get('regime', '-'),    '說明': ''},
+            ]
+            st.dataframe(pd.DataFrame(_rows_b), use_container_width=True, hide_index=True)
+        else:
+            st.info('尚未執行回測。前往「🏦 ETF → ETF 回測」設定並點擊「開始回測」')
+
+    # ── 17. 財經新聞 RSS 即時驗證 ────────────────────────────
+
     st.markdown('---')
     st.markdown('#### 📰 財經新聞 RSS 即時驗證')
     st.caption('新聞來源（依優先順序）：Google News → Yahoo Finance → Reuters → CNBC Economy')
