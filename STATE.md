@@ -2,8 +2,15 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.6 | main `f1f1d6a`
-- **最新異動**: fix Tab3 NameError results_t3（`1986fc4` → PR #23 ✅）
+- **版本**: v7.7 | main `b7cfe00`
+- **最新異動**: fix Tab1 頂部看板不更新（加 st.rerun()，PR #25 ✅）
+
+## ✅ 已完成任務：Tab1 頂部看板資料延遲顯示修復（v7.7，PR #25）
+
+| 項目 | 內容 |
+|------|------|
+| 根因 | Streamlit top-to-bottom 單次執行：頂部「今日市場總覽」在資料抓取前就已渲染，點擊更新後顯示舊快取 |
+| 修復 | `if do_refresh` 區塊尾端加 `st.rerun()`，資料寫入 session_state 後觸發第二次完整渲染 |
 
 ## ✅ 已完成任務：Tab3 NameError 修復（v7.6，PR #23）
 
