@@ -14,6 +14,70 @@ import time
 import requests
 
 
+# ── Survival Module Prompt（存活能力：3大生死指標）──────────
+_SURVIVAL_PROMPT = """\
+# Role & Task
+你是一個執行「超級數字力（MJ老師）」財務邏輯的嚴格量化 AI。你的任務是審查企業的【存活能力 (Survival)】。這攸關公司是否會面臨黑字破產或資金斷鏈，判定標準極度嚴格。
+
+# Constraint: Exception Handling
+- 若遇財報欄位缺失，輸出 "N/A"，絕對禁止自行推算或腦補。
+- 若遇分母為 0（如流動負債=0），視為無短期債務壓力，該指標直接判定為 "Pass"。
+
+# Evaluation Logic (存活能力 3 大生死指標)
+
+## 1. 氣長不長 (Cash Ratio)
+- 計算：現金與約當現金 / 總資產 * 100%
+- 判斷標準：
+  - Pass (綠燈)：>= 25%
+  - Acceptable (黃燈)：10% ~ 24%
+  - Fail (紅燈)：< 10%
+
+## 2. 收現速度 (Days Sales Outstanding, DSO)
+- 判斷公司是不是天天收現金的好生意。
+- 判斷標準：
+  - Pass (綠燈)：< 15天
+  - Acceptable (黃燈)：15 ~ 90天
+  - Fail (紅燈)：> 90天
+
+## 3. 現金流自給自足 (100 / 100 / 10 法則)
+必須同時檢驗以下三個條件：
+- [條件 A] 現金流量比率：(營業活動淨現金流 / 流動負債) * 100% -> 必須 > 100%
+- [條件 B] 現金流量允當比率：(近5年營業現金流 / 近5年[資本支出+存貨增加+現金股利]) * 100% -> 必須 > 100%（資料不足5年時輸出 "N/A"）
+- [條件 C] 現金再投資比率：([營業現金流 - 現金股利] / 固定與長期資產等) * 100% -> 必須 > 10%
+- 判斷標準：
+  - Pass (綠燈)：三項全數達標（N/A 項不計入失敗）
+  - Fail (紅燈)：任一項未達標
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol (Strict JSON)
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Survival_Module": {{
+    "Cash_Ratio": {{
+      "Value": "XX.X%",
+      "Status": "Pass | Acceptable | Fail",
+      "Insight": "一句話短評"
+    }},
+    "DSO_Speed": {{
+      "Value": "XX 天",
+      "Status": "Pass | Acceptable | Fail",
+      "Insight": "一句話短評"
+    }},
+    "Rule_100_100_10": {{
+      "Cash_Flow_Ratio": "XX.X% 或 N/A",
+      "Cash_Flow_Adequacy": "XX.X% 或 N/A",
+      "Cash_Reinvestment": "XX.X% 或 N/A",
+      "Status": "Pass | Fail",
+      "Insight": "一句話短評"
+    }},
+    "Final_Survival_Verdict": "總結存活能力防禦力等級（高/中/低），並標示是否通過生死關。"
+  }}
+}}"""
+
 # ── MJ 財報體檢 Prompt ──────────────────────────────────────
 _PROMPT_TEMPLATE = """\
 # Role
@@ -147,6 +211,42 @@ _FAIL_SAFE: dict = {
 }
 
 
+# ── Survival Module 入口 ────────────────────────────────────
+def analyze_survival_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """
+    執行存活能力 3 大生死指標分析（氣長/DSO/100-100-10）。
+    失敗時回傳 {"error": True, "Survival_Module": {...fail-safe...}}。
+    """
+    _fs_survival = {
+        "Survival_Module": {
+            "Cash_Ratio":       {"Value": "N/A", "Status": "Fail", "Insight": "資料載入失敗"},
+            "DSO_Speed":        {"Value": "N/A", "Status": "Fail", "Insight": "資料載入失敗"},
+            "Rule_100_100_10":  {
+                "Cash_Flow_Ratio": "N/A", "Cash_Flow_Adequacy": "N/A",
+                "Cash_Reinvestment": "N/A", "Status": "Fail", "Insight": "資料載入失敗",
+            },
+            "Final_Survival_Verdict": "無法判斷（資料不足）",
+        },
+        "error": True,
+    }
+    if not api_key or not fin_data or fin_data.get("error"):
+        return _fs_survival
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _SURVIVAL_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        print(f"[Survival] ✅ {stock_id} verdict={result.get('Survival_Module',{}).get('Final_Survival_Verdict','?')[:20]}")
+        return result
+    except Exception as _e:
+        print(f"[Survival] ❌ {stock_id}: {_e}")
+        fs = _fs_survival.copy()
+        fs["Survival_Module"]["Final_Survival_Verdict"] = f"分析失敗：{_e}"
+        return fs
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -183,6 +283,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
             result["opm_data"] = {"payable_days": 0, "receivable_days": 0, "advantage": False}
         else:
             result["opm_data"]["advantage"] = bool(result["opm_data"].get("advantage", False))
+
+        # 同步執行 Survival Module（存活能力精細版）
+        _surv = analyze_survival_module(api_key, stock_id, fin_data)
+        result["survival_module"] = _surv.get("Survival_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result

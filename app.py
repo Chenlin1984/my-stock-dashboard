@@ -7234,6 +7234,43 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     else:
                         st.warning(f'OPM護城河 ⚠️ 付款天數({_pay_f}天) ≤ 收款天數({_rec_f}天)，議價能力待強化')
 
+                # ── 存活能力精細模組（Survival Module）──────────
+                _surv_f = _fd_f.get('survival_module', {})
+                if _surv_f and not _fd_f.get('error'):
+                    st.markdown('**🏥 存活能力精細診斷（MJ 3大生死指標）**')
+                    _s_cols = st.columns(3)
+                    _status_color = {'Pass': '#3fb950', 'Acceptable': '#d29922', 'Fail': '#f85149'}
+                    for _col, (_key, _label) in zip(_s_cols, [
+                        ('Cash_Ratio', '💰 氣長不長'),
+                        ('DSO_Speed',  '⚡ 收現速度'),
+                    ]):
+                        _si = _surv_f.get(_key, {})
+                        _sc = _status_color.get(_si.get('Status', 'Fail'), '#f85149')
+                        with _col:
+                            st.markdown(
+                                f'<div style="background:{_sc}18;border:1px solid {_sc}55;'
+                                f'border-radius:8px;padding:10px;text-align:center;">'
+                                f'<div style="font-size:11px;color:#8b949e;">{_label}</div>'
+                                f'<div style="font-size:18px;font-weight:900;color:{_sc};">{_si.get("Value","N/A")}</div>'
+                                f'<div style="font-size:11px;color:{_sc};">{_si.get("Status","?")}</div>'
+                                f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_si.get("Insight","")}</div>'
+                                f'</div>', unsafe_allow_html=True)
+                    _r110 = _surv_f.get('Rule_100_100_10', {})
+                    _r110_sc = _status_color.get(_r110.get('Status', 'Fail'), '#f85149')
+                    with _s_cols[2]:
+                        st.markdown(
+                            f'<div style="background:{_r110_sc}18;border:1px solid {_r110_sc}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">🔄 100/100/10</div>'
+                            f'<div style="font-size:11px;color:#c9d1d9;">A:{_r110.get("Cash_Flow_Ratio","N/A")} '
+                            f'B:{_r110.get("Cash_Flow_Adequacy","N/A")} C:{_r110.get("Cash_Reinvestment","N/A")}</div>'
+                            f'<div style="font-size:12px;font-weight:700;color:{_r110_sc};">{_r110.get("Status","?")}</div>'
+                            f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_r110.get("Insight","")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _verdict_f = _surv_f.get('Final_Survival_Verdict', '')
+                    if _verdict_f:
+                        st.caption(f'🎯 {_verdict_f}')
+
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')
                 if _insight_f:
