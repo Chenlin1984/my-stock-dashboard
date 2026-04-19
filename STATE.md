@@ -2,8 +2,17 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v8.0 | main `ecf5cad`
-- **最新異動**: MJ 存活能力精細模組（3大生死指標）（PR #37）
+- **版本**: v8.1 | branch `claude/analyze-test-coverage-070Kf` `60d604e`
+- **最新異動**: MJ 經營能力模組（DSO/DIO/DPO/CCC）Tab2+Tab3 渲染
+
+## ✅ 已完成任務：MJ 經營能力模組（v8.1，commit 60d604e）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | `_OPERATING_PROMPT` + `analyze_operating_module()` 計算 DSO/DIO/DPO/CCC/Asset Turnover/OPM護城河 |
+| `app.py` Tab2 | 個股健檢頁新增存活能力 + 經營能力雙模組卡片 |
+| `app.py` Tab3 | 批次健檢 expander 同步加入經營能力模組渲染 |
+| Commit | `60d604e` |
 
 ## ✅ 已完成任務：MJ 存活能力精細模組（v8.0，PR #37）
 
