@@ -2,8 +2,17 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v7.9.4 | main `216f824`
-- **最新異動**: Tab1 市場總覽+5分鐘清單同步 _cache_fresh（PR #35）
+- **版本**: v8.0 | main `ecf5cad`
+- **最新異動**: MJ 存活能力精細模組（3大生死指標）（PR #37）
+
+## ✅ 已完成任務：MJ 存活能力精細模組（v8.0，PR #37）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | `_SURVIVAL_PROMPT`（氣長/DSO/100-100-10）+ `analyze_survival_module()` + 整合進 `analyze_financial_health()` |
+| `data_loader.py` | 補充流動負債/存貨/現金股利/固定資產/長期投資欄位 |
+| `app.py` | 個股 expander 新增 3 欄存活能力精細診斷卡（含 Final_Survival_Verdict） |
+| Commit | `b11fd52` |
 
 ## ✅ 已完成任務：Tab1 市場總覽同步化（v7.9.4，PR #35）
 
