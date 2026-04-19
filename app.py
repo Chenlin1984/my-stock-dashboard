@@ -6259,36 +6259,19 @@ padding:12px 16px;margin:8px 0;">
 
         st.markdown("""<div style="margin:24px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#d2a8ff18,#0d1117);border-left:4px solid #d2a8ff;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#d2a8ff;">🏥 體檢表</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">林明樟 MJ 體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span></div>""", unsafe_allow_html=True)
 
-        with st.expander('🔬 展開 AI 財報體檢（林明樟 MJ 體系）', expanded=False):
-            _fh_hdr1, _fh_hdr2 = st.columns([5, 1])
-            with _fh_hdr1:
-                st.markdown(
-                    '<div style="font-size:12px;color:#8b949e;padding:2px 0 6px;">'
-                    '依林明樟（MJ老師）4力1棒子框架，由 Gemini AI 解讀三大報表，'
-                    '輸出生死燈號、五力雷達、企業DNA、護城河指標與白話診斷。'
-                    '<br><span style="color:#484f58;">需設定 FINMIND_TOKEN 與 GEMINI_API_KEY。</span></div>',
-                    unsafe_allow_html=True)
-            with _fh_hdr2:
-                _do_fh = st.button('🏥 執行財報體檢', key='btn_fh',
-                                   use_container_width=True, type='primary')
-
-            if _do_fh:
-                with st.spinner('📊 正在從 FinMind 抓取財報數據並呼叫 AI 分析（約 20~30 秒）…'):
+        with st.expander('🔬 AI 財報體檢（林明樟 MJ 體系）', expanded=True):
+            _fh_key2 = f'_fh_{sid2}'
+            if _fh_key2 not in st.session_state:
+                with st.spinner('📊 正在從 FinMind 抓取財報數據並呼叫 Gemini AI 分析（約 20~30 秒）…'):
                     _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
                     if _fin_raw.get('error'):
-                        st.error(_fin_raw['error'])
+                        st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
                     else:
                         _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
-                        st.session_state[f'_fh_{sid2}'] = _fh_out
-                        if _fh_out.get('error'):
-                            st.error(_fh_out.get('ai_insight', 'AI 分析失敗'))
-                        else:
-                            st.success(f'✅ {name2} 財報體檢完成')
-
-            _fh = st.session_state.get(f'_fh_{sid2}')
-
-            if not _fh:
-                st.info('點擊「執行財報體檢」按鈕，啟動 MJ 體系 AI 財務診斷。')
+                        st.session_state[_fh_key2] = _fh_out
+            _fh = st.session_state.get(_fh_key2)
+            if not _fh or _fh.get('error'):
+                st.error(_fh.get('ai_insight', '財報體檢失敗，請確認 FINMIND_TOKEN 與 GEMINI_API_KEY。') if _fh else '載入中...')
             else:
                 # ── 第一關：三大生死燈號 ────────────────────
                 st.markdown('#### 🛡️ 第一關：生死與體質防禦')
@@ -6420,9 +6403,12 @@ padding:12px 16px;margin:8px 0;">
                 _bb_u = float(df2['BB_upper'].iloc[-1]); _bb_l = float(df2['BB_lower'].iloc[-1])
                 _bb_pos2 = f'{round((price2 - _bb_l) / max(_bb_u - _bb_l, 0.01) * 100, 1)}%'
             _ma_str2 = ', '.join(f'{k}:{"上方✅" if v else "下方⚠️"}' for k,v in _ma_above2.items()) if _ma_above2 else 'N/A'
+            _rsi_str2 = f'{rsi2:.1f}' if rsi2 else 'N/A'
+            _k_str2   = f'{k2:.1f}' if k2 else 'N/A'
+            _d_str2   = f'{d2:.1f}' if d2 else 'N/A'
             _tech_data2 = (
-                f"現價={price2:.2f} | 健康度={health2:.0f}/100 | RSI={rsi2:.1f if rsi2 else 'N/A'} | "
-                f"KD=K:{k2:.1f if k2 else 'N/A'}/D:{d2:.1f if d2 else 'N/A'} | "
+                f"現價={price2:.2f} | 健康度={health2:.0f}/100 | RSI={_rsi_str2} | "
+                f"KD=K:{_k_str2}/D:{_d_str2} | "
                 f"IBS={_ibs2} | 量比={_vol_ratio2} | ATR={_atr2:.2f} | 布林位階={_bb_pos2}\n"
                 f"均線位階={_ma_str2}\n"
                 f"VCP={'突破訊號✅' if _vcp_ok2 else ('整理收縮中' if vcp2 else '未形成')}"
@@ -7026,100 +7012,108 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             for alert in risk_alerts:
                 st.warning(alert)
 
-        # ── 完整AI綜合分析 ──────────────────────────────────────
-        if results_t3:
-            st.markdown('#### 🤖 完整AI投資決策分析')
-            _score_src = score_t3 if score_t3 else results_t3
-            _ai_top_ids = ', '.join(
-                r.get('stock_id', r.get('代碼','')) for r in
-                sorted(_score_src, key=lambda x: x.get('total', x.get('舊評分', x.get('_health', 0))), reverse=True)[:3]
-            )
-            st.markdown(teacher_conclusion('宏爺+孫慶龍+朱家泓', f'AI綜合判讀（前3：{_ai_top_ids}）', '技術+籌碼+基本面三重過濾後的最終結論', '點擊下方按鈕生成'), unsafe_allow_html=True)
-            _ai_cache_key = 't3_ai_' + '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:5]))
-            _ai_cached = st.session_state.get(_ai_cache_key, '')
-            if _ai_cached:
-                st.markdown(_ai_cached)
-                if st.button('🔄 重新生成AI分析', key='t3_ai_regen'):
-                    st.session_state.pop(_ai_cache_key, None)
-                    st.rerun()
-            else:
-                if st.button('🤖 生成完整AI分析', key='t3_ai_gen', type='primary'):
-                    from scoring_engine import rank_stocks as _rk3ai
-                    _top3 = _rk3ai(score_t3)[:3] if score_t3 else results_t3[:3]
-                    _ai_lines = []
-                    for _r in _top3:
-                        _sid = _r.get('stock_id', _r.get('代碼',''))
-                        _fd  = _fund_map.get(_sid, {})
-                        _ht  = _r.get('_health', next((x.get('_health',0) for x in results_t3 if x.get('stock_id')==_sid), 0))
-                        _ai_lines.append(
-                            f"- {_sid}({_r.get('stock_name', _r.get('名稱',''))}) "
-                            f"健康度{_ht:.0f} 評分{_r.get('total', _r.get('舊評分',0)):.0f}分 "
-                            f"EPS={_fd.get('近4季EPS','-')} "
-                            f"毛利={_fd.get('毛利率%','-')}% 殖利率={_fd.get('殖利率%','-')}%"
-                        )
-                    _mkt_reg = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
-                    _reg_txt = '多頭' if _mkt_reg == 'bull' else ('空頭' if _mkt_reg == 'bear' else '震盪')
-                    _ai_prompt = (
-                        f"你是宏爺、孫慶龍、朱家泓三位老師的AI助手，以台灣股市實戰語氣分析以下候選股：\n"
-                        f"{chr(10).join(_ai_lines)}\n"
-                        f"大盤：{_reg_txt}格局\n\n"
-                        f"請依序回答（每段不超過60字，像老師WhatsApp群組的風格）：\n"
-                        f"① 最值得關注的一檔及原因\n"
-                        f"② 具體進場條件（技術面確認訊號）\n"
-                        f"③ 停損設定（一句話）\n"
-                        f"④ 風控提醒（一句話）"
-                    )
-                    with st.spinner('AI分析中...'):
-                        _ai_result = gemini_call(_ai_prompt, max_tokens=600)
-                    st.session_state[_ai_cache_key] = _ai_result
-                    st.markdown(_ai_result)
-                else:
-                    st.caption('點擊上方按鈕生成完整AI投資決策分析')
-
-    # ══ 批次財報體檢（MJ林明樟體系）═══════════════════════════════
-    st.markdown('---')
-    st.markdown("""<div style="padding:4px 0 2px;">
-<span style="font-size:18px;font-weight:900;color:#e6edf3;">🏥 批次財報體檢</span>
-<span style="font-size:11px;color:#484f58;margin-left:10px;">MJ林明樟體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span>
-</div>""", unsafe_allow_html=True)
-
-    _fh_t3_col1, _fh_t3_col2 = st.columns([3, 1])
-    with _fh_t3_col1:
-        t3_fh_btn = st.button(
-            '🏥 批次財報體檢', key='btn_fh_t3', type='primary',
-            disabled=not bool(stock_list_t3),
-            help='對上方股票清單批次執行MJ財報體檢（最多10支）'
-        )
-    with _fh_t3_col2:
-        if st.button('🗑️ 清除體檢結果', key='btn_fh_t3_clear'):
-            st.session_state.pop('_fh_t3_results', None)
-            st.rerun()
-
-    if t3_fh_btn and stock_list_t3:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        _gemini_key_fh = st.secrets.get('GEMINI_API_KEY', '')
-        _finmind_tok_fh = st.secrets.get('FINMIND_TOKEN', '')
-        _fh_t3_res = {}
-        _fh_prog = st.progress(0, text='財報體檢中...')
-
-        def _fetch_and_analyze(sid):
-            fin = fetch_financial_statements(sid, _finmind_tok_fh)
-            result = analyze_financial_health(_gemini_key_fh, sid, fin)
-            return sid, result
-
-        _done = 0
-        with ThreadPoolExecutor(max_workers=3) as _exe:
-            _futs = {_exe.submit(_fetch_and_analyze, s): s for s in stock_list_t3}
-            for _fut in as_completed(_futs):
-                _done += 1
-                _fh_prog.progress(_done / len(stock_list_t3),
-                                   text=f'體檢完成 {_done}/{len(stock_list_t3)}...')
-                _sid_r, _res_r = _fut.result()
-                _fh_t3_res[_sid_r] = _res_r
-        _fh_prog.empty()
-        st.session_state['_fh_t3_results'] = _fh_t3_res
+    # ══ 批次財報體檢（自動執行）══════════════════════════════════
+    if results_t3 and stock_list_t3:
+        st.markdown('---')
+        st.markdown("""<div style="margin:16px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#d2a8ff18,#0d1117);border-left:4px solid #d2a8ff;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#d2a8ff;">🏥 批次財報體檢（MJ林明樟體系）</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">4力1棒子 · 現金流矩陣 · OPM護城河</span></div>""", unsafe_allow_html=True)
+        _fh3_trigger = '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
+        if st.session_state.get('_fh_t3_last_key') != _fh3_trigger or not st.session_state.get('_fh_t3_results'):
+            from concurrent.futures import ThreadPoolExecutor, as_completed as _asc
+            _gk3 = st.secrets.get('GEMINI_API_KEY', '')
+            _fk3 = st.secrets.get('FINMIND_TOKEN', '')
+            _fh3_new = {}
+            _prog3 = st.progress(0, text='財報體檢中...')
+            def _fh3_fn(sid):
+                return sid, analyze_financial_health(_gk3, sid, fetch_financial_statements(sid, _fk3))
+            _done3 = 0
+            with ThreadPoolExecutor(max_workers=3) as _ex3:
+                _fts3 = {_ex3.submit(_fh3_fn, s): s for s in stock_list_t3}
+                for _ft3 in _asc(_fts3):
+                    _done3 += 1
+                    _prog3.progress(_done3 / len(stock_list_t3), text=f'體檢 {_done3}/{len(stock_list_t3)}...')
+                    _sid3, _res3 = _ft3.result()
+                    _fh3_new[_sid3] = _res3
+            _prog3.empty()
+            st.session_state['_fh_t3_results'] = _fh3_new
+            st.session_state['_fh_t3_last_key'] = _fh3_trigger
 
     _fh_t3_cached = st.session_state.get('_fh_t3_results', {})
+
+    # ── AI 投資組合綜合判讀 ───────────────────────────────────────
+    if results_t3:
+        st.markdown('---')
+        st.markdown("""<div style="margin:16px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 投資組合綜合判讀</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">台股資深基金經理人 · 強弱排序 · 汰弱留強 · 風險診斷</span></div>""", unsafe_allow_html=True)
+        _t3ai_key = 't3_port_' + '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
+        _t3ai_cached = st.session_state.get(_t3ai_key, '')
+        _t3ai_c1, _t3ai_c2 = st.columns([3, 1])
+        with _t3ai_c1:
+            _t3ai_btn = st.button('🤖 生成 AI 投資組合分析報告', key='t3_ai_gen', type='primary')
+        with _t3ai_c2:
+            if st.button('🔄 重新生成', key='t3_ai_regen'):
+                st.session_state.pop(_t3ai_key, None)
+                st.rerun()
+        if _t3ai_btn:
+            _port_lines = []
+            for _rp in results_t3:
+                _sid_p = _rp.get('stock_id', _rp.get('代碼',''))
+                _nm_p  = _rp.get('stock_name', _rp.get('名稱', _sid_p))
+                _ht_p  = _rp.get('_health', 0)
+                _sc_p  = _rp.get('total', _rp.get('舊評分', 0))
+                _fd_p  = _fund_map.get(_sid_p, {})
+                _fhp   = _fh_t3_cached.get(_sid_p, {})
+                _dna_p = _fhp.get('business_model_dna', 'N/A') if _fhp else 'N/A'
+                _fb_p  = _rp.get('foreign_buy', 0) or 0
+                _rsi_p = _rp.get('rsi', 'N/A')
+                _ma_p  = '多頭排列' if (_rp.get('ma_above', 0) or 0) >= 2 else '空頭排列'
+                _vcp_p = 'VCP突破' if _rp.get('vcp_signal') else '未突破'
+                _port_lines.append(
+                    f"[{_sid_p} {_nm_p}] 健康度={_ht_p:.0f} 評分={_sc_p:.0f} | "
+                    f"技術: 均線={_ma_p} RSI={_rsi_p} {_vcp_p} | "
+                    f"籌碼: 外資{'買超' if _fb_p>0 else '賣超'}{abs(_fb_p)/1e8:.1f}億 | "
+                    f"基本面: EPS={_fd_p.get('近4季EPS','-')} 毛利={_fd_p.get('毛利率%','-')}% | "
+                    f"財報DNA={_dna_p}"
+                )
+            _reg_p = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
+            _reg_txt_p = '多頭市場（積極操作）' if _reg_p == 'bull' else ('空頭市場（縮減部位）' if _reg_p == 'bear' else '震盪整理（謹慎觀望）')
+            _exp_p = st.session_state.get('macro_state', {}).get('exposure_limit_pct', 'N/A')
+            _prompt_parts = [
+                "你是一位掌管百億資金的「台股資深基金經理人」與「量化策略師」。",
+                "專長是從投資組合高度進行資金效能最大化、汰弱留強與風險對沖。分析冷靜、客觀。",
+                "禁止出現「一定要買」「保證獲利」等字眼。統一使用繁體中文。",
+                "",
+                f"大盤格局={_reg_txt_p} | 建議持股上限={_exp_p}%",
+                "",
+                "投資組合數據：",
+            ] + _port_lines + [
+                "",
+                "請依以下格式輸出《投資組合戰略優化報告》：",
+                "",
+                "#### 一、組合強弱排序矩陣",
+                "| 梯隊 | 股票 | 核心催化劑 | 法人態度 | 綜合評分 |",
+                "|:---|:---|:---|:---|:---|",
+                "| S級（強勢領漲）| ... | ... | 偏多 | ... |",
+                "| A級（蓄勢待發）| ... | ... | 中立 | ... |",
+                "| B級（弱勢汰換）| ... | ... | 偏空 | ... |",
+                "",
+                "#### 二、投資組合體質與風險診斷",
+                "- 產業集中度分析：",
+                "- 總經環境適配度：",
+                "",
+                "#### 三、汰弱留強戰術建議（僅供策略參考，不構成投資邀約）",
+                "- 建議減碼/剔除名單：",
+                "- 建議加碼/核心名單（含資金分配比例建議）：",
+                "",
+                "#### 四、組合防禦底線",
+                "（設定整個組合的綜合防禦觀測指標）",
+            ]
+            _t3ai_prompt = '\n'.join(_prompt_parts)
+            with st.spinner('AI 基金經理人分析中（約 30 秒）...'):
+                _t3ai_result = gemini_call(_t3ai_prompt, max_tokens=2000)
+            st.session_state[_t3ai_key] = _t3ai_result
+        if _t3ai_cached:
+            st.markdown(_t3ai_cached)
+        elif not _t3ai_btn:
+            st.caption('▲ 點擊上方按鈕，AI 將生成投資組合強弱排序矩陣與汰弱留強建議。')
     if _fh_t3_cached:
         # ── 摘要比較表 ────────────────────────────────────────────
         st.markdown('##### 📊 體檢摘要比較表')
