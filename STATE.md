@@ -2,8 +2,18 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.4 | main `4aa2157`
-- **最新異動**: MJ 財報體檢 Part 6 — 綜合診斷避雷模組（跨表勾稽 + 地雷偵測）
+- **版本**: v9.5 | main `66fb06b`
+- **最新異動**: Bug Fix — 財報體檢 AI 失效降級 + token 缺失警告
+
+## ✅ 已完成任務：Bug Fix 財報體檢 N/A + AI 失效（v9.5，commit 66fb06b）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | 新增 `_derive_basic_from_fin_data()`：AI 失效時直接從 fin_data 計算基礎指標 |
+| AI 失效降級 | `analyze_financial_health()` exception 路徑改為回傳基礎計算（不帶 `error:True`），避免 tab2/tab3 整個體檢區塊空白 |
+| `app.py` Tab3 | 批次體檢前置 token 檢查：未設定 FINMIND_TOKEN/GEMINI_API_KEY 時顯示明確 warning |
+| `data_loader.py` | FinMind 非 200 回應加印 status+msg，便於 debug N/A 原因 |
+| Bug 根因 | FINMIND_TOKEN 失效 → FinMind 返回非200 → empty data → `{"error":...}` → FAIL_SAFE |
 
 ## ✅ 已完成任務：MJ 財報體檢 Part 6 綜合診斷模組（v9.4，commit 4aa2157）
 
