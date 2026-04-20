@@ -6706,6 +6706,59 @@ padding:12px 16px;margin:8px 0;">
                     if _solv2.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv2["Final_Insight"]}')
 
+                # ── 綜合診斷模組（Advanced Diagnostic Module）────
+                _adv2 = _fh.get('advanced_diagnostic_module', {})
+                if _adv2:
+                    st.markdown('#### 🔬 綜合診斷與避雷（跨表勾稽 + 地雷偵測）')
+                    # 第一列：盈餘品質 + 杜邦 + 雙高
+                    _ad2r1 = st.columns(3)
+                    # 盈餘品質
+                    _eq2 = _adv2.get('Earnings_Quality', {})
+                    _eq2_s = _eq2.get('Status', '')
+                    _eq2_c = '#3fb950' if _eq2_s == 'Pass' else ('#f85149' if _eq2_s == 'Fail' else '#8b949e')
+                    with _ad2r1[0]:
+                        st.markdown(
+                            f'<div style="background:{_eq2_c}18;border:1px solid {_eq2_c}55;'
+                            f'border-radius:10px;padding:12px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">盈餘含金量</div>'
+                            f'<div style="font-size:22px;font-weight:900;color:{_eq2_c};">{_eq2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:11px;color:{_eq2_c};">{"✅ 真金白銀" if _eq2_s=="Pass" else ("🔴 紙上富貴" if _eq2_s=="Fail" else "N/A")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 杜邦分析
+                    _dp2 = _adv2.get('DuPont_Health', '')
+                    _dp2_c = '#f85149' if '警報' in _dp2 else ('#3fb950' if '健康' in _dp2 else '#d29922')
+                    _dp2_icon = '🔴' if '警報' in _dp2 else ('✅' if '健康' in _dp2 else '⚠️')
+                    with _ad2r1[1]:
+                        st.markdown(
+                            f'<div style="background:{_dp2_c}18;border:1px solid {_dp2_c}55;'
+                            f'border-radius:10px;padding:12px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">杜邦分析</div>'
+                            f'<div style="font-size:13px;font-weight:900;color:{_dp2_c};line-height:1.4;">{_dp2_icon} {_dp2}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 雙高危機
+                    _dh2 = _adv2.get('Double_High_Warning', '')
+                    _dh2_danger = 'Triggered' in _dh2
+                    _dh2_c = '#f85149' if _dh2_danger else ('#3fb950' if 'Clear' in _dh2 else '#8b949e')
+                    with _ad2r1[2]:
+                        st.markdown(
+                            f'<div style="background:{_dh2_c}18;border:1px solid {_dh2_c}55;'
+                            f'border-radius:10px;padding:12px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">雙高危機偵測</div>'
+                            f'<div style="font-size:13px;font-weight:900;color:{_dh2_c};">{"🔴 觸發警報！" if _dh2_danger else ("✅ 安全" if "Clear" in _dh2 else "⬜ 資料不足")}</div>'
+                            f'<div style="font-size:10px;color:{_dh2_c};">{_dh2}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 第二列：企業 DNA 全寬
+                    _dna2 = _adv2.get('Business_DNA', '')
+                    _dna2_c = '#3fb950' if 'A+' in _dna2 else ('#d29922' if '成長' in _dna2 or '新創' in _dna2 else ('#f85149' if '瀕死' in _dna2 else '#58a6ff'))
+                    st.markdown(
+                        f'<div style="background:{_dna2_c}18;border:1px solid {_dna2_c}55;'
+                        f'border-radius:10px;padding:10px 16px;margin-top:8px;">'
+                        f'<span style="font-size:11px;color:#8b949e;">企業 DNA（現金流矩陣）：</span>'
+                        f'<span style="font-size:14px;font-weight:900;color:{_dna2_c};margin-left:8px;">{_dna2}</span>'
+                        f'</div>', unsafe_allow_html=True)
+                    if _adv2.get('Final_Verdict'):
+                        st.caption(f'🔬 {_adv2["Final_Verdict"]}')
+
                 st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
                 # ── AI 白話診斷室 ─────────────────────────
@@ -7670,6 +7723,46 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                                 f'</div>', unsafe_allow_html=True)
                     if _solv_f.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv_f["Final_Insight"]}')
+
+                # ── 綜合診斷模組（Advanced Diagnostic Module）────
+                _adv_f = _fd_f.get('advanced_diagnostic_module', {})
+                if _adv_f and not _fd_f.get('error'):
+                    st.markdown('**🔬 綜合診斷與避雷（跨表勾稽）**')
+                    _adf3c = st.columns(3)
+                    # 盈餘品質
+                    _eq_f = _adv_f.get('Earnings_Quality', {})
+                    _eq_f_s = _eq_f.get('Status', '')
+                    _eq_f_c = '#3fb950' if _eq_f_s == 'Pass' else ('#f85149' if _eq_f_s == 'Fail' else '#8b949e')
+                    with _adf3c[0]:
+                        st.markdown(
+                            f'<div style="background:{_eq_f_c}18;border:1px solid {_eq_f_c}55;'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">盈餘含金量</div>'
+                            f'<div style="font-size:16px;font-weight:900;color:{_eq_f_c};">{_eq_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{_eq_f_c};">{"✅ 真金白銀" if _eq_f_s=="Pass" else ("🔴 紙上富貴" if _eq_f_s=="Fail" else "N/A")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 雙高危機
+                    _dh_f = _adv_f.get('Double_High_Warning', '')
+                    _dh_f_c = '#f85149' if 'Triggered' in _dh_f else ('#3fb950' if 'Clear' in _dh_f else '#8b949e')
+                    with _adf3c[1]:
+                        st.markdown(
+                            f'<div style="background:{_dh_f_c}18;border:1px solid {_dh_f_c}55;'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">雙高危機</div>'
+                            f'<div style="font-size:13px;font-weight:900;color:{_dh_f_c};">{"🔴 觸發！" if "Triggered" in _dh_f else ("✅ 安全" if "Clear" in _dh_f else "⬜ N/A")}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 企業 DNA
+                    _dna_f = _adv_f.get('Business_DNA', 'N/A')
+                    _dna_f_c = '#3fb950' if 'A+' in _dna_f else ('#f85149' if '瀕死' in _dna_f else '#58a6ff')
+                    with _adf3c[2]:
+                        st.markdown(
+                            f'<div style="background:{_dna_f_c}18;border:1px solid {_dna_f_c}55;'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">企業 DNA</div>'
+                            f'<div style="font-size:11px;font-weight:900;color:{_dna_f_c};">{_dna_f}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    if _adv_f.get('Final_Verdict'):
+                        st.caption(f'🔬 {_adv_f["Final_Verdict"]}')
 
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')

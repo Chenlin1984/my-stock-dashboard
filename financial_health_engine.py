@@ -544,6 +544,84 @@ def analyze_solvency_module(api_key: str, stock_id: str, fin_data: dict) -> dict
         return _fs_sv
 
 
+# ── Advanced Diagnostic Module Prompt（綜合診斷：跨表勾稽 + 地雷偵測）──
+_ADVANCED_DIAGNOSTIC_PROMPT = """\
+# Role: 超級數字力綜合診斷與避雷官
+
+# Core Rules
+1. 看透高獲利背後的真相，執行跨表勾稽與地雷偵測。
+2. 盈餘品質防呆：若「稅後淨利(千)」<= 0，直接輸出 "N/A (淨利為負)"。
+
+# Evaluation Logic
+
+## 1. 盈餘品質 (Earnings Quality)
+- 計算：OCF(千) / 稅後淨利(千) * 100%
+- 判定：> 100% → Pass（真金白銀）；< 100% → Fail（紙上富貴）。
+
+## 2. 杜邦分析 (DuPont Health)
+- ROE = 稅後淨利(千) / 股東權益(千) * 100%
+- 若 ROE > 15% 且 負債比率(%) > 65% → "槓桿膨脹警報"
+- 若 ROE > 15% 且 負債比率(%) ≤ 65% → "健康成長"
+- 若 ROE ≤ 15% → "ROE 偏低，成長動能不足"
+
+## 3. 雙高危機 (Double High Warning)
+- 應收帳款增長率 = 應收帳款季增率(%)（已在資料中）
+- 存貨增長率 = (存貨(千) - 存貨前期(千)) / |存貨前期(千)| * 100%
+- 條件：應收帳款增長率 > 營收季增率(%) 且 存貨增長率 > 營收季增率(%)
+  同時滿足 → "Triggered (危險)"；否則 → "Clear (安全)"
+  若增長率數值為 null/0 → 標記 "N/A (資料不足)"
+
+## 4. 企業 DNA (Cash Flow Matrix)
+- 依 [OCF符號, ICF符號, 籌資CF符號] 判斷：
+  (+, -, -) → "A+ 穩健印鈔機"
+  (+, -, +) → "成長擴張型"
+  (+, +, -) → "變賣祖產型（⚠️ 請確認原因）"
+  (-, -, +) → "燒錢新創型（需觀察現金消耗速度）"
+  (-, +, -) → "瀕死型（🔴 極度危險）"
+  其他 → "特殊組合（需個案分析）"
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Advanced_Diagnostic_Module": {{
+    "Earnings_Quality": {{"Value": "XX.X% | N/A", "Status": "Pass | Fail | N/A"}},
+    "DuPont_Health": "健康成長 | 槓桿膨脹警報 | ROE 偏低，成長動能不足",
+    "Double_High_Warning": "Triggered (危險) | Clear (安全) | N/A (資料不足)",
+    "Business_DNA": "標籤名稱 (+/-/- 組合)",
+    "Final_Verdict": "綜合短評（60字以內，點出最關鍵的地雷或亮點）"
+  }}
+}}"""
+
+
+def analyze_advanced_diagnostic_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """Part 6 綜合診斷模組：盈餘品質+杜邦+雙高危機+企業DNA。"""
+    _fs_ad = {"Advanced_Diagnostic_Module": {
+        "Earnings_Quality":    {"Value": "N/A", "Status": "N/A"},
+        "DuPont_Health":       "N/A",
+        "Double_High_Warning": "N/A",
+        "Business_DNA":        "N/A",
+        "Final_Verdict":       "分析資料不足",
+    }}
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _ADVANCED_DIAGNOSTIC_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        print(f"[AdvDiag] ✅ {stock_id}")
+        return result
+    except Exception as _e:
+        print(f"[AdvDiag] ❌ {stock_id}: {_e}")
+        _fs_ad["Advanced_Diagnostic_Module"]["Final_Verdict"] = f"分析失敗：{_e}"
+        return _fs_ad
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -600,6 +678,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
         # 同步執行 Solvency Module（償債能力：流動/速動比率+收現豁免）
         _solv = analyze_solvency_module(api_key, stock_id, fin_data)
         result["solvency_module"] = _solv.get("Solvency_Module", {})
+
+        # 同步執行 Advanced Diagnostic Module（綜合診斷：盈餘品質+杜邦+雙高+DNA）
+        _adv = analyze_advanced_diagnostic_module(api_key, stock_id, fin_data)
+        result["advanced_diagnostic_module"] = _adv.get("Advanced_Diagnostic_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result
