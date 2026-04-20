@@ -20,6 +20,7 @@ from daily_checklist import (
     fetch_single, calc_stats, sparkline, multi_chart,
     bar_chart_institutional, stat_card, section_header,
     margin_card, fetch_institutional, fetch_margin_balance,
+    fetch_margin_maintenance_ratio, evaluate_market_status_v4_final,
     fetch_adl,
     _fetch_otc_via_finmind,
     INTL_MAP, INTL_UNIT, TW_MAP, TW_UNIT, TECH_MAP, COLORS_7,
@@ -1732,11 +1733,20 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _wr_fk = next((k for k in _wr_inst if '外資' in k), None)
     _wr_fnet = _wr_inst.get(_wr_fk,{}).get('net', None) if _wr_fk else None
     _wr_margin = _wr_cd.get('margin')
+    _wr_margin_ratio = _wr_cd.get('margin_ratio')  # v4: 融資維持率%
     _wr_adl  = _wr_cd.get('adl')
     _wr_ts   = st.session_state.get('cl_ts','')
     # 以交通燈有效 regime 為主，確保與頂部卡片結論一致
     _wr_reg  = _tl_eff_reg or (_wr_mkt.get('regime','neutral') if _wr_mkt else 'neutral')
-    _wr_exp  = ('≤20%' if _wr_reg == 'bear' else (_wr_mkt.get('exposure_pct','--') if _wr_mkt else '--'))
+    # v4 引擎：解耦趨勢與位階，取得精準操作建議
+    _wr_fut_net = int(st.session_state.get('futures_net', 0) or 0)
+    _v4 = evaluate_market_status_v4_final(
+        _wr_bias.get('price', 0) or 0,
+        _wr_bias.get('ma240', 0) or 0,
+        _wr_margin_ratio or 170.0,
+        _wr_fut_net,
+    )
+    _wr_exp = _v4['Suggested_Holding']
 
     if _show_market_data and (_wr_mkt or _wr_cd):
         # ── 今日唯一結論（大字顯示）──────────────────────────
@@ -1744,21 +1754,28 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _wr_action_color = '#484f58'
         _wr_warns = []
 
-        if _wr_reg == 'bull':
-            _wr_action = f'可積極操作，建議持股 {_wr_exp}'
+        # v4 引擎直接給出結論（已包含多頭過熱/空頭防禦分類）
+        _v4_sig = _v4['Signal']
+        if '🟢' in _v4_sig:
+            _wr_action = f'{_v4["Action_Advice"]}（建議持股 {_wr_exp}）'
             _wr_action_color = '#3fb950'
-        elif _wr_reg == 'bear':
-            _wr_action = '空頭市場，建議空手觀望或僅持 20% 以下'
+        elif '🔴' in _v4_sig:
+            _wr_action = _v4['Action_Advice']
             _wr_action_color = '#f85149'
         else:
-            _wr_action = f'震盪整理，謹慎操作，持股 {_wr_exp}'
+            _wr_action = f'{_v4["Action_Advice"]}（建議持股 {_wr_exp}）'
             _wr_action_color = '#d29922'
 
-        # 風險警示收集
-        if _wr_margin and _wr_margin > 3400:
-            _wr_warns.append(('🔴', f'融資 {_wr_margin:.0f}億 極度危險，散戶過熱，不宜追高'))
-        elif _wr_margin and _wr_margin > 2500:
-            _wr_warns.append(('🟡', f'融資 {_wr_margin:.0f}億 警戒，注意風險'))
+        # 風險警示收集（v4：以維持率為主，億元餘額為備援）
+        if _wr_margin_ratio and _wr_margin_ratio < 130:
+            _wr_warns.append(('🔴', f'融資維持率 {_wr_margin_ratio:.0f}% 極低，斷頭邊緣，嚴禁持倉'))
+        elif _wr_margin_ratio and _wr_margin_ratio < 160:
+            _wr_warns.append(('🟡', f'融資維持率 {_wr_margin_ratio:.0f}% 警戒，注意市場系統性風險'))
+        elif not _wr_margin_ratio:
+            if _wr_margin and _wr_margin > 3400:
+                _wr_warns.append(('🔴', f'融資 {_wr_margin:.0f}億 極度危險，散戶過熱，不宜追高'))
+            elif _wr_margin and _wr_margin > 2500:
+                _wr_warns.append(('🟡', f'融資 {_wr_margin:.0f}億 警戒，注意風險'))
 
         if _wr_bias:
             _b240 = _wr_bias.get('bias_240', 0)
@@ -1791,8 +1808,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
              _wr_reg=='bull', '多頭才積極操作'),
             ('外資方向', f'{"買超" if (_wr_fnet or 0)>0 else "賣超"} {abs(_wr_fnet or 0):.0f}億' if _wr_fnet is not None else '未知',
              (_wr_fnet or 0) > 0, '外資買超=跟著走'),
-            ('融資水位', f'{_wr_margin:.0f}億' if _wr_margin else '未知',
-             not _wr_margin or _wr_margin < 2500, '>2500億警戒，>3400億危險'),
+            ('融資維持率',
+             f'{_wr_margin_ratio:.0f}%' if _wr_margin_ratio else (f'{_wr_margin:.0f}億' if _wr_margin else '未知'),
+             not _wr_margin_ratio or _wr_margin_ratio >= 160,
+             '<160%危險，<130%斷頭邊緣'),
             ('年線位置', f'乖離{_wr_bias.get("bias_240",0):+.1f}%' if _wr_bias else '未知',
              not _wr_bias or abs(_wr_bias.get("bias_240",0)) < 20, '超過±20%要警惕'),
             ('持股比例', f'建議{_wr_exp}', _wr_reg!='bear', '按建議比例，不要滿倉'),
@@ -1902,6 +1921,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 try: return fetch_margin_balance()
                 except Exception as _em: print(f'[融資] ❌ {_em}'); return None
 
+            def _job_margin_ratio():
+                try: return fetch_margin_maintenance_ratio()
+                except Exception as _em: print(f'[維持率] ❌ {_em}'); return None
+
             def _job_adl():
                 _tok_adl = os.environ.get('FINMIND_TOKEN','') or FINMIND_TOKEN
                 return fetch_adl(days=60, token=_tok_adl)
@@ -1925,18 +1948,20 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             # ── 並發執行（yfinance 最慢，先丟進去）─────────────
             # [v8] li 移出 TPE，在主流程直接呼叫（Colab worker thread 中 requests 可能受阻）
             _jobs = {
-                'intl':   _job_intl,
-                'tw':     _job_tw,
-                'tech':   _job_tech,
-                'inst':   _job_inst,
-                'margin': _job_margin,
-                'adl':    _job_adl,
+                'intl':         _job_intl,
+                'tw':           _job_tw,
+                'tech':         _job_tech,
+                'inst':         _job_inst,
+                'margin':       _job_margin,
+                'margin_ratio': _job_margin_ratio,
+                'adl':          _job_adl,
             }
             _results = {}
             _job_timeouts = {
                 'intl': 30, 'tw': 30, 'tech': 30,
                 'inst': 25,
                 'margin': 25,
+                'margin_ratio': 20,
                 'adl': 30,
             }
             # [BUG FIX] as_completed global timeout 從 50s 改為 110s
@@ -2021,8 +2046,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         print(f'[FinMind-Inst] ✅ {inst}')
                 except Exception as _ei:
                     print(f'[FinMind-Inst] ❌ {_ei}')
-            margin    = _results.get('margin')
-            df_adl_raw= _results.get('adl')
+            margin       = _results.get('margin')
+            margin_ratio = _results.get('margin_ratio')
+            df_adl_raw   = _results.get('adl')
             if df_adl_raw is None:
                 st.session_state['adl_debug_msg'] = '三個來源均無回應，詳見 Colab [ADL] 輸出'
             else:
@@ -2057,7 +2083,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             st.session_state['cl_data'] = dict(
                 intl=intl_raw, tw=tw_raw, tech=tech_raw,
                 inst=inst, inst_date=inst_date, margin=margin,
-                adl=df_adl_raw)
+                margin_ratio=margin_ratio, adl=df_adl_raw)
             st.session_state['cl_ts'] = _tw_now_str()
             st.session_state['_is_refreshing'] = False  # 資料就位，解除刷新鎖
             # 快取最後一次有效的法人/融資資料，供 API 失敗時 fallback 使用
