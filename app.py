@@ -6567,6 +6567,74 @@ padding:12px 16px;margin:8px 0;">
                     if _oper2.get('Verdict'):
                         st.caption(f'💡 {_oper2["Verdict"]}')
 
+                # ── 獲利能力模組（Profitability Module）─────────
+                _prof2 = _fh.get('profitability_module', {})
+                if _prof2:
+                    st.markdown('#### 💰 獲利能力診斷（MJ 5大指標）')
+                    _p5c = st.columns(5)
+                    # 1 毛利率
+                    _gm2 = _prof2.get('Gross_Margin', {})
+                    _gm2_ok = _gm2.get('Status', '') == 'Good'
+                    with _p5c[0]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _gm2_ok else "#f8514918"};'
+                            f'border:1px solid {"#3fb95055" if _gm2_ok else "#f8514955"};'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">毛利率</div>'
+                            f'<div style="font-size:17px;font-weight:900;color:{"#3fb950" if _gm2_ok else "#f85149"};">{_gm2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{"#3fb950" if _gm2_ok else "#f85149"};">{"好生意" if _gm2_ok else "辛苦生意"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 2 營業利益率
+                    _om2 = _prof2.get('Operating_Margin', {})
+                    _om2_ok = _om2.get('Core_Business_Profitable', 'No') == 'Yes'
+                    with _p5c[1]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _om2_ok else "#f8514918"};'
+                            f'border:1px solid {"#3fb95055" if _om2_ok else "#f8514955"};'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">營業利益率</div>'
+                            f'<div style="font-size:17px;font-weight:900;color:{"#3fb950" if _om2_ok else "#f85149"};">{_om2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{"#3fb950" if _om2_ok else "#f85149"};">{"本業獲利✅" if _om2_ok else "本業虧損❌"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 3 安全邊際
+                    _mos2 = _prof2.get('Margin_Of_Safety', {})
+                    _mos2_ok = _mos2.get('Status', '') == 'Strong'
+                    with _p5c[2]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _mos2_ok else "#d2992218"};'
+                            f'border:1px solid {"#3fb95055" if _mos2_ok else "#d2992255"};'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">安全邊際</div>'
+                            f'<div style="font-size:17px;font-weight:900;color:{"#3fb950" if _mos2_ok else "#d29922"};">{_mos2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{"#3fb950" if _mos2_ok else "#d29922"};">{"抗震極強✅" if _mos2_ok else "費用待改善"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 4 稅後淨利率
+                    _nm2 = _prof2.get('Net_Margin', {})
+                    _nm2_s = _nm2.get('Status', '')
+                    _nm2_c = '#3fb950' if _nm2_s == 'Pass' else ('#d29922' if _nm2_s == 'Thin Profit' else '#f85149')
+                    with _p5c[3]:
+                        st.markdown(
+                            f'<div style="background:{_nm2_c}18;border:1px solid {_nm2_c}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">稅後淨利率</div>'
+                            f'<div style="font-size:17px;font-weight:900;color:{_nm2_c};">{_nm2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{_nm2_c};">{_nm2_s}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    # 5 ROE
+                    _roe2 = _prof2.get('ROE', {})
+                    _roe2_warn = _roe2.get('Leverage_Warning', 'None') != 'None'
+                    _roe2_c = '#d29922' if _roe2_warn else '#3fb950'
+                    with _p5c[4]:
+                        st.markdown(
+                            f'<div style="background:{_roe2_c}18;border:1px solid {_roe2_c}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
+                            f'<div style="font-size:17px;font-weight:900;color:{_roe2_c};">{_roe2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{_roe2_c};">{"⚠️ 高槓桿驅動" if _roe2_warn else "✅ 真實獲利"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    if _prof2.get('Final_Insight'):
+                        st.caption(f'🎯 {_prof2["Final_Insight"]}')
+
                 st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
                 # ── AI 白話診斷室 ─────────────────────────
@@ -7407,6 +7475,66 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div>', unsafe_allow_html=True)
                     if _oper_f.get('Verdict'):
                         st.caption(f'💡 {_oper_f["Verdict"]}')
+
+                # ── 獲利能力模組（Profitability Module）─────────
+                _prof_f = _fd_f.get('profitability_module', {})
+                if _prof_f and not _fd_f.get('error'):
+                    st.markdown('**💰 獲利能力診斷（MJ 5大指標）**')
+                    _p5f = st.columns(5)
+                    _gm_f = _prof_f.get('Gross_Margin', {})
+                    _gm_f_ok = _gm_f.get('Status', '') == 'Good'
+                    with _p5f[0]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _gm_f_ok else "#f8514918"};border:1px solid {"#3fb95055" if _gm_f_ok else "#f8514955"};'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">毛利率</div>'
+                            f'<div style="font-size:15px;font-weight:900;color:{"#3fb950" if _gm_f_ok else "#f85149"};">{_gm_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:9px;color:{"#3fb950" if _gm_f_ok else "#f85149"};">{"好生意" if _gm_f_ok else "辛苦"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _om_f = _prof_f.get('Operating_Margin', {})
+                    _om_f_ok = _om_f.get('Core_Business_Profitable', 'No') == 'Yes'
+                    with _p5f[1]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _om_f_ok else "#f8514918"};border:1px solid {"#3fb95055" if _om_f_ok else "#f8514955"};'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">營業利益率</div>'
+                            f'<div style="font-size:15px;font-weight:900;color:{"#3fb950" if _om_f_ok else "#f85149"};">{_om_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:9px;color:{"#3fb950" if _om_f_ok else "#f85149"};">{"本業獲利✅" if _om_f_ok else "本業虧損❌"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _mos_f = _prof_f.get('Margin_Of_Safety', {})
+                    _mos_f_ok = _mos_f.get('Status', '') == 'Strong'
+                    with _p5f[2]:
+                        st.markdown(
+                            f'<div style="background:{"#3fb95018" if _mos_f_ok else "#d2992218"};border:1px solid {"#3fb95055" if _mos_f_ok else "#d2992255"};'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">安全邊際</div>'
+                            f'<div style="font-size:15px;font-weight:900;color:{"#3fb950" if _mos_f_ok else "#d29922"};">{_mos_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:9px;color:{"#3fb950" if _mos_f_ok else "#d29922"};">{"抗震極強" if _mos_f_ok else "費用偏高"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _nm_f = _prof_f.get('Net_Margin', {})
+                    _nm_f_s = _nm_f.get('Status', '')
+                    _nm_f_c = '#3fb950' if _nm_f_s == 'Pass' else ('#d29922' if _nm_f_s == 'Thin Profit' else '#f85149')
+                    with _p5f[3]:
+                        st.markdown(
+                            f'<div style="background:{_nm_f_c}18;border:1px solid {_nm_f_c}55;'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">稅後淨利率</div>'
+                            f'<div style="font-size:15px;font-weight:900;color:{_nm_f_c};">{_nm_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:9px;color:{_nm_f_c};">{_nm_f_s}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    _roe_f = _prof_f.get('ROE', {})
+                    _roe_f_warn = _roe_f.get('Leverage_Warning', 'None') != 'None'
+                    _roe_f_c = '#d29922' if _roe_f_warn else '#3fb950'
+                    with _p5f[4]:
+                        st.markdown(
+                            f'<div style="background:{_roe_f_c}18;border:1px solid {_roe_f_c}55;'
+                            f'border-radius:8px;padding:8px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
+                            f'<div style="font-size:15px;font-weight:900;color:{_roe_f_c};">{_roe_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:9px;color:{_roe_f_c};">{"⚠️ 高槓桿" if _roe_f_warn else "✅ 真實獲利"}</div>'
+                            f'</div>', unsafe_allow_html=True)
+                    if _prof_f.get('Final_Insight'):
+                        st.caption(f'🎯 {_prof_f["Final_Insight"]}')
 
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')

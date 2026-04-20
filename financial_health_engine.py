@@ -128,6 +128,58 @@ _OPERATING_PROMPT = """\
   }}
 }}"""
 
+# ── Profitability Module Prompt（獲利能力：5大指標 + 槓桿防呆）──
+_PROFITABILITY_PROMPT = """\
+# Role: 超級數字力獲利分析官
+
+# Core Rules
+1. 嚴格區分「本業獲利」與「業外獲利」，本業虧損即視為劣質企業。
+2. 看到高 ROE 必須聯動檢查「財務結構（負債比）」，排除槓桿作弊。
+
+# Evaluation Logic (獲利能力 5 大指標)
+
+## 1. 營業毛利率 (Gross Margin)
+- 計算：毛利(千) / 營業收入(千)
+- 判定：> 20% (Good)；≤ 20% (Hard Work)。
+
+## 2. 營業利益率 (Operating Margin)
+- 計算：營業利益(千) / 營業收入(千)
+- 判定：> 10% (Excellent)；0%~10% (Moderate)；< 0% (FAIL — 本業虧損)。
+- Core_Business_Profitable = "Yes" if 營業利益 > 0 else "No"
+
+## 3. 經營安全邊際 (Margin of Safety)
+- 計算：營業利益(千) / 毛利(千)
+- 判定：> 60% (Strong)；≤ 60% (Weak)。
+
+## 4. 稅後淨利率 (Net Margin)
+- 計算：稅後淨利(千) / 營業收入(千)
+- 判定：> 10% (Pass)；2%~10% (Thin Profit)；< 2% (Fail)。
+
+## 5. 股東權益報酬率 (ROE)
+- 計算：稅後淨利(千) / 股東權益(千)
+- 判定：> 20% (Top Tier)；10%~20% (Good)；< 10% (Weak)。
+- 防呆：若 ROE > 15%，強制檢查負債比率(%)。
+  - 負債比 > 60% → Leverage_Warning = "High Debt Ratio (>60%)"
+  - 其他 → Leverage_Warning = "None"
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Profitability_Module": {{
+    "Gross_Margin": {{"Value": "XX.X%", "Status": "Good | Hard Work"}},
+    "Operating_Margin": {{"Value": "XX.X%", "Core_Business_Profitable": "Yes | No"}},
+    "Margin_Of_Safety": {{"Value": "XX.X%", "Status": "Strong | Weak"}},
+    "Net_Margin": {{"Value": "XX.X%", "Status": "Pass | Thin Profit | Fail"}},
+    "ROE": {{"Value": "XX.X%", "Leverage_Warning": "None | High Debt Ratio (>60%)"}},
+    "Final_Insight": "綜合短評（50字以內，點出最關鍵的獲利品質特徵）"
+  }}
+}}"""
+
 # ── MJ 財報體檢 Prompt ──────────────────────────────────────
 _PROMPT_TEMPLATE = """\
 # Role
@@ -329,6 +381,31 @@ def analyze_operating_module(api_key: str, stock_id: str, fin_data: dict) -> dic
         return fs
 
 
+def analyze_profitability_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """Part 3 獲利能力模組：5大指標 + 槓桿防呆。"""
+    _fs_pr = {"Profitability_Module": {
+        "Gross_Margin":      {"Value": "N/A", "Status": "N/A"},
+        "Operating_Margin":  {"Value": "N/A", "Core_Business_Profitable": "N/A"},
+        "Margin_Of_Safety":  {"Value": "N/A", "Status": "N/A"},
+        "Net_Margin":        {"Value": "N/A", "Status": "N/A"},
+        "ROE":               {"Value": "N/A", "Leverage_Warning": "N/A"},
+        "Final_Insight":     "分析資料不足",
+    }}
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _PROFITABILITY_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        print(f"[Profitability] ✅ {stock_id}")
+        return result
+    except Exception as _e:
+        print(f"[Profitability] ❌ {stock_id}: {_e}")
+        _fs_pr["Profitability_Module"]["Final_Insight"] = f"分析失敗：{_e}"
+        return _fs_pr
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -373,6 +450,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
         # 同步執行 Operating Module（經營能力：周轉效率+資金壓力）
         _oper = analyze_operating_module(api_key, stock_id, fin_data)
         result["operating_module"] = _oper.get("Operating_Module", {})
+
+        # 同步執行 Profitability Module（獲利能力：5大指標+槓桿防呆）
+        _prof = analyze_profitability_module(api_key, stock_id, fin_data)
+        result["profitability_module"] = _prof.get("Profitability_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result

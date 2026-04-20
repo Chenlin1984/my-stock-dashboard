@@ -1529,10 +1529,14 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
 
     rev    = _v(_is, _lat, ["Revenue", "營業收入合計", "營業收入", "NetRevenue"])
     cogs   = abs(_v(_is, _lat, ["CostOfGoodsSold", "營業成本", "銷售成本"]))
+    oper_income = _v(_is, _lat, ["OperatingIncome", "營業利益（損失）", "營業利益",
+                                  "Operating Income", "OperatingProfit"])
     net_ni = _v(_is, _lat, ["NetIncome", "本期淨利（淨損）", "淨利", "稅後淨利"])
 
     rev_p  = _v(_is, _prv, ["Revenue", "營業收入合計", "營業收入"])
     ar_p   = _v(_bs, _prv, ["AccountsReceivable", "應收帳款淨額", "應收帳款"])
+    equity = _v(_bs, _lat, ["TotalEquity", "權益總額", "股東權益合計",
+                             "TotalStockholdersEquity", "股東權益總額"])
 
     cash_ratio = round(cash / assets * 100, 1) if assets > 0 else 0
     debt_ratio = round(liab / assets * 100, 1) if assets > 0 else 0
@@ -1560,7 +1564,11 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "應收帳款天數":     ar_days,
         "應付帳款天數":     ap_days,
         "毛利率(%)":        gm,
-        "稅後淨利(千)":     round(net_ni),
+        "營業收入(千)":      round(rev),
+        "毛利(千)":          round(gp),
+        "營業利益(千)":      round(oper_income),
+        "稅後淨利(千)":      round(net_ni),
+        "股東權益(千)":      round(equity),
         "OCF符號":          "正" if ocf > 0 else "負",
         "ICF符號":          "正" if icf > 0 else "負",
         "籌資CF符號":       "正" if fncf > 0 else "負",
