@@ -1569,6 +1569,7 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "營業利益(千)":      round(oper_income),
         "稅後淨利(千)":      round(net_ni),
         "股東權益(千)":      round(equity),
+        "非流動負債(千)":    round(max(liab - cur_liab, 0)),
         "OCF符號":          "正" if ocf > 0 else "負",
         "ICF符號":          "正" if icf > 0 else "負",
         "籌資CF符號":       "正" if fncf > 0 else "負",

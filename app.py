@@ -6635,6 +6635,40 @@ padding:12px 16px;margin:8px 0;">
                     if _prof2.get('Final_Insight'):
                         st.caption(f'🎯 {_prof2["Final_Insight"]}')
 
+                # ── 財務結構模組（Financial Structure Module）────
+                _fstr2 = _fh.get('financial_structure_module', {})
+                if _fstr2:
+                    st.markdown('#### 🏗️ 財務結構診斷（那根棒子 + 以長支長）')
+                    _fs2c = st.columns(2)
+                    # 1 負債佔資產比率
+                    _dr2 = _fstr2.get('Debt_Ratio', {})
+                    _dr2_s = _dr2.get('Status', '')
+                    _dr2_c = {'Pass': '#3fb950', 'Warning': '#d29922', 'Fail': '#f85149', 'N/A': '#8b949e'}.get(_dr2_s, '#8b949e')
+                    with _fs2c[0]:
+                        st.markdown(
+                            f'<div style="background:{_dr2_c}18;border:1px solid {_dr2_c}55;'
+                            f'border-radius:10px;padding:14px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">負債佔資產比率</div>'
+                            f'<div style="font-size:26px;font-weight:900;color:{_dr2_c};">{_dr2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:11px;color:{_dr2_c};">'
+                            f'{"✅ 穩健（<60%）" if _dr2_s=="Pass" else ("⚠️ 偏高（60-70%）" if _dr2_s=="Warning" else ("🔴 高危（>70%）" if _dr2_s=="Fail" else "特許行業"))}'
+                            f'</div></div>', unsafe_allow_html=True)
+                    # 2 以長支長比率
+                    _ltf2 = _fstr2.get('Long_Term_Funding_Ratio', {})
+                    _ltf2_s = _ltf2.get('Status', '')
+                    _ltf2_c = '#3fb950' if _ltf2_s == 'Pass' else '#f85149'
+                    with _fs2c[1]:
+                        st.markdown(
+                            f'<div style="background:{_ltf2_c}18;border:1px solid {_ltf2_c}55;'
+                            f'border-radius:10px;padding:14px;text-align:center;">'
+                            f'<div style="font-size:11px;color:#8b949e;">以長支長比率</div>'
+                            f'<div style="font-size:26px;font-weight:900;color:{_ltf2_c};">{_ltf2.get("Value","N/A")}</div>'
+                            f'<div style="font-size:11px;color:{_ltf2_c};">'
+                            f'{"✅ 資金配置正確（>100%）" if _ltf2_s=="Pass" else "🔴 短債長投！資金鏈危機"}'
+                            f'</div></div>', unsafe_allow_html=True)
+                    if _fstr2.get('Final_Insight'):
+                        st.caption(f'🏗️ {_fstr2["Final_Insight"]}')
+
                 st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
                 # ── AI 白話診斷室 ─────────────────────────
@@ -7535,6 +7569,38 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div>', unsafe_allow_html=True)
                     if _prof_f.get('Final_Insight'):
                         st.caption(f'🎯 {_prof_f["Final_Insight"]}')
+
+                # ── 財務結構模組（Financial Structure Module）────
+                _fstr_f = _fd_f.get('financial_structure_module', {})
+                if _fstr_f and not _fd_f.get('error'):
+                    st.markdown('**🏗️ 財務結構診斷（那根棒子 + 以長支長）**')
+                    _fsf2c = st.columns(2)
+                    _dr_f = _fstr_f.get('Debt_Ratio', {})
+                    _dr_f_s = _dr_f.get('Status', '')
+                    _dr_f_c = {'Pass': '#3fb950', 'Warning': '#d29922', 'Fail': '#f85149', 'N/A': '#8b949e'}.get(_dr_f_s, '#8b949e')
+                    with _fsf2c[0]:
+                        st.markdown(
+                            f'<div style="background:{_dr_f_c}18;border:1px solid {_dr_f_c}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">負債佔資產比率</div>'
+                            f'<div style="font-size:20px;font-weight:900;color:{_dr_f_c};">{_dr_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{_dr_f_c};">'
+                            f'{"✅ 穩健" if _dr_f_s=="Pass" else ("⚠️ 偏高" if _dr_f_s=="Warning" else ("🔴 高危" if _dr_f_s=="Fail" else "特許行業"))}'
+                            f'</div></div>', unsafe_allow_html=True)
+                    _ltf_f = _fstr_f.get('Long_Term_Funding_Ratio', {})
+                    _ltf_f_s = _ltf_f.get('Status', '')
+                    _ltf_f_c = '#3fb950' if _ltf_f_s == 'Pass' else '#f85149'
+                    with _fsf2c[1]:
+                        st.markdown(
+                            f'<div style="background:{_ltf_f_c}18;border:1px solid {_ltf_f_c}55;'
+                            f'border-radius:8px;padding:10px;text-align:center;">'
+                            f'<div style="font-size:10px;color:#8b949e;">以長支長比率</div>'
+                            f'<div style="font-size:20px;font-weight:900;color:{_ltf_f_c};">{_ltf_f.get("Value","N/A")}</div>'
+                            f'<div style="font-size:10px;color:{_ltf_f_c};">'
+                            f'{"✅ 資金配置正確" if _ltf_f_s=="Pass" else "🔴 短債長投危機"}'
+                            f'</div></div>', unsafe_allow_html=True)
+                    if _fstr_f.get('Final_Insight'):
+                        st.caption(f'🏗️ {_fstr_f["Final_Insight"]}')
 
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')

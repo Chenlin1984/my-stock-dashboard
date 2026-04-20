@@ -406,6 +406,68 @@ def analyze_profitability_module(api_key: str, stock_id: str, fin_data: dict) ->
         return _fs_pr
 
 
+# ── Financial Structure Module Prompt（財務結構：那根棒子 + 以長支長）──
+_FINANCIAL_STRUCTURE_PROMPT = """\
+# Role: 超級數字力財務結構分析官
+
+# Core Rules
+1. 此關卡負責檢驗「財務結構」，也就是資產負債表上的「那根棒子」與「資金配置」。
+2. 未通過代表公司有極高的突發性倒閉風險。
+
+# Edge Case Handling
+- 【金融業例外】：若股票代號屬金融保險業（銀行、金控、壽險），
+  「負債佔資產比率」直接標記為 "N/A (特許行業)"，Status = "N/A"。
+- 【除以零防呆】：若「固定資產(千)」為 0（如純軟體業），
+  「以長支長比率」直接標記為 "Pass (輕資產)"，Value = "N/A (輕資產)"。
+
+# Evaluation Logic
+
+## 1. 負債佔資產比率 (Debt to Asset Ratio)
+- 計算：(總負債(千) / 總資產(千)) * 100%
+- 判定：< 60% → Pass；60%~70% → Warning；> 70% → Fail。
+
+## 2. 以長支長比率 (Long-Term Funds to Fixed Assets)
+- 計算：(股東權益(千) + 非流動負債(千)) / 固定資產(千) * 100%
+- 判定：> 100% → Pass；< 100% → Fail（短債長投，資金鏈隨時斷裂）。
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Financial_Structure_Module": {{
+    "Debt_Ratio": {{"Value": "XX.X%", "Status": "Pass | Warning | Fail | N/A"}},
+    "Long_Term_Funding_Ratio": {{"Value": "XX.X% | N/A (輕資產)", "Status": "Pass | Fail"}},
+    "Final_Insight": "綜合短評（50字以內，點出財務結構最關鍵的風險或優勢）"
+  }}
+}}"""
+
+
+def analyze_financial_structure_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """Part 4 財務結構模組：負債比 + 以長支長比率。"""
+    _fs_st = {"Financial_Structure_Module": {
+        "Debt_Ratio":              {"Value": "N/A", "Status": "N/A"},
+        "Long_Term_Funding_Ratio": {"Value": "N/A", "Status": "N/A"},
+        "Final_Insight":           "分析資料不足",
+    }}
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _FINANCIAL_STRUCTURE_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        print(f"[FinStructure] ✅ {stock_id}")
+        return result
+    except Exception as _e:
+        print(f"[FinStructure] ❌ {stock_id}: {_e}")
+        _fs_st["Financial_Structure_Module"]["Final_Insight"] = f"分析失敗：{_e}"
+        return _fs_st
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -454,6 +516,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
         # 同步執行 Profitability Module（獲利能力：5大指標+槓桿防呆）
         _prof = analyze_profitability_module(api_key, stock_id, fin_data)
         result["profitability_module"] = _prof.get("Profitability_Module", {})
+
+        # 同步執行 Financial Structure Module（財務結構：負債比+以長支長）
+        _fstr = analyze_financial_structure_module(api_key, stock_id, fin_data)
+        result["financial_structure_module"] = _fstr.get("Financial_Structure_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result
