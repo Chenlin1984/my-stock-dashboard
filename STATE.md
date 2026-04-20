@@ -2,8 +2,17 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.0 | main `731f104`
-- **最新異動**: 台股 AI 戰情室 v4.0 三階段升級（後端引擎/資料管線/前端圖表）
+- **版本**: v9.1 | main `5e84615`
+- **最新異動**: MJ 財報體檢 Part 3 — 獲利能力模組（5大指標 + 槓桿防呆）
+
+## ✅ 已完成任務：MJ 財報體檢 Part 3 獲利能力模組（v9.1，commit 5e84615）
+
+| 項目 | 內容 |
+|------|------|
+| `data_loader.py` | 新增 `oper_income`（營業利益）+ `equity`（股東權益）欄位 |
+| `financial_health_engine.py` | `_PROFITABILITY_PROMPT` + `analyze_profitability_module()` |
+| 5大指標 | 毛利率(>20%好生意)、營業利益率(本業虧損淘汰)、安全邊際(>60%)、稅後淨利率、ROE(槓桿防呆) |
+| `app.py` Tab2+Tab3 | 5欄獲利卡片（綠=Pass/紅=Fail/黃=Warning）|
 
 ## ✅ 已完成任務：v4.0 三階段升級（commit 731f104）
 
