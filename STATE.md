@@ -2,8 +2,19 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.3 | main `101d2d7`
-- **最新異動**: MJ 財報體檢 Part 5 — 償債能力模組（300/150 嚴格標準 + 收現行業豁免）
+- **版本**: v9.4 | main `4aa2157`
+- **最新異動**: MJ 財報體檢 Part 6 — 綜合診斷避雷模組（跨表勾稽 + 地雷偵測）
+
+## ✅ 已完成任務：MJ 財報體檢 Part 6 綜合診斷模組（v9.4，commit 4aa2157）
+
+| 項目 | 內容 |
+|------|------|
+| `financial_health_engine.py` | `_ADVANCED_DIAGNOSTIC_PROMPT` + `analyze_advanced_diagnostic_module()` |
+| 盈餘品質 | OCF/淨利 >100%=真金白銀 / <100%=紙上富貴；淨利≤0→N/A |
+| 杜邦分析 | ROE+負債比交叉判定「槓桿膨脹警報」vs「健康成長」 |
+| 雙高危機 | AR增長率 AND 存貨增長率 同時>營收增長率 → 地雷警報 |
+| 企業 DNA | OCF/ICF/籌資CF正負號矩陣（A+印鈔機/成長/瀕死型等） |
+| `app.py` Tab2+Tab3 | 3欄診斷卡 + DNA全寬Banner |
 
 ## ✅ 已完成任務：MJ 財報體檢 Part 5 償債能力模組（v9.3，commit 101d2d7）
 
