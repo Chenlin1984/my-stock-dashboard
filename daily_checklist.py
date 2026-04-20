@@ -299,7 +299,7 @@ def fetch_margin_balance(date_str=None):
     return None
 
 
-def fetch_margin_maintenance_ratio() -> float | None:
+def fetch_margin_maintenance_ratio():
     """
     嘗試抓取全市場融資維持率(%)。
     優先 TWSE MI_MARGN 欄位「維持率」；失敗時回傳 None。
