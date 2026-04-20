@@ -2,10 +2,20 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v8.1 | branch `claude/analyze-test-coverage-070Kf` `60d604e`
-- **最新異動**: MJ 經營能力模組（DSO/DIO/DPO/CCC）Tab2+Tab3 渲染
+- **版本**: v9.0 | main `731f104`
+- **最新異動**: 台股 AI 戰情室 v4.0 三階段升級（後端引擎/資料管線/前端圖表）
 
-## ✅ 已完成任務：MJ 經營能力模組（v8.1，commit 60d604e）
+## ✅ 已完成任務：v4.0 三階段升級（commit 731f104）
+
+| 階段 | 項目 | 內容 |
+|------|------|------|
+| Phase 1 | `daily_checklist.py` | 新增 `evaluate_market_status_v4_final()`，解耦趨勢×位階，共同基金導向 |
+| Phase 1 | `app.py` 5分鐘清單 | 改用 v4 引擎 Signal/Action_Advice/Suggested_Holding；融資水位→融資維持率 |
+| Phase 2 | `daily_checklist.py` | 新增 `fetch_margin_maintenance_ratio()`，從 TWSE MI_MARGN 抓「維持率」欄位 |
+| Phase 2 | `app.py` 資料管線 | 新增 `_job_margin_ratio` 並發任務，cl_data 加入 `margin_ratio` |
+| Phase 3 | `daily_checklist.py` 圖表 | `bar_chart_institutional()` 改 `textposition='outside'` + `cliponaxis=False` |
+
+## ✅ 已完成任務：MJ 經營能力模組（v8.1，commit 57d651c）
 
 | 項目 | 內容 |
 |------|------|
