@@ -2,8 +2,19 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.2 | main `d38789c`
-- **最新異動**: MJ 財報體檢 Part 4 — 財務結構模組（負債比 + 以長支長）
+- **版本**: v9.3 | main `101d2d7`
+- **最新異動**: MJ 財報體檢 Part 5 — 償債能力模組（300/150 嚴格標準 + 收現行業豁免）
+
+## ✅ 已完成任務：MJ 財報體檢 Part 5 償債能力模組（v9.3，commit 101d2d7）
+
+| 項目 | 內容 |
+|------|------|
+| `data_loader.py` | 新增 `流動資產(千)` + `營業成本(千)` |
+| `financial_health_engine.py` | `_SOLVENCY_PROMPT` + `analyze_solvency_module()` |
+| 指標1 | 流動比率 > 300% Pass（MJ 嚴格標準） |
+| 指標2 | 速動比率 > 150% Pass（MJ 嚴格標準） |
+| 保命符 | 條件A:現金>25% / 條件B:DSO<15天 / 條件C:完整週期<50天 → Exception_Pass |
+| `app.py` Tab2+Tab3 | 最終裁決 Banner + 兩比率卡片 + 交叉驗證保命符提示 |
 
 ## ✅ 已完成任務：MJ 財報體檢 Part 4 財務結構模組（v9.2，commit d38789c）
 
