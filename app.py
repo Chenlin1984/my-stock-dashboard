@@ -1261,7 +1261,7 @@ with tab_etf_grp:
 _mkt_top  = st.session_state.get('mkt_info', {})
 _jq_top   = st.session_state.get('jingqi_info', {})
 _ts_top   = st.session_state.get('cl_ts', '')
-if _mkt_top or _jq_top:
+if (_mkt_top or _jq_top) and not st.session_state.get('_is_refreshing', False):
     _reg   = _mkt_top.get('regime', 'neutral')
     _jqpct = _jq_top.get('avg', 50) if _jq_top else None
     # 綜合信號
@@ -6759,29 +6759,9 @@ padding:12px 16px;margin:8px 0;">
                     if _adv2.get('Final_Verdict'):
                         st.caption(f'🔬 {_adv2["Final_Verdict"]}')
 
-                st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
-
-                # ── AI 白話診斷室 ─────────────────────────
-                st.markdown('#### 🤖 AI 財務長總結報告')
-                _insight = _fh.get('ai_insight', '')
-                _red = _fh.get('red_flags', 'None')
-
-                st.markdown(
-                    f'<div style="background:#161b22;border-radius:8px;padding:14px 16px;">'
-                    f'<div style="font-size:11px;color:#484f58;margin-bottom:6px;">'
-                    f'💡 綜合營運洞察（DuPont + 盈餘品質）</div>'
-                    f'<div style="font-size:13px;color:#e6edf3;line-height:1.8;">{_insight}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown('<div style="margin-top:10px;"></div>', unsafe_allow_html=True)
-                if not _red or _red.strip().lower() in ('none', '無', ''):
-                    st.success('🟢 避雷照妖鏡：目前未偵測到重大財務地雷或塞貨異常跡象。')
-                else:
-                    st.error(f'🚨 避雷照妖鏡警告：{_red}')
 
         # ══ 🤖 AI 首席顧問總結 ═══════════════════════════════════
-        st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">基於上方四大群組資料 · 台股AI投資戰情室系統提示語</span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">技術面 · 籌碼 · 基本面 · 財報體檢（MJ體系）· 總經 五維綜合評估</span></div>""", unsafe_allow_html=True)
 
         _ai_sum_key = f'_ai_sum_{sid2}'
         _ai_sum_cached = st.session_state.get(_ai_sum_key, '')
@@ -6851,12 +6831,22 @@ padding:12px 16px;margin:8px 0;">
             _fh_res2 = st.session_state.get(f'_fh_{sid2}', {})
             _health_check_str2 = '尚未執行財報體檢'
             if _fh_res2 and not _fh_res2.get('error'):
+                _opm2 = _fh_res2.get('opm_data', {})
+                _opm_str2 = (f"應付帳款天數={_opm2.get('payable_days','N/A')}天 / "
+                             f"應收帳款天數={_opm2.get('receivable_days','N/A')}天 → "
+                             f"{'具備快收慢付優勢' if _opm2.get('advantage') else '付款週期不利'}"
+                             if _opm2 else '無 OPM 資料')
+                _red2 = _fh_res2.get('red_flags', '')
+                _flags_str2 = (_red2 if _red2 and _red2.strip().lower() not in ('none', '無', '') else '無明顯地雷')
                 _health_check_str2 = (
                     f"現金水位={_fh_res2.get('cash_ratio_status','')} {_fh_res2.get('cash_ratio_value','')} | "
                     f"OCF={_fh_res2.get('ocf_status','')} {_fh_res2.get('ocf_value','')} | "
                     f"負債比={_fh_res2.get('debt_ratio_status','')} {_fh_res2.get('debt_ratio_value','')}\n"
                     f"企業DNA={_fh_res2.get('business_model_dna','N/A')}\n"
-                    f"五力雷達={_fh_res2.get('radar_scores',{})}"
+                    f"OPM商業話語權={_opm_str2}\n"
+                    f"五力雷達={_fh_res2.get('radar_scores',{})}\n"
+                    f"AI財報洞察={_fh_res2.get('ai_insight','')}\n"
+                    f"地雷警示={_flags_str2}"
                 )
             # ── 彙整市場背景 ──────────────────────────────────────
             _mkt_info2 = st.session_state.get('mkt_info', {})
@@ -6886,11 +6876,12 @@ padding:12px 16px;margin:8px 0;">
 {_mkt_ctx2}
 
 【分析指令】
-請依照以下步驟進行多維度交叉驗證：
-步驟一：數據清洗與比對 - 檢查技術面突破是否伴隨籌碼（法人）進場。
-步驟二：基本面背書 - 判斷股價波動是否有營收或毛利增長支撐。
-步驟三：財報體檢整合 - 結合MJ林明樟體系判斷財務結構健康度。
-步驟四：風險評估 - 利用ATR計算動態波動區間，觀察上方套牢賣壓區。
+請依照以下步驟進行五維度交叉驗證：
+步驟一：技術籌碼共振 - 確認技術面突破是否伴隨法人籌碼同步進場。
+步驟二：基本面背書 - 判斷股價波動是否有營收、毛利、EPS 增長支撐。
+步驟三：財報體檢整合 - 綜合 MJ林明樟體系（企業DNA / 五力雷達 / OPM話語權 / 地雷警示）評判財務健康度與資金流向型態。
+步驟四：估值定位 - 結合357估值區間判斷目前股價是否在合理買進區。
+步驟五：風險量化 - 利用ATR計算動態波動區間，識別上方套牢賣壓與總體背景制約。
 
 【輸出格式】使用 Markdown 語法，生成以下架構的報告：
 
@@ -6901,16 +6892,16 @@ padding:12px 16px;margin:8px 0;">
 - **技術趨勢**：(得分/10，理由)
 - **籌碼力度**：(得分/10，理由)
 - **基本體質**：(得分/10，理由)
-- **財報健康**：(得分/10，理由)
-- **風險防禦**：(當前安全邊際評價)
+- **財報健康**：(得分/10，理由 — 含企業DNA/五力評分)
+- **風險防禦**：(得分/10，安全邊際 + 地雷風險評價)
 
 ### 二、關鍵洞察摘要（100字以內）
 （總結目前處於「築底/攻擊/噴發/轉弱/盤整」哪種階段及核心邏輯）
 
 ### 三、深度解析
 - **技術/籌碼亮點**：（均線與法人的共振現象）
-- **基本面與估值**：（目前股價是否透支未來成長）
-- **財報體質**：（MJ財報體系的重點發現）
+- **基本面與估值**：（目前股價是否透支未來成長，357估值定位）
+- **財報體質**：（企業DNA類型說明、OPM商業話語權、五力雷達弱點、地雷警示是否觸發）
 
 ### 四、具體戰術建議
 ⚠️ 以下內容僅供參考，不構成買賣邀約。
@@ -6920,7 +6911,7 @@ padding:12px 16px;margin:8px 0;">
 - **資金配置**：（核心/衛星持倉比例建議）
 
 ### 五、警示與避雷針
-（列出可能破壞此分析邏輯的風險因子）
+（列出可能破壞此分析邏輯的風險因子，包含財報地雷警示與總經風險）
 
 【語言規範】統一使用繁體中文。禁止出現「一定要買」、「保證獲利」等字眼。數據精確到小數點後兩位。"""
 
