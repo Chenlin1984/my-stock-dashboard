@@ -372,6 +372,172 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
     }
 
 
+def _no_ai_survival(fd: dict) -> dict:
+    cash = fd.get("現金佔總資產(%)", 0) or 0
+    cr_st = "Pass" if cash >= 25 else ("Acceptable" if cash >= 10 else "Fail")
+    ar = fd.get("應收帳款天數", 0) or 0
+    dso_st = "Pass" if ar < 15 else ("Acceptable" if ar <= 90 else "Fail")
+    ocf = fd.get("OCF(千)", 0) or 0
+    cl = fd.get("流動負債(千)", 0) or 0
+    div = fd.get("現金股利(千)", 0) or 0
+    ppe = fd.get("固定資產(千)", 0) or 0
+    lt = fd.get("長期投資(千)", 0) or 0
+    a_val = round(ocf / cl * 100, 1) if cl > 0 else None
+    a_st = ("Pass" if a_val and a_val > 100 else "Fail") if a_val is not None else "N/A"
+    c_val = round((ocf - div) / (ppe + lt) * 100, 1) if (ppe + lt) > 0 else None
+    c_st = ("Pass" if c_val and c_val > 10 else "Fail") if c_val is not None else "N/A"
+    rule_st = "Pass" if (a_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
+    verdict = f"Cash={cr_st} DSO={dso_st} 100-100-10={rule_st}（無AI，原始計算）"
+    return {"Survival_Module": {
+        "Cash_Ratio": {"Value": f"{cash}%", "Status": cr_st, "Insight": "原始數據直接計算"},
+        "DSO_Speed": {"Value": f"{ar:.1f} 天", "Status": dso_st, "Insight": "原始數據直接計算"},
+        "Rule_100_100_10": {
+            "Cash_Flow_Ratio": f"{a_val}%" if a_val is not None else "N/A",
+            "Cash_Flow_Adequacy": "N/A",
+            "Cash_Reinvestment": f"{c_val}%" if c_val is not None else "N/A",
+            "Status": rule_st, "Insight": "原始數據直接計算（5年數據不足，B項略）",
+        },
+        "Final_Survival_Verdict": verdict,
+    }}
+
+
+def _no_ai_operating(fd: dict) -> dict:
+    ar = fd.get("應收帳款天數", 0) or 0
+    ap = fd.get("應付帳款天數", 0) or 0
+    inv = fd.get("存貨(千)", 0) or 0
+    cogs = fd.get("營業成本(千)", 0) or 0
+    rev = fd.get("營業收入(千)", 0) or 0
+    assets = fd.get("總資產(千)", 0) or 0
+    dio = round(inv / cogs * 360, 1) if cogs > 0 else (round(inv / rev * 360, 1) if rev > 0 else 0)
+    cycle = round(ar + dio, 1)
+    gap = round(ar + dio - ap, 1)
+    at = round(rev / assets, 2) if assets > 0 else 0
+    opm = "Yes" if ap > ar else "No"
+    return {"Operating_Module": {
+        "DSO": f"{ar:.1f} 天", "DIO": f"{dio:.1f} 天", "DPO": f"{ap:.1f} 天",
+        "Complete_Cycle": f"{cycle:.1f} 天", "Cash_Gap_Days": f"{gap:.1f} 天",
+        "OPM_Strategy": opm, "Asset_Turnover": f"{at:.2f}x",
+        "Verdict": "原始數據直接計算（無 AI 分析）",
+    }}
+
+
+def _no_ai_profitability(fd: dict) -> dict:
+    gm = fd.get("毛利率(%)", 0) or 0
+    rev = fd.get("營業收入(千)", 0) or 0
+    oi = fd.get("營業利益(千)", 0) or 0
+    ni = fd.get("稅後淨利(千)", 0) or 0
+    eq = fd.get("股東權益(千)", 0) or 0
+    debt = fd.get("負債比率(%)", 0) or 0
+    om = round(oi / rev * 100, 1) if rev > 0 else 0
+    nm = round(ni / rev * 100, 1) if rev > 0 else 0
+    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    mos = round(om, 1)
+    return {"Profitability_Module": {
+        "Gross_Margin": {"Value": f"{gm:.1f}%", "Status": "Good" if gm >= 40 else "Average"},
+        "Operating_Margin": {"Value": f"{om:.1f}%", "Core_Business_Profitable": "Yes" if om > 0 else "No"},
+        "Margin_Of_Safety": {"Value": f"{mos:.1f}%", "Status": "Strong" if mos >= 20 else ("Acceptable" if mos >= 0 else "Weak")},
+        "Net_Margin": {"Value": f"{nm:.1f}%", "Status": "Pass" if nm >= 10 else ("Thin Profit" if nm >= 0 else "Loss")},
+        "ROE": {"Value": f"{roe:.1f}%", "Leverage_Warning": "槓桿膨脹警報" if roe > 15 and debt > 65 else "None"},
+        "Final_Insight": "原始數據直接計算（無 AI 分析）",
+    }}
+
+
+def _no_ai_financial_structure(fd: dict) -> dict:
+    debt = fd.get("負債比率(%)", 0) or 0
+    eq = fd.get("股東權益(千)", 0) or 0
+    lt_liab = fd.get("非流動負債(千)", 0) or 0
+    ppe = fd.get("固定資產(千)", 0) or 0
+    if ppe > 0:
+        lt_ratio = round((eq + lt_liab) / ppe * 100, 1)
+        lt_st = "Pass" if lt_ratio >= 100 else "Fail"
+        lt_val = f"{lt_ratio:.1f}%"
+    else:
+        lt_st, lt_val = "Pass", "N/A (輕資產)"
+    return {"Financial_Structure_Module": {
+        "Debt_Ratio": {"Value": f"{debt:.1f}%", "Status": "Pass" if debt < 60 else ("Warning" if debt <= 70 else "Fail")},
+        "Long_Term_Funding_Ratio": {"Value": lt_val, "Status": lt_st},
+        "Final_Insight": "原始數據直接計算（無 AI 分析）",
+    }}
+
+
+def _no_ai_solvency(fd: dict) -> dict:
+    ca = fd.get("流動資產(千)", 0) or 0
+    cl = fd.get("流動負債(千)", 0) or 0
+    inv = fd.get("存貨(千)", 0) or 0
+    cash_pct = fd.get("現金佔總資產(%)", 0) or 0
+    ar_days = fd.get("應收帳款天數", 0) or 0
+    if cl == 0:
+        return {"Solvency_Module": {
+            "Current_Ratio": {"Value": "N/A", "Status": "Pass (無短期債務)"},
+            "Quick_Ratio": {"Value": "N/A", "Status": "Pass (無短期債務)"},
+            "Cross_Validation_Applied": "No",
+            "Final_Solvency_Verdict": "Pass",
+            "Final_Insight": "無短期負債，資金壓力極低",
+        }}
+    cr = round(ca / cl * 100, 1)
+    qr = round((ca - inv) / cl * 100, 1)
+    cr_st = "Pass" if cr > 300 else "Fail_Initial"
+    qr_st = "Pass" if qr > 150 else "Fail_Initial"
+    cross = cr_st == "Fail_Initial" or qr_st == "Fail_Initial"
+    if not cross:
+        verdict, cv = "Pass", "No"
+    elif cash_pct > 25:
+        verdict, cv = "Exception_Pass (條件A：現金充足)", "Yes"
+    elif ar_days < 15:
+        verdict, cv = "Exception_Pass (條件B：天天收現)", "Yes"
+    else:
+        verdict, cv = "Fail", "Yes"
+    return {"Solvency_Module": {
+        "Current_Ratio": {"Value": f"{cr:.1f}%", "Status": cr_st},
+        "Quick_Ratio": {"Value": f"{qr:.1f}%", "Status": qr_st},
+        "Cross_Validation_Applied": cv,
+        "Final_Solvency_Verdict": verdict,
+        "Final_Insight": "原始數據直接計算（無 AI 分析）",
+    }}
+
+
+def _no_ai_advanced_diagnostic(fd: dict) -> dict:
+    ocf = fd.get("OCF(千)", 0) or 0
+    ni = fd.get("稅後淨利(千)", 0) or 0
+    eq = fd.get("股東權益(千)", 0) or 0
+    debt = fd.get("負債比率(%)", 0) or 0
+    ar_chg = fd.get("應收帳款季增率(%)")
+    rev_chg = fd.get("營收季增率(%)")
+    inv = fd.get("存貨(千)", 0) or 0
+    inv_p = fd.get("存貨前期(千)", 0) or 0
+    if ni <= 0:
+        eq_val, eq_st = "N/A (淨利為負)", "N/A"
+    else:
+        eq_pct = round(ocf / ni * 100, 1)
+        eq_val, eq_st = f"{eq_pct:.1f}%", "Pass" if eq_pct >= 100 else "Fail"
+    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    dupont = ("槓桿膨脹警報" if roe > 15 and debt > 65 else
+              ("健康成長" if roe > 15 else "ROE 偏低，成長動能不足"))
+    if ar_chg is not None and rev_chg is not None and inv_p > 0:
+        inv_chg = round((inv - inv_p) / abs(inv_p) * 100, 1)
+        dh = "Triggered (危險)" if (ar_chg > (rev_chg or 0) and inv_chg > (rev_chg or 0)) else "Clear (安全)"
+    else:
+        dh = "N/A (資料不足)"
+    _dna_map = {
+        ("正", "負", "負"): "A+ 穩健印鈔機",
+        ("正", "負", "正"): "成長擴張型",
+        ("正", "正", "負"): "變賣祖產型（⚠️ 請確認原因）",
+        ("正", "正", "正"): "D 燒錢模式",
+        ("負", "負", "負"): "E 衰退縮減",
+        ("負", "正", "負"): "瀕死型（🔴 極度危險）",
+        ("負", "負", "正"): "燒錢新創型（需觀察現金消耗速度）",
+        ("負", "正", "正"): "H 危機警戒",
+    }
+    dna = _dna_map.get((fd.get("OCF符號","負"), fd.get("ICF符號","負"), fd.get("籌資CF符號","負")), "特殊組合（需個案分析）")
+    return {"Advanced_Diagnostic_Module": {
+        "Earnings_Quality": {"Value": eq_val, "Status": eq_st},
+        "DuPont_Health": dupont,
+        "Double_High_Warning": dh,
+        "Business_DNA": dna,
+        "Final_Verdict": "原始數據直接計算（無 AI 分析）",
+    }}
+
+
 # ── Fail-safe 預設值 ────────────────────────────────────────
 _FAIL_SAFE: dict = {
     "cash_ratio_status": "🔴",
@@ -411,6 +577,8 @@ def analyze_survival_module(api_key: str, stock_id: str, fin_data: dict) -> dict
         "error": True,
     }
     if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_survival(fin_data)
         return _fs_survival
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
@@ -422,10 +590,8 @@ def analyze_survival_module(api_key: str, stock_id: str, fin_data: dict) -> dict
         print(f"[Survival] ✅ {stock_id} verdict={result.get('Survival_Module',{}).get('Final_Survival_Verdict','?')[:20]}")
         return result
     except Exception as _e:
-        print(f"[Survival] ❌ {stock_id}: {_e}")
-        fs = _fs_survival.copy()
-        fs["Survival_Module"]["Final_Survival_Verdict"] = f"分析失敗：{_e}"
-        return fs
+        print(f"[Survival] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_survival(fin_data)
 
 
 def analyze_operating_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
@@ -442,6 +608,8 @@ def analyze_operating_module(api_key: str, stock_id: str, fin_data: dict) -> dic
         "error": True,
     }
     if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_operating(fin_data)
         return _fs_op
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
@@ -454,22 +622,21 @@ def analyze_operating_module(api_key: str, stock_id: str, fin_data: dict) -> dic
         print(f"[Operating] ✅ {stock_id} CCC={opm.get('Cash_Gap_Days','?')} turnover={opm.get('Asset_Turnover','?')}")
         return result
     except Exception as _e:
-        print(f"[Operating] ❌ {stock_id}: {_e}")
-        fs = _fs_op.copy()
-        fs["Operating_Module"]["Verdict"] = f"分析失敗：{_e}"
-        return fs
+        print(f"[Operating] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_operating(fin_data)
 
 
 def analyze_profitability_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """Part 3 獲利能力模組：5大指標 + 槓桿防呆。"""
-    _fs_pr = {"Profitability_Module": {
-        "Gross_Margin":      {"Value": "N/A", "Status": "N/A"},
-        "Operating_Margin":  {"Value": "N/A", "Core_Business_Profitable": "N/A"},
-        "Margin_Of_Safety":  {"Value": "N/A", "Status": "N/A"},
-        "Net_Margin":        {"Value": "N/A", "Status": "N/A"},
-        "ROE":               {"Value": "N/A", "Leverage_Warning": "N/A"},
-        "Final_Insight":     "分析資料不足",
-    }}
+    if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_profitability(fin_data)
+        return {"Profitability_Module": {"Gross_Margin": {"Value": "N/A", "Status": "N/A"},
+            "Operating_Margin": {"Value": "N/A", "Core_Business_Profitable": "N/A"},
+            "Margin_Of_Safety": {"Value": "N/A", "Status": "N/A"},
+            "Net_Margin": {"Value": "N/A", "Status": "N/A"},
+            "ROE": {"Value": "N/A", "Leverage_Warning": "N/A"},
+            "Final_Insight": "分析資料不足"}}
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
         prompt = _PROFITABILITY_PROMPT.format(financial_data_json=fin_str)
@@ -480,9 +647,8 @@ def analyze_profitability_module(api_key: str, stock_id: str, fin_data: dict) ->
         print(f"[Profitability] ✅ {stock_id}")
         return result
     except Exception as _e:
-        print(f"[Profitability] ❌ {stock_id}: {_e}")
-        _fs_pr["Profitability_Module"]["Final_Insight"] = f"分析失敗：{_e}"
-        return _fs_pr
+        print(f"[Profitability] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_profitability(fin_data)
 
 
 # ── Financial Structure Module Prompt（財務結構：那根棒子 + 以長支長）──
@@ -527,11 +693,11 @@ _FINANCIAL_STRUCTURE_PROMPT = """\
 
 def analyze_financial_structure_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """Part 4 財務結構模組：負債比 + 以長支長比率。"""
-    _fs_st = {"Financial_Structure_Module": {
-        "Debt_Ratio":              {"Value": "N/A", "Status": "N/A"},
-        "Long_Term_Funding_Ratio": {"Value": "N/A", "Status": "N/A"},
-        "Final_Insight":           "分析資料不足",
-    }}
+    if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_financial_structure(fin_data)
+        return {"Financial_Structure_Module": {"Debt_Ratio": {"Value": "N/A", "Status": "N/A"},
+            "Long_Term_Funding_Ratio": {"Value": "N/A", "Status": "N/A"}, "Final_Insight": "分析資料不足"}}
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
         prompt = _FINANCIAL_STRUCTURE_PROMPT.format(financial_data_json=fin_str)
@@ -542,9 +708,8 @@ def analyze_financial_structure_module(api_key: str, stock_id: str, fin_data: di
         print(f"[FinStructure] ✅ {stock_id}")
         return result
     except Exception as _e:
-        print(f"[FinStructure] ❌ {stock_id}: {_e}")
-        _fs_st["Financial_Structure_Module"]["Final_Insight"] = f"分析失敗：{_e}"
-        return _fs_st
+        print(f"[FinStructure] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_financial_structure(fin_data)
 
 
 # ── Solvency Module Prompt（償債能力：流動/速動比率 + 收現豁免）──
@@ -601,13 +766,12 @@ _SOLVENCY_PROMPT = """\
 
 def analyze_solvency_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """Part 5 償債能力模組：流動/速動比率 + 收現行業豁免。"""
-    _fs_sv = {"Solvency_Module": {
-        "Current_Ratio":            {"Value": "N/A", "Status": "N/A"},
-        "Quick_Ratio":              {"Value": "N/A", "Status": "N/A"},
-        "Cross_Validation_Applied": "N/A",
-        "Final_Solvency_Verdict":   "N/A",
-        "Final_Insight":            "分析資料不足",
-    }}
+    if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_solvency(fin_data)
+        return {"Solvency_Module": {"Current_Ratio": {"Value": "N/A", "Status": "N/A"},
+            "Quick_Ratio": {"Value": "N/A", "Status": "N/A"}, "Cross_Validation_Applied": "N/A",
+            "Final_Solvency_Verdict": "N/A", "Final_Insight": "分析資料不足"}}
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
         prompt = _SOLVENCY_PROMPT.format(financial_data_json=fin_str)
@@ -618,9 +782,8 @@ def analyze_solvency_module(api_key: str, stock_id: str, fin_data: dict) -> dict
         print(f"[Solvency] ✅ {stock_id}")
         return result
     except Exception as _e:
-        print(f"[Solvency] ❌ {stock_id}: {_e}")
-        _fs_sv["Solvency_Module"]["Final_Insight"] = f"分析失敗：{_e}"
-        return _fs_sv
+        print(f"[Solvency] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_solvency(fin_data)
 
 
 # ── Advanced Diagnostic Module Prompt（綜合診斷：跨表勾稽 + 地雷偵測）──
@@ -679,13 +842,12 @@ _ADVANCED_DIAGNOSTIC_PROMPT = """\
 
 def analyze_advanced_diagnostic_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """Part 6 綜合診斷模組：盈餘品質+杜邦+雙高危機+企業DNA。"""
-    _fs_ad = {"Advanced_Diagnostic_Module": {
-        "Earnings_Quality":    {"Value": "N/A", "Status": "N/A"},
-        "DuPont_Health":       "N/A",
-        "Double_High_Warning": "N/A",
-        "Business_DNA":        "N/A",
-        "Final_Verdict":       "分析資料不足",
-    }}
+    if not api_key or not fin_data or fin_data.get("error"):
+        if fin_data and not fin_data.get("error"):
+            return _no_ai_advanced_diagnostic(fin_data)
+        return {"Advanced_Diagnostic_Module": {"Earnings_Quality": {"Value": "N/A", "Status": "N/A"},
+            "DuPont_Health": "N/A", "Double_High_Warning": "N/A",
+            "Business_DNA": "N/A", "Final_Verdict": "分析資料不足"}}
     try:
         fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
         prompt = _ADVANCED_DIAGNOSTIC_PROMPT.format(financial_data_json=fin_str)
@@ -696,9 +858,8 @@ def analyze_advanced_diagnostic_module(api_key: str, stock_id: str, fin_data: di
         print(f"[AdvDiag] ✅ {stock_id}")
         return result
     except Exception as _e:
-        print(f"[AdvDiag] ❌ {stock_id}: {_e}")
-        _fs_ad["Advanced_Diagnostic_Module"]["Final_Verdict"] = f"分析失敗：{_e}"
-        return _fs_ad
+        print(f"[AdvDiag] ❌ {stock_id}: {_e} → 降級計算")
+        return _no_ai_advanced_diagnostic(fin_data)
 
 
 # ── 公開入口 ────────────────────────────────────────────────
