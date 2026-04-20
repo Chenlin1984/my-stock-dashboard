@@ -6399,7 +6399,7 @@ padding:12px 16px;margin:8px 0;">
         with st.expander('🔬 AI 財報體檢（林明樟 MJ 體系）', expanded=True):
             _fh_key2 = f'_fh_{sid2}'
             if _fh_key2 not in st.session_state:
-                with st.spinner('📊 正在從 FinMind 抓取財報數據並呼叫 Gemini AI 分析（約 20~30 秒）…'):
+                with st.spinner('📊 正在從 FinMind 抓取財報數據…'):
                     _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
                     if _fin_raw.get('error'):
                         st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
@@ -6408,7 +6408,7 @@ padding:12px 16px;margin:8px 0;">
                         st.session_state[_fh_key2] = _fh_out
             _fh = st.session_state.get(_fh_key2)
             if not _fh or _fh.get('error'):
-                st.error(_fh.get('ai_insight', '財報體檢失敗，請確認 FINMIND_TOKEN 與 GEMINI_API_KEY。') if _fh else '載入中...')
+                st.error(_fh.get('ai_insight', '財報體檢失敗，請確認 FINMIND_TOKEN 已設定。') if _fh else '載入中...')
             else:
                 # ── 第一關：三大生死燈號 ────────────────────
                 st.markdown('#### 🛡️ 第一關：生死與體質防禦')
@@ -7412,16 +7412,13 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         _fh3_trigger = '_'.join(sorted(r.get('stock_id', r.get('代碼','')) for r in results_t3[:10]))
         if st.session_state.get('_fh_t3_last_key') != _fh3_trigger or not st.session_state.get('_fh_t3_results'):
             from concurrent.futures import ThreadPoolExecutor, as_completed as _asc
-            _gk3 = api_key          # 使用全域 api_key（含 os.environ fallback）
             _fk3 = FINMIND_TOKEN    # 使用全域 FINMIND_TOKEN（含 os.environ fallback）
             if not _fk3:
                 st.warning('⚠️ 未設定 FINMIND_TOKEN，無法抓取財報資料。請在 Streamlit Secrets 或環境變數中設定 FINMIND_TOKEN。')
-            if not _gk3:
-                st.warning('⚠️ 未設定 GEMINI_API_KEY，AI 財報分析功能將退化為基礎計算模式。')
             _fh3_new = {}
-            _prog3 = st.progress(0, text='財報體檢中...')
+            _prog3 = st.progress(0, text='財報體檢中（純計算，無 AI 呼叫）...')
             def _fh3_fn(sid):
-                return sid, analyze_financial_health(_gk3, sid, fetch_financial_statements(sid, _fk3))
+                return sid, analyze_financial_health("", sid, fetch_financial_statements(sid, _fk3))
             _done3 = 0
             with ThreadPoolExecutor(max_workers=3) as _ex3:
                 _fts3 = {_ex3.submit(_fh3_fn, s): s for s in stock_list_t3}

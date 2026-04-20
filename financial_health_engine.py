@@ -865,70 +865,25 @@ def analyze_advanced_diagnostic_module(api_key: str, stock_id: str, fin_data: di
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
-    輸入財報原始指標 dict（由 fetch_financial_statements 產出），
-    呼叫 Gemini AI，回傳標準化 8 欄 JSON。
-    失敗時回傳 _FAIL_SAFE，確保前端不崩潰。
+    從 fin_data 直接計算所有 MJ 財報體檢指標（純數學，零 AI 呼叫）。
+    AI 分析只在使用者點擊「生成 AI 首席顧問戰略評估報告」按鈕時才觸發。
     """
-    if not api_key:
-        fs = _FAIL_SAFE.copy()
-        fs["ai_insight"] = "缺少 GEMINI_API_KEY，無法執行 AI 財報體檢。"
-        return fs
     if not fin_data or fin_data.get("error"):
         fs = _FAIL_SAFE.copy()
         fs["ai_insight"] = fin_data.get("error", "財報資料為空") if fin_data else "財報資料為空"
         return fs
 
-    try:
-        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
-        prompt = _PROMPT_TEMPLATE.format(financial_data_json=fin_str)
-        raw = _gemini_call(prompt, api_key)
-        if raw.startswith("⚠️"):
-            raise ValueError(raw)
+    # 頂層指標（現金/OCF/負債/雷達/DNA/OPM）
+    result = _derive_basic_from_fin_data(fin_data)
+    result["ai_insight"] = "📊 財報數據直接計算（點擊上方按鈕可生成 AI 首席顧問完整分析）"
 
-        result = _extract_json(raw)
+    # 6 大子模組（全部純計算，無 AI）
+    result["survival_module"]           = _no_ai_survival(fin_data).get("Survival_Module", {})
+    result["operating_module"]          = _no_ai_operating(fin_data).get("Operating_Module", {})
+    result["profitability_module"]      = _no_ai_profitability(fin_data).get("Profitability_Module", {})
+    result["financial_structure_module"] = _no_ai_financial_structure(fin_data).get("Financial_Structure_Module", {})
+    result["solvency_module"]           = _no_ai_solvency(fin_data).get("Solvency_Module", {})
+    result["advanced_diagnostic_module"] = _no_ai_advanced_diagnostic(fin_data).get("Advanced_Diagnostic_Module", {})
 
-        # 強制保護雷達圖值域 [0, 100]
-        if "radar_scores" in result and isinstance(result["radar_scores"], dict):
-            result["radar_scores"] = {
-                k: max(0, min(100, int(v)))
-                for k, v in result["radar_scores"].items()
-            }
-        # 確保 opm_data 存在且型別正確
-        if "opm_data" not in result or not isinstance(result["opm_data"], dict):
-            result["opm_data"] = {"payable_days": 0, "receivable_days": 0, "advantage": False}
-        else:
-            result["opm_data"]["advantage"] = bool(result["opm_data"].get("advantage", False))
-
-        # 同步執行 Survival Module（存活能力精細版）
-        _surv = analyze_survival_module(api_key, stock_id, fin_data)
-        result["survival_module"] = _surv.get("Survival_Module", {})
-
-        # 同步執行 Operating Module（經營能力：周轉效率+資金壓力）
-        _oper = analyze_operating_module(api_key, stock_id, fin_data)
-        result["operating_module"] = _oper.get("Operating_Module", {})
-
-        # 同步執行 Profitability Module（獲利能力：5大指標+槓桿防呆）
-        _prof = analyze_profitability_module(api_key, stock_id, fin_data)
-        result["profitability_module"] = _prof.get("Profitability_Module", {})
-
-        # 同步執行 Financial Structure Module（財務結構：負債比+以長支長）
-        _fstr = analyze_financial_structure_module(api_key, stock_id, fin_data)
-        result["financial_structure_module"] = _fstr.get("Financial_Structure_Module", {})
-
-        # 同步執行 Solvency Module（償債能力：流動/速動比率+收現豁免）
-        _solv = analyze_solvency_module(api_key, stock_id, fin_data)
-        result["solvency_module"] = _solv.get("Solvency_Module", {})
-
-        # 同步執行 Advanced Diagnostic Module（綜合診斷：盈餘品質+杜邦+雙高+DNA）
-        _adv = analyze_advanced_diagnostic_module(api_key, stock_id, fin_data)
-        result["advanced_diagnostic_module"] = _adv.get("Advanced_Diagnostic_Module", {})
-
-        print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
-        return result
-
-    except Exception as _e:
-        print(f"[FinHealth] ❌ {stock_id}: {_e}")
-        # AI 失敗但 fin_data 有效 → 回傳基本計算結果（不帶 error:True）
-        basic = _derive_basic_from_fin_data(fin_data)
-        basic["ai_insight"] = f"⚠️ AI 服務暫時不可用（{_e}）。以下為原始財報數據直接計算結果。"
-        return basic
+    print(f"[FinHealth] ✅ {stock_id} 純計算完成 DNA={result.get('business_model_dna','?')}")
+    return result
