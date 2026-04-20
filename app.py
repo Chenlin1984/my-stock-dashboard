@@ -7423,6 +7423,10 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             from concurrent.futures import ThreadPoolExecutor, as_completed as _asc
             _gk3 = api_key          # 使用全域 api_key（含 os.environ fallback）
             _fk3 = FINMIND_TOKEN    # 使用全域 FINMIND_TOKEN（含 os.environ fallback）
+            if not _fk3:
+                st.warning('⚠️ 未設定 FINMIND_TOKEN，無法抓取財報資料。請在 Streamlit Secrets 或環境變數中設定 FINMIND_TOKEN。')
+            if not _gk3:
+                st.warning('⚠️ 未設定 GEMINI_API_KEY，AI 財報分析功能將退化為基礎計算模式。')
             _fh3_new = {}
             _prog3 = st.progress(0, text='財報體檢中...')
             def _fh3_fn(sid):

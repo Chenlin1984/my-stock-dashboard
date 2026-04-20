@@ -1459,6 +1459,8 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                 params=_p, headers=_hdrs, timeout=20,
             )
             _j = _r.json()
+            if _j.get("status") != 200:
+                print(f"[fetch_fin/{dataset}] 非200回應: status={_j.get('status')} msg={_j.get('msg','')}")
             return _j.get("data", []) if _j.get("status") == 200 else []
         except Exception as _e:
             print(f"[fetch_fin/{dataset}] {_e}")

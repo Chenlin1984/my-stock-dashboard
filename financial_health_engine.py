@@ -293,6 +293,85 @@ def _extract_json(raw: str) -> dict:
     raise ValueError(f"無法解析 JSON：{raw[:120]}")
 
 
+def _derive_basic_from_fin_data(fin_data: dict) -> dict:
+    """當 AI 失效但 fin_data 有效時，從原始財報數據直接計算基本指標。"""
+    cash_pct = fin_data.get("現金佔總資產(%)", 0) or 0
+    if cash_pct >= 25:
+        cash_status, cash_icon = "Pass", "🟢"
+    elif cash_pct >= 10:
+        cash_status, cash_icon = "Acceptable", "🟡"
+    else:
+        cash_status, cash_icon = "Fail", "🔴"
+
+    ocf_k = fin_data.get("OCF(千)", 0) or 0
+    ocf_b = round(ocf_k / 1e6, 2)
+    ocf_icon = "🟢" if ocf_k > 0 else "🔴"
+
+    debt_pct = fin_data.get("負債比率(%)", 0) or 0
+    if debt_pct <= 40:
+        debt_icon = "🟢"
+    elif debt_pct <= 60:
+        debt_icon = "🟡"
+    else:
+        debt_icon = "🔴"
+
+    # 企業DNA（三象限現金流）
+    _dna_map = {
+        ("正", "負", "負"): "A+ 穩健印鈔機",
+        ("正", "負", "正"): "B 擴張型成長",
+        ("正", "正", "負"): "C 財務重整",
+        ("正", "正", "正"): "D 燒錢模式",
+        ("負", "負", "負"): "E 衰退縮減",
+        ("負", "正", "負"): "F 借貸維生",
+        ("負", "負", "正"): "G 融資求活",
+        ("負", "正", "正"): "H 危機警戒",
+    }
+    _dna_key = (
+        fin_data.get("OCF符號", "負"),
+        fin_data.get("ICF符號", "負"),
+        fin_data.get("籌資CF符號", "負"),
+    )
+    dna = _dna_map.get(_dna_key, "無法判斷（資料不足）")
+
+    ap_days = fin_data.get("應付帳款天數", 0) or 0
+    ar_days = fin_data.get("應收帳款天數", 0) or 0
+
+    # 雷達基本估分（無AI，只做粗略分級）
+    gm = fin_data.get("毛利率(%)", 0) or 0
+    rev = fin_data.get("營業收入(千)", 0) or 0
+    ni = fin_data.get("稅後淨利(千)", 0) or 0
+    npm = round(ni / rev * 100, 1) if rev > 0 else 0
+
+    def _score(val, thresholds):  # thresholds: [(>=val, score), ...]
+        for thr, sc in thresholds:
+            if val >= thr:
+                return sc
+        return 20
+
+    radar = {
+        "存活能力": _score(cash_pct, [(25, 80), (10, 60)]),
+        "經營能力": _score(ap_days - ar_days, [(10, 80), (0, 60), (-30, 40)]),
+        "獲利能力": _score(gm, [(40, 80), (20, 60), (10, 40)]),
+        "財務結構": _score(100 - debt_pct, [(60, 80), (40, 60), (20, 40)]),
+        "償債能力": 60 if ocf_k > 0 else 30,
+    }
+
+    return {
+        "cash_ratio_status": cash_icon,
+        "cash_ratio_value": f"{cash_pct}%",
+        "ocf_status": ocf_icon,
+        "ocf_value": f"{ocf_b}B",
+        "debt_ratio_status": debt_icon,
+        "debt_ratio_value": f"{debt_pct}%",
+        "radar_scores": radar,
+        "business_model_dna": dna,
+        "opm_data": {"payable_days": ap_days, "receivable_days": ar_days,
+                     "advantage": ap_days > ar_days},
+        "ai_insight": "⚠️ AI 服務暫時不可用，以下為原始財報數據直接計算結果（無 AI 分析）。",
+        "red_flags": "None",
+    }
+
+
 # ── Fail-safe 預設值 ────────────────────────────────────────
 _FAIL_SAFE: dict = {
     "cash_ratio_status": "🔴",
@@ -688,6 +767,7 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
 
     except Exception as _e:
         print(f"[FinHealth] ❌ {stock_id}: {_e}")
-        fs = _FAIL_SAFE.copy()
-        fs["ai_insight"] = f"體檢分析失敗：{_e}"
-        return fs
+        # AI 失敗但 fin_data 有效 → 回傳基本計算結果（不帶 error:True）
+        basic = _derive_basic_from_fin_data(fin_data)
+        basic["ai_insight"] = f"⚠️ AI 服務暫時不可用（{_e}）。以下為原始財報數據直接計算結果。"
+        return basic
