@@ -1506,6 +1506,7 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
     liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
+    cur_assets = _v(_bs, _lat, ["CurrentAssets", "流動資產合計", "流動資產總計", "流動資產"])
     cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債"])
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款"])
@@ -1569,7 +1570,9 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "營業利益(千)":      round(oper_income),
         "稅後淨利(千)":      round(net_ni),
         "股東權益(千)":      round(equity),
+        "流動資產(千)":      round(cur_assets),
         "非流動負債(千)":    round(max(liab - cur_liab, 0)),
+        "營業成本(千)":      round(cogs),
         "OCF符號":          "正" if ocf > 0 else "負",
         "ICF符號":          "正" if icf > 0 else "負",
         "籌資CF符號":       "正" if fncf > 0 else "負",

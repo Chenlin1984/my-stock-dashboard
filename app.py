@@ -6669,6 +6669,43 @@ padding:12px 16px;margin:8px 0;">
                     if _fstr2.get('Final_Insight'):
                         st.caption(f'🏗️ {_fstr2["Final_Insight"]}')
 
+                # ── 償債能力模組（Solvency Module）─────────────
+                _solv2 = _fh.get('solvency_module', {})
+                if _solv2:
+                    st.markdown('#### 🛡️ 短期償債能力診斷（MJ 300/150 嚴格標準）')
+                    # 最終裁決 banner
+                    _sv2_v = _solv2.get('Final_Solvency_Verdict', '')
+                    _sv2_pass = 'Pass' in _sv2_v
+                    _sv2_exc  = 'Exception' in _sv2_v
+                    _sv2_bc   = '#3fb950' if _sv2_pass and not _sv2_exc else ('#d29922' if _sv2_exc else '#f85149')
+                    _sv2_icon = '✅' if _sv2_pass and not _sv2_exc else ('⚡' if _sv2_exc else '🔴')
+                    st.markdown(
+                        f'<div style="background:{_sv2_bc}18;border:2px solid {_sv2_bc};'
+                        f'border-radius:10px;padding:10px 16px;margin-bottom:10px;">'
+                        f'<span style="font-size:14px;font-weight:900;color:{_sv2_bc};">'
+                        f'{_sv2_icon} {_sv2_v}</span></div>', unsafe_allow_html=True)
+                    # 兩比率卡片
+                    _sv2c = st.columns(2)
+                    for _col, (_key, _label, _thresh) in zip(_sv2c, [
+                        ('Current_Ratio', '流動比率（MJ嚴格 >300%）', 300),
+                        ('Quick_Ratio',   '速動比率（MJ嚴格 >150%）', 150),
+                    ]):
+                        _si = _solv2.get(_key, {})
+                        _si_s = _si.get('Status', '')
+                        _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
+                        with _col:
+                            st.markdown(
+                                f'<div style="background:{_si_c}18;border:1px solid {_si_c}55;'
+                                f'border-radius:10px;padding:12px;text-align:center;">'
+                                f'<div style="font-size:11px;color:#8b949e;">{_label}</div>'
+                                f'<div style="font-size:24px;font-weight:900;color:{_si_c};">{_si.get("Value","N/A")}</div>'
+                                f'<div style="font-size:11px;color:{_si_c};">{_si_s}</div>'
+                                f'</div>', unsafe_allow_html=True)
+                    if _solv2.get('Cross_Validation_Applied') == 'Yes':
+                        st.info('🔍 已啟動收現行業交叉驗證保命符')
+                    if _solv2.get('Final_Insight'):
+                        st.caption(f'🛡️ {_solv2["Final_Insight"]}')
+
                 st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
                 # ── AI 白話診斷室 ─────────────────────────
@@ -7601,6 +7638,38 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div></div>', unsafe_allow_html=True)
                     if _fstr_f.get('Final_Insight'):
                         st.caption(f'🏗️ {_fstr_f["Final_Insight"]}')
+
+                # ── 償債能力模組（Solvency Module）─────────────
+                _solv_f = _fd_f.get('solvency_module', {})
+                if _solv_f and not _fd_f.get('error'):
+                    st.markdown('**🛡️ 短期償債能力（MJ 300/150 嚴格標準）**')
+                    _sv_f_v = _solv_f.get('Final_Solvency_Verdict', '')
+                    _sv_f_pass = 'Pass' in _sv_f_v
+                    _sv_f_exc  = 'Exception' in _sv_f_v
+                    _sv_f_bc   = '#3fb950' if _sv_f_pass and not _sv_f_exc else ('#d29922' if _sv_f_exc else '#f85149')
+                    _sv_f_icon = '✅' if _sv_f_pass and not _sv_f_exc else ('⚡' if _sv_f_exc else '🔴')
+                    st.markdown(
+                        f'<div style="background:{_sv_f_bc}18;border:1px solid {_sv_f_bc}55;'
+                        f'border-radius:8px;padding:6px 12px;margin-bottom:6px;">'
+                        f'<span style="font-size:12px;font-weight:700;color:{_sv_f_bc};">'
+                        f'{_sv_f_icon} {_sv_f_v}</span></div>', unsafe_allow_html=True)
+                    _svf2c = st.columns(2)
+                    for _col_s, (_key_s, _label_s) in zip(_svf2c, [
+                        ('Current_Ratio', '流動比率 >300%'),
+                        ('Quick_Ratio',   '速動比率 >150%'),
+                    ]):
+                        _si_f = _solv_f.get(_key_s, {})
+                        _si_f_c = '#3fb950' if 'Pass' in _si_f.get('Status', '') else '#f85149'
+                        with _col_s:
+                            st.markdown(
+                                f'<div style="background:{_si_f_c}18;border:1px solid {_si_f_c}55;'
+                                f'border-radius:8px;padding:8px;text-align:center;">'
+                                f'<div style="font-size:10px;color:#8b949e;">{_label_s}</div>'
+                                f'<div style="font-size:18px;font-weight:900;color:{_si_f_c};">{_si_f.get("Value","N/A")}</div>'
+                                f'<div style="font-size:10px;color:{_si_f_c};">{_si_f.get("Status","")}</div>'
+                                f'</div>', unsafe_allow_html=True)
+                    if _solv_f.get('Final_Insight'):
+                        st.caption(f'🛡️ {_solv_f["Final_Insight"]}')
 
                 # AI 診斷
                 _insight_f = _fd_f.get('ai_insight', '')

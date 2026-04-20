@@ -468,6 +468,82 @@ def analyze_financial_structure_module(api_key: str, stock_id: str, fin_data: di
         return _fs_st
 
 
+# ── Solvency Module Prompt（償債能力：流動/速動比率 + 收現豁免）──
+_SOLVENCY_PROMPT = """\
+# Role: 超級數字力短期償債分析官
+
+# Core Rules
+1. 採用 MJ 老師極度嚴格標準 (300/150)。
+2. 備有「收現行業」豁免條款，確保不誤殺優質流通業。
+
+# Edge Case Handling
+- 【無債一身輕】：若「流動負債(千)」= 0，所有指標直接標記 Status = "Pass (無短期債務)"，
+  Cross_Validation_Applied = "No"，Final_Solvency_Verdict = "Pass"。
+
+# Evaluation Logic
+
+## 1. 流動比率 (Current Ratio)
+- 計算：流動資產(千) / 流動負債(千) * 100%
+- 嚴格標準：> 300% → Pass；≤ 300% → Fail_Initial。
+
+## 2. 速動比率 (Quick Ratio)
+- 計算：(流動資產(千) - 存貨(千)) / 流動負債(千) * 100%
+  （預付費用不在資料中，以存貨作為主要扣減項）
+- 嚴格標準：> 150% → Pass；≤ 150% → Fail_Initial。
+
+## 3. 交叉驗證保命符 (Cross-Validation)
+若任一項為 Fail_Initial，Cross_Validation_Applied = "Yes"，
+依序檢查三個條件（滿足任一即豁免）：
+- [條件 A] 現金佔總資產(%) > 25%
+- [條件 B] 應收帳款天數 < 15 天（天天收現金行業）
+- [條件 C] DSO + DIO - DPO（做生意完整週期）< 50 天
+  DIO = 存貨(千) / 營業成本(千) * 360（若營業成本=0則用營業收入(千)代替）
+  DPO = 應付帳款天數
+  若上述任一條件成立 → Final_Solvency_Verdict = "Exception_Pass (條件X：說明)"
+  若均不符合 → Final_Solvency_Verdict = "Fail"
+
+# Input Data
+<Financial_Data>
+{financial_data_json}
+</Financial_Data>
+
+# Output Protocol
+直接輸出以下 JSON（禁止 Markdown 包裝）：
+{{
+  "Solvency_Module": {{
+    "Current_Ratio": {{"Value": "XX.X%", "Status": "Pass | Fail_Initial"}},
+    "Quick_Ratio": {{"Value": "XX.X%", "Status": "Pass | Fail_Initial"}},
+    "Cross_Validation_Applied": "Yes | No",
+    "Final_Solvency_Verdict": "Pass | Exception_Pass (說明) | Fail",
+    "Final_Insight": "綜合短評（50字以內，說明短期償債能力關鍵結論）"
+  }}
+}}"""
+
+
+def analyze_solvency_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
+    """Part 5 償債能力模組：流動/速動比率 + 收現行業豁免。"""
+    _fs_sv = {"Solvency_Module": {
+        "Current_Ratio":            {"Value": "N/A", "Status": "N/A"},
+        "Quick_Ratio":              {"Value": "N/A", "Status": "N/A"},
+        "Cross_Validation_Applied": "N/A",
+        "Final_Solvency_Verdict":   "N/A",
+        "Final_Insight":            "分析資料不足",
+    }}
+    try:
+        fin_str = json.dumps(fin_data, ensure_ascii=False, indent=2)
+        prompt = _SOLVENCY_PROMPT.format(financial_data_json=fin_str)
+        raw = _gemini_call(prompt, api_key)
+        if raw.startswith("⚠️"):
+            raise ValueError(raw)
+        result = _extract_json(raw)
+        print(f"[Solvency] ✅ {stock_id}")
+        return result
+    except Exception as _e:
+        print(f"[Solvency] ❌ {stock_id}: {_e}")
+        _fs_sv["Solvency_Module"]["Final_Insight"] = f"分析失敗：{_e}"
+        return _fs_sv
+
+
 # ── 公開入口 ────────────────────────────────────────────────
 def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """
@@ -520,6 +596,10 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
         # 同步執行 Financial Structure Module（財務結構：負債比+以長支長）
         _fstr = analyze_financial_structure_module(api_key, stock_id, fin_data)
         result["financial_structure_module"] = _fstr.get("Financial_Structure_Module", {})
+
+        # 同步執行 Solvency Module（償債能力：流動/速動比率+收現豁免）
+        _solv = analyze_solvency_module(api_key, stock_id, fin_data)
+        result["solvency_module"] = _solv.get("Solvency_Module", {})
 
         print(f"[FinHealth] ✅ {stock_id} DNA={result.get('business_model_dna','?')}")
         return result
