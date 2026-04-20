@@ -2,8 +2,18 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.1 | main `5e84615`
-- **最新異動**: MJ 財報體檢 Part 3 — 獲利能力模組（5大指標 + 槓桿防呆）
+- **版本**: v9.2 | main `d38789c`
+- **最新異動**: MJ 財報體檢 Part 4 — 財務結構模組（負債比 + 以長支長）
+
+## ✅ 已完成任務：MJ 財報體檢 Part 4 財務結構模組（v9.2，commit d38789c）
+
+| 項目 | 內容 |
+|------|------|
+| `data_loader.py` | 新增 `非流動負債(千)` = 總負債 - 流動負債 |
+| `financial_health_engine.py` | `_FINANCIAL_STRUCTURE_PROMPT` + `analyze_financial_structure_module()` |
+| 指標1 | 負債比 < 60% Pass / 60-70% Warning / > 70% Fail；金融業 N/A |
+| 指標2 | 以長支長 (股東權益+非流動負債)/固定資產 > 100% Pass；輕資產自動 Pass |
+| `app.py` Tab2+Tab3 | 2欄大字卡片（三色負債比 + 以長支長通過/致命紅燈）|
 
 ## ✅ 已完成任務：MJ 財報體檢 Part 3 獲利能力模組（v9.1，commit 5e84615）
 
