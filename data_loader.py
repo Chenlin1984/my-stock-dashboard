@@ -1507,10 +1507,15 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
 
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
-    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額",
-                             "負債及權益總計"])
+    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
     cur_assets = _v(_bs, _lat, ["CurrentAssets", "流動資產合計", "流動資產總計", "流動資產"])
     cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債總計", "流動負債"])
+    # FinMind 不一定提供「負債合計」彙總行，直接用 流動+非流動 相加
+    _non_cur_liab = _v(_bs, _lat, ["NoncurrentLiabilities", "非流動負債合計",
+                                    "非流動負債總計", "非流動負債"])
+    if liab == 0 and (cur_liab > 0 or _non_cur_liab > 0):
+        liab = cur_liab + _non_cur_liab
+        print(f"[fetch_fin] {stock_id} 負債合計查無，改用 流動({cur_liab:.0f})+非流動({_non_cur_liab:.0f})={liab:.0f}千")
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
