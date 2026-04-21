@@ -1577,10 +1577,42 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         recalc = max(assets - liab, 0)
         print(f"[fetch_fin] {stock_id} equity={equity:.0f}千 疑似欄位誤配（{equity/assets:.6%}），改用 assets-liab={recalc:.0f}千")
         equity = recalc
-    # Fallback: Assets = Liabilities + Equity (IFRS identity)
+    # Fallback: Assets = Liabilities + Equity（IFRS 恆等式，雙向兜底）
     if liab == 0 and assets > 0 and equity > 0:
         liab = max(assets - equity, 0)
         print(f"[fetch_fin] {stock_id} 負債欄位查無資料，改用 資產-權益 計算: {round(liab/1e3)}千")
+    if assets == 0 and equity > 0 and liab > 0:
+        assets = equity + liab
+        print(f"[fetch_fin] {stock_id} 資產欄位查無資料，改用 權益+負債 計算: {round(assets/1e3)}千")
+
+    # 模糊比對兜底：從 BS 所有欄位取最大值（合計行通常是最大的）
+    _bs_slot = _bs.get(_lat, {})
+    def _fuzzy_bs(_inc, _exc=()):
+        _best = 0.0
+        for _fk, _fvv in _bs_slot.items():
+            _fks = str(_fk)
+            if all(_i in _fks for _i in _inc) and not any(_e in _fks for _e in _exc):
+                try:
+                    _ffv = float(str(_fvv).replace(",", "") or 0)
+                    if _ffv > _best:
+                        _best = _ffv
+                except Exception:
+                    pass
+        return _best
+    if assets == 0:
+        assets = _fuzzy_bs(["資產"], ["負債", "資本", "遞延"])
+        if assets > 0:
+            print(f"[fetch_fin] {stock_id} assets 模糊比對: {assets:.0f}千")
+    if liab == 0:
+        liab = _fuzzy_bs(["負債"], ["資產", "準備", "權益"])
+        if liab > 0:
+            print(f"[fetch_fin] {stock_id} liab 模糊比對: {liab:.0f}千")
+    if ar == 0:
+        ar = _fuzzy_bs(["應收"], ["利息", "稅", "員工", "遞延"])
+        if ar == 0:
+            ar = _fuzzy_bs(["合約資產"])  # IFRS 15 合約資產
+        if ar > 0:
+            print(f"[fetch_fin] {stock_id} ar 模糊比對: {ar:.0f}千")
 
     # ── yfinance 備援：對仍為零的關鍵欄位嘗試補值 ────────────────────────
     if ar == 0 or liab == 0 or assets == 0:

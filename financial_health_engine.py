@@ -525,7 +525,14 @@ def _no_ai_advanced_diagnostic(fd: dict) -> dict:
     inv = fd.get("存貨(千)", 0) or 0
     inv_p = fd.get("存貨前期(千)", 0) or 0
     if ni <= 0:
-        eq_val, eq_st = "N/A (淨利為負)", "N/A"
+        # NI ≤ 0 時改以 OCF/Revenue 顯示現金流健康度
+        _rev_adv = fd.get("營業收入(千)", 0) or 0
+        if ocf > 0:
+            _ocf_rate = round(ocf / _rev_adv * 100, 1) if _rev_adv > 0 else 0
+            eq_val = f"{_ocf_rate:.1f}% (OCF/Rev)" if _ocf_rate > 0 else "OCF 為正"
+            eq_st = "Acceptable"
+        else:
+            eq_val, eq_st = "OCF負+虧損", "Fail"
     else:
         eq_pct = round(ocf / ni * 100, 1)
         eq_val, eq_st = f"{eq_pct:.1f}%", "Pass" if eq_pct >= 100 else "Fail"
