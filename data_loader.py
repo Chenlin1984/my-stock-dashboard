@@ -1459,19 +1459,29 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                 params=_p, headers=_hdrs, timeout=20,
             )
             _j = _r.json()
-            if _j.get("status") != 200:
-                print(f"[fetch_fin/{dataset}] 非200回應: status={_j.get('status')} msg={_j.get('msg','')}")
-            return _j.get("data", []) if _j.get("status") == 200 else []
+            _st = _j.get("status")
+            if _st != 200:
+                print(f"[fetch_fin/{dataset}] 非200回應: status={_st} msg={_j.get('msg','')}")
+            return _j.get("data", []) if _st == 200 else [], _st
         except Exception as _e:
             print(f"[fetch_fin/{dataset}] {_e}")
-            return []
+            return [], None
 
-    _bs_rows = _fm("TaiwanStockBalanceSheet")
-    _cf_rows = _fm("TaiwanStockCashFlowsStatement")
-    _is_rows = _fm("TaiwanStockFinancialStatements")
+    _bs_rows, _bs_st = _fm("TaiwanStockBalanceSheet")
+    _cf_rows, _cf_st = _fm("TaiwanStockCashFlowsStatement")
+    _is_rows, _is_st = _fm("TaiwanStockFinancialStatements")
 
     if not _bs_rows and not _cf_rows:
-        return {"error": f"{stock_id}：FinMind 無財報資料（請確認 FINMIND_TOKEN 已設定）"}
+        # 區分 Token 問題 vs 股票本身無資料
+        _statuses = [s for s in [_bs_st, _cf_st] if s is not None]
+        if not _tok:
+            _err = f"{stock_id}：未設定 FINMIND_TOKEN，無法查詢財報"
+        elif any(s in (401, 403) for s in _statuses):
+            _err = f"{stock_id}：FINMIND_TOKEN 無效或已過期（HTTP {_statuses[0]}）"
+        else:
+            _err = (f"{stock_id}：FinMind 無此股票財報資料"
+                    f"（可能為新掛牌、未上市、或 FinMind 資料源尚未收錄）")
+        return {"error": _err}
 
     def _build(rows):
         m: dict = {}
