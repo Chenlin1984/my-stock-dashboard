@@ -1548,8 +1548,12 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                              "TotalStockholdersEquity", "股東權益總額",
                              "EquityAttributableToOwnersOfParent",
                              "歸屬於母公司業主之權益合計",
-                             "歸屬於母公司業主之權益",
                              "權益合計"])
+    # 理智校驗：equity < 0.1% of assets → 可能抓到子項目而非合計，改用 assets−liab 重算
+    if 0 < equity < assets * 0.001 and liab > 0:
+        recalc = max(assets - liab, 0)
+        print(f"[fetch_fin] {stock_id} equity={equity:.0f}千 疑似欄位誤配（{equity/assets:.6%}），改用 assets-liab={recalc:.0f}千")
+        equity = recalc
     # Fallback: Assets = Liabilities + Equity (IFRS identity)
     if liab == 0 and assets > 0 and equity > 0:
         liab = max(assets - equity, 0)

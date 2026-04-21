@@ -376,7 +376,12 @@ def _no_ai_survival(fd: dict) -> dict:
     cash = fd.get("現金佔總資產(%)", 0) or 0
     cr_st = "Pass" if cash >= 25 else ("Acceptable" if cash >= 10 else "Fail")
     ar = fd.get("應收帳款天數", 0) or 0
-    dso_st = "Pass" if ar < 15 else ("Acceptable" if ar <= 90 else "Fail")
+    # ar=0 代表資料查無，而非真的 0 天；用 N/A 避免誤判為 Pass
+    if ar == 0:
+        dso_st, dso_val = "N/A", "N/A (資料不足)"
+    else:
+        dso_st = "Pass" if ar < 15 else ("Acceptable" if ar <= 90 else "Fail")
+        dso_val = f"{ar:.1f} 天"
     ocf = fd.get("OCF(千)", 0) or 0
     cl = fd.get("流動負債(千)", 0) or 0
     div = fd.get("現金股利(千)", 0) or 0
@@ -390,7 +395,7 @@ def _no_ai_survival(fd: dict) -> dict:
     verdict = f"Cash={cr_st} DSO={dso_st} 100-100-10={rule_st}（無AI，原始計算）"
     return {"Survival_Module": {
         "Cash_Ratio": {"Value": f"{cash}%", "Status": cr_st, "Insight": "原始數據直接計算"},
-        "DSO_Speed": {"Value": f"{ar:.1f} 天", "Status": dso_st, "Insight": "原始數據直接計算"},
+        "DSO_Speed": {"Value": dso_val, "Status": dso_st, "Insight": "原始數據直接計算"},
         "Rule_100_100_10": {
             "Cash_Flow_Ratio": f"{a_val}%" if a_val is not None else "N/A",
             "Cash_Flow_Adequacy": "N/A",
@@ -409,13 +414,15 @@ def _no_ai_operating(fd: dict) -> dict:
     rev = fd.get("營業收入(千)", 0) or 0
     assets = fd.get("總資產(千)", 0) or 0
     dio = round(inv / cogs * 360, 1) if cogs > 0 else (round(inv / rev * 360, 1) if rev > 0 else 0)
-    cycle = round(ar + dio, 1)
-    gap = round(ar + dio - ap, 1)
+    # ar=0 代表資料查無；完整週期/資金缺口用 N/A 表示
+    dso_str = f"{ar:.1f} 天" if ar > 0 else "N/A (資料不足)"
+    cycle_str = f"{round(ar + dio, 1):.1f} 天" if ar > 0 else f"N/A (DSO缺失，DIO={dio:.1f}天)"
+    gap_str   = f"{round(ar + dio - ap, 1):.1f} 天" if ar > 0 else "N/A (DSO缺失)"
     at = round(rev / assets, 2) if assets > 0 else 0
     opm = "Yes" if ap > ar else "No"
     return {"Operating_Module": {
-        "DSO": f"{ar:.1f} 天", "DIO": f"{dio:.1f} 天", "DPO": f"{ap:.1f} 天",
-        "Complete_Cycle": f"{cycle:.1f} 天", "Cash_Gap_Days": f"{gap:.1f} 天",
+        "DSO": dso_str, "DIO": f"{dio:.1f} 天", "DPO": f"{ap:.1f} 天",
+        "Complete_Cycle": cycle_str, "Cash_Gap_Days": gap_str,
         "OPM_Strategy": opm, "Asset_Turnover": f"{at:.2f}x",
         "Verdict": "原始數據直接計算（無 AI 分析）",
     }}
@@ -449,8 +456,10 @@ def _no_ai_financial_structure(fd: dict) -> dict:
     ppe = fd.get("固定資產(千)", 0) or 0
     if ppe > 0:
         if eq == 0 and lt_liab == 0:
-            # equity 查找失敗，避免誤報「短債長投」
             lt_st, lt_val = "N/A", "N/A (股東權益資料不足)"
+        elif eq > 0 and eq < ppe * 0.001:
+            # equity 極小（< 0.1% of ppe），疑似欄位誤配，避免計算出荒謬的 0%
+            lt_st, lt_val = "N/A", "N/A (股東權益資料異常)"
         else:
             lt_ratio = round((eq + lt_liab) / ppe * 100, 1)
             lt_st = "Pass" if lt_ratio >= 100 else "Fail"
