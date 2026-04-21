@@ -577,6 +577,93 @@ _FAIL_SAFE: dict = {
 }
 
 
+def no_ai_overall_verdict(fin_data: dict, fh_result: dict) -> dict:
+    """
+    彙整六大模組，生成 MJ 林明樟老師風格的動態總結論（純計算，無 AI）。
+    """
+    surv = fh_result.get("survival_module", {})
+    prof = fh_result.get("profitability_module", {})
+    fstr = fh_result.get("financial_structure_module", {})
+    solv = fh_result.get("solvency_module", {})
+    adv  = fh_result.get("advanced_diagnostic_module", {})
+
+    def _pts(s):
+        return {"Pass": 2, "Acceptable": 1, "Good": 2, "Strong": 2,
+                "Exception_Pass": 1, "Pass (無短期債務)": 2,
+                "Warning": -1, "Fail": -2, "Fail_Initial": -1, "Thin Profit": -1}.get(str(s), 0)
+
+    checks = [
+        ("氣長",       surv.get("Cash_Ratio", {}).get("Status", "N/A")),
+        ("收現速度",   surv.get("DSO_Speed", {}).get("Status", "N/A")),
+        ("100-100-10", surv.get("Rule_100_100_10", {}).get("Status", "N/A")),
+        ("毛利率",     prof.get("Gross_Margin", {}).get("Status", "N/A")),
+        ("本業獲利",   "Pass" if prof.get("Operating_Margin", {}).get("Core_Business_Profitable") == "Yes" else "Fail"),
+        ("ROE品質",    "Warning" if prof.get("ROE", {}).get("Leverage_Warning", "None") != "None" else "Pass"),
+        ("負債比率",   fstr.get("Debt_Ratio", {}).get("Status", "N/A")),
+        ("以長支長",   fstr.get("Long_Term_Funding_Ratio", {}).get("Status", "N/A")),
+        ("流動比率",   solv.get("Current_Ratio", {}).get("Status", "N/A")),
+        ("盈餘含金量", adv.get("Earnings_Quality", {}).get("Status", "N/A")),
+        ("雙高危機",   "Fail" if "Triggered" in str(adv.get("Double_High_Warning", ""))
+                      else "Pass" if "Clear" in str(adv.get("Double_High_Warning", "")) else "N/A"),
+    ]
+    valid      = [(n, s) for n, s in checks if s != "N/A"]
+    total_pts  = sum(_pts(s) for _, s in valid)
+    max_pts    = len(valid) * 2
+    score_pct  = round(total_pts / max_pts * 100) if max_pts > 0 else 50
+    pass_items = [n for n, s in valid if _pts(s) >= 2]
+    fail_items = [n for n, s in valid if _pts(s) < 0]
+    dna        = adv.get("Business_DNA", "")
+    is_cashcow = "A+" in str(dna)
+    is_dying   = "瀕死" in str(dna)
+    ocf        = fin_data.get("OCF(千)", 0) or 0
+    eq_ok      = adv.get("Earnings_Quality", {}).get("Status", "") == "Pass"
+
+    if is_dying or len(fail_items) >= 4:
+        grade, gc = "F", "#f85149"
+        headline  = "🔴 高危企業！多項生死指標亮紅燈"
+        comment   = (f"財務健康嚴重失衡，共 **{len(fail_items)}** 項指標觸警："
+                     f"{'、'.join(fail_items[:4])}{'…' if len(fail_items) > 4 else ''}。"
+                     f"請確認是否為財報資料異常，或確實存在財務困境。")
+    elif len(fail_items) >= 2:
+        grade, gc = "C", "#d29922"
+        headline  = "🟡 有明顯改善空間，需謹慎評估"
+        comment   = (f"關鍵警示：**{'、'.join(fail_items)}**。"
+                     f"{'盈餘含金量高，現金流尚佳。' if eq_ok else ''}"
+                     f"建議與同業比較，判斷是結構性問題還是短期壓力。")
+    elif len(fail_items) == 1:
+        grade, gc = "B+", "#d29922"
+        headline  = "🟡 大致穩健，單點需留意"
+        comment   = (f"整體財務健康，但「**{fail_items[0]}**」尚需改善。"
+                     f"{'其餘 ' + str(len(pass_items)) + ' 項指標達標。' if pass_items else ''}"
+                     f"若下季持續改善，可列入重點追蹤。")
+    elif is_cashcow:
+        grade, gc = "A+", "#3fb950"
+        headline  = "🟢 印鈔機！A+ 型企業，MJ 最愛標的"
+        comment   = (f"企業 DNA = A+ 穩健印鈔機，OCF 為{'正' if ocf > 0 else '負'}。"
+                     f"{'共 ' + str(len(pass_items)) + ' 項達標：' + '、'.join(pass_items[:5]) + '。' if pass_items else ''}"
+                     f"現金流真實可信，財務體質堅實，符合 MJ 老師「找到好生意」的核心標準。")
+    elif score_pct >= 70:
+        grade, gc = "A", "#3fb950"
+        headline  = "🟢 優質企業！財務體質健康"
+        comment   = (f"多項指標通過 MJ 嚴格標準：**{'、'.join(pass_items[:5])}**{'等' if len(pass_items) > 5 else ''}。"
+                     f"{'盈餘含金量高，現金流真實可信。' if eq_ok else ''}"
+                     f"整體財務結構穩健，具備中長期投資價值。")
+    else:
+        grade, gc = "B", "#58a6ff"
+        headline  = "🔵 財務穩定，中規中矩"
+        comment   = (f"財務表現尚可，無明顯紅旗。"
+                     f"{'已達標：' + '、'.join(pass_items[:4]) + '。' if pass_items else ''}"
+                     f"建議持續追蹤下一季財報，確認趨勢是否持續改善。")
+
+    return {
+        "grade": grade, "grade_color": gc,
+        "headline": headline, "comment": comment,
+        "score_pct": score_pct,
+        "pass_count": len(pass_items), "fail_count": len(fail_items),
+        "pass_items": pass_items, "fail_items": fail_items, "dna": dna,
+    }
+
+
 # ── Survival Module 入口 ────────────────────────────────────
 def analyze_survival_module(api_key: str, stock_id: str, fin_data: dict) -> dict:
     """

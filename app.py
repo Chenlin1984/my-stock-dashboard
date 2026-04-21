@@ -45,7 +45,7 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
-from financial_health_engine import analyze_financial_health
+from financial_health_engine import analyze_financial_health, no_ai_overall_verdict
 from data_loader import fetch_financial_statements
 from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
 from financial_debug_helper import (
@@ -6795,6 +6795,30 @@ padding:12px 16px;margin:8px 0;">
                     if _adv2.get('Final_Verdict'):
                         st.caption(f'🔬 {_adv2["Final_Verdict"]}')
 
+                # ── 老師動態總結論 ─────────────────────────────────
+                _ov = no_ai_overall_verdict(
+                    fin_data=st.session_state.get('t2_fin_data', {}),
+                    fh_result=_fh,
+                )
+                _ovc = _ov.get("grade_color", "#58a6ff")
+                st.markdown('<hr style="border-color:#30363d;margin:14px 0 10px;">', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="background:{_ovc}12;border:2px solid {_ovc};border-radius:12px;padding:16px 20px;">'
+                    f'<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;">'
+                    f'<span style="font-size:36px;font-weight:900;color:{_ovc};font-family:monospace;">'
+                    f'{_ov.get("grade","?")}</span>'
+                    f'<div>'
+                    f'<div style="font-size:14px;font-weight:900;color:{_ovc};">{_ov.get("headline","")}</div>'
+                    f'<div style="font-size:10px;color:#8b949e;margin-top:2px;">'
+                    f'MJ 林明樟老師財報體系 · 6大模組綜合評估 · '
+                    f'✅ {_ov.get("pass_count",0)} 項達標　'
+                    f'🔴 {_ov.get("fail_count",0)} 項警示　'
+                    f'企業DNA：{_ov.get("dna","--")}'
+                    f'</div></div></div>'
+                    f'<div style="font-size:12px;color:#c9d1d9;line-height:1.7;">{_ov.get("comment","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
         # ══ 🤖 AI 首席顧問總結 ═══════════════════════════════════
         st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">技術面 · 籌碼 · 基本面 · 財報體檢（MJ體系）· 總經 五維綜合評估</span></div>""", unsafe_allow_html=True)

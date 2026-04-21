@@ -1526,6 +1526,12 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     if liab == 0 and (cur_liab > 0 or _non_cur_liab > 0):
         liab = cur_liab + _non_cur_liab
         print(f"[fetch_fin] {stock_id} 負債合計查無，改用 流動({cur_liab:.0f})+非流動({_non_cur_liab:.0f})={liab:.0f}千")
+    # FinMind 不一定提供「資產合計」彙總行，直接用 流動+非流動 相加
+    _non_cur_assets = _v(_bs, _lat, ["NoncurrentAssets", "非流動資產合計",
+                                      "非流動資產總計", "非流動資產"])
+    if assets == 0 and (cur_assets > 0 or _non_cur_assets > 0):
+        assets = cur_assets + _non_cur_assets
+        print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
@@ -1619,6 +1625,8 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                     # 若 yfinance 補了 assets/equity，再試一次 IFRS identity
                     if liab == 0 and assets > 0 and equity > 0:
                         liab = max(assets - equity, 0)
+                    if assets == 0 and equity > 0 and liab > 0:
+                        assets = equity + liab
         except Exception as _e_yf:
             print(f"[fetch_fin] {stock_id} yfinance備援異常: {_e_yf}")
 
