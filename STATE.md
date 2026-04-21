@@ -372,3 +372,6 @@ Python rule-based 計算 `exposure_limit_pct`，AI 僅輸出 `analysis_summary` 
 ## 🔑 環境變數（Streamlit Secrets）
 - `FINMIND_TOKEN`: FinMind API
 - `GEMINI_API_KEY`: Gemini AI（全站共用）
+
+---
+*本 PR 涵蓋 Session 2026-04-21 所有提交（21aa9ba → 526913c），共 3 個功能 commits。*
