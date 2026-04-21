@@ -11,6 +11,34 @@ from datetime import timedelta
 from unified_decision import render_unified_decision
 from daily_checklist import calc_stats
 
+def _fetch_news_for(ticker: str, name: str = "", n: int = 4) -> str:
+    """抓取個股/ETF 相關新聞，回傳格式化字串。失敗時回傳空字串。"""
+    try:
+        import feedparser as _fp, html as _h, re as _re2
+    except ImportError:
+        return ""
+    _q = f"{ticker} {name}".strip()
+    _feeds = [
+        f'https://news.google.com/rss/search?q={_q}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
+        f'https://news.google.com/rss/search?q=Taiwan+ETF+{ticker}&hl=en-US&gl=US&ceid=US:en',
+    ]
+    _out = []
+    for _url in _feeds:
+        try:
+            for _e in _fp.parse(_url).entries:
+                _t = _h.unescape(_e.get('title', '')).strip()
+                _p = str(_e.get('published', ''))[:10]
+                if _t:
+                    _out.append(f'- {_t}（{_p}）')
+                if len(_out) >= n:
+                    break
+        except Exception:
+            pass
+        if len(_out) >= n:
+            break
+    return '\n'.join(_out[:n]) if _out else '（暫無相關新聞）'
+
+
 # ── 總經連動配置建議表 ────────────────────────────────────────
 MACRO_ALLOC = {
     'bull':    {'股票型ETF': 70, '債券型ETF': 15, '貨幣/現金': 15},
@@ -933,6 +961,7 @@ def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
     # ── LLM 精煉研判按鈕 ──────────────────────────────────────
     _sess_key = f'etf_hokei_{ticker}'
     if st.button('🤖 AI 精煉研判（存股節奏）', key='etf_hokei_btn'):
+        _news_str = _fetch_news_for(ticker, name, 4)
         _prompt = (
             "你是嚴格執行「買跌不買漲（左側交易）」紀律的ETF存股顧問。\n"
             "根據以下數據，套用判定邏輯，只輸出 JSON，不含其他文字：\n\n"
@@ -940,6 +969,7 @@ def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
             f"年線乖離率(BIAS240): {_b240_str}\n"
             f"K值: {_k_str}  D值: {_d_str}  KD高檔(>80): {'是' if kd_high else '否'}\n"
             f"現金殖利率: {cur_yield:.2f}%\n\n"
+            f"【近期ETF相關新聞】\n{_news_str}\n\n"
             "判定邏輯：\n"
             "【極佳買點(加速扣款)】年線乖離率<=0% 且 殖利率>=6%\n"
             "【正常存股(紀律扣款)】0%<年線乖離率<10%\n"
@@ -1395,20 +1425,29 @@ def _etf_ai_portfolio(gemini_fn, rows, rebal_actions, regime, loss_pct):
         act_txt = '\n'.join(
             f'  {a["動作"]} {a["ETF"]} {a["金額(元)"]:,.0f}元'
             for a in rebal_actions) if rebal_actions else '  無需再平衡'
-        prompt = (
-            f"你是ETF組合管理專家，依據以下資料給出精準建議，每項不超過200字，嚴禁捏造：\n"
-            f"市場狀態：{regime}\n"
-            f"組合明細：\n{row_txt}\n"
-            f"再平衡指令：\n{act_txt}\n"
-            f"壓力測試損失：{loss_pct:.1f}%（S&P500下跌20%模擬）\n\n"
-            f"輸出：\n"
-            f"1.【組合健康度】分散度、集中風險點\n"
-            f"2.【再平衡必要性】是否緊急，原因\n"
-            f"3.【總經視角】依{regime}市場狀態，調整方向\n"
-            f"4.【一句話結論】立即行動 or 繼續觀察\n"
-            f"⚠️ 僅供學術研究，非投資建議"
-        )
         if st.button('🤖 生成組合AI評斷', key='etf_ai_p_btn'):
+            # 為組合中每檔 ETF 抓取新聞（最多各 2 則）
+            _p_news_lines = []
+            for _r in rows[:4]:
+                _tk = _r.get('ticker', '')
+                _nn = _fetch_news_for(_tk, _tk, 2)
+                if _nn and _nn != '（暫無相關新聞）':
+                    _p_news_lines.append(f'[{_tk}]\n{_nn}')
+            _p_news_str = '\n'.join(_p_news_lines) if _p_news_lines else '（暫無相關新聞）'
+            prompt = (
+                f"你是ETF組合管理專家，依據以下資料給出精準建議，每項不超過200字，嚴禁捏造：\n"
+                f"市場狀態：{regime}\n"
+                f"組合明細：\n{row_txt}\n"
+                f"再平衡指令：\n{act_txt}\n"
+                f"壓力測試損失：{loss_pct:.1f}%（S&P500下跌20%模擬）\n\n"
+                f"【近期各ETF相關新聞】\n{_p_news_str}\n\n"
+                f"輸出：\n"
+                f"1.【組合健康度】分散度、集中風險點\n"
+                f"2.【再平衡必要性】是否緊急，原因\n"
+                f"3.【總經視角】依{regime}市場狀態，調整方向\n"
+                f"4.【一句話結論】立即行動 or 繼續觀察\n"
+                f"⚠️ 僅供學術研究，非投資建議"
+            )
             with st.spinner('AI 分析中...'):
                 result = gemini_fn(prompt, max_tokens=900)
             if result and not result.startswith('⚠️'):
@@ -1734,22 +1773,30 @@ def render_etf_backtest(gemini_fn=None):
 def _etf_ai_backtest(gemini_fn, cagr, sharpe, mdd, vol, weights, regime):
     with st.expander('🤖 AI 回測評斷（展開）', expanded=False):
         w_txt  = ' | '.join(f'{t}: {w*100:.0f}%' for t, w in weights.items())
-        prompt = (
-            f"你是回測績效分析師，依據以下數字給出精準評斷，不超過300字，嚴禁捏造：\n"
-            f"組合：{w_txt}\n"
-            f"CAGR：{cagr:.2f}%\n"
-            f"夏普值：{sharpe:.2f}\n"
-            f"最大回撤：{mdd:.1f}%\n"
-            f"年化波動率：{vol:.2f}%\n"
-            f"當前市場狀態：{regime}\n\n"
-            f"輸出：\n"
-            f"1.【績效評級】優秀/良好/普通/劣（請說明標準）\n"
-            f"2.【風險評估】MDD和波動率是否在可接受範圍\n"
-            f"3.【改善建議】基於春哥/郭俊宏/孫慶龍觀點，如何優化配置\n"
-            f"4.【前瞻建議】在{regime}環境下，此組合的下一步行動\n"
-            f"⚠️ 僅供學術研究，非投資建議"
-        )
         if st.button('🤖 生成回測AI評斷', key='etf_ai_bt_btn'):
+            # 為回測組合中每檔 ETF 抓取新聞（最多各 2 則）
+            _bt_news_lines = []
+            for _tk in list(weights.keys())[:4]:
+                _nn = _fetch_news_for(_tk, _tk, 2)
+                if _nn and _nn != '（暫無相關新聞）':
+                    _bt_news_lines.append(f'[{_tk}]\n{_nn}')
+            _bt_news_str = '\n'.join(_bt_news_lines) if _bt_news_lines else '（暫無相關新聞）'
+            prompt = (
+                f"你是回測績效分析師，依據以下數字給出精準評斷，不超過300字，嚴禁捏造：\n"
+                f"組合：{w_txt}\n"
+                f"CAGR：{cagr:.2f}%\n"
+                f"夏普值：{sharpe:.2f}\n"
+                f"最大回撤：{mdd:.1f}%\n"
+                f"年化波動率：{vol:.2f}%\n"
+                f"當前市場狀態：{regime}\n\n"
+                f"【近期各ETF相關新聞】\n{_bt_news_str}\n\n"
+                f"輸出：\n"
+                f"1.【績效評級】優秀/良好/普通/劣（請說明標準）\n"
+                f"2.【風險評估】MDD和波動率是否在可接受範圍\n"
+                f"3.【改善建議】基於春哥/郭俊宏/孫慶龍觀點，如何優化配置\n"
+                f"4.【前瞻建議】在{regime}環境下，此組合的下一步行動\n"
+                f"⚠️ 僅供學術研究，非投資建議"
+            )
             with st.spinner('AI 分析中...'):
                 result = gemini_fn(prompt, max_tokens=900)
             if result and not result.startswith('⚠️'):
@@ -1841,12 +1888,32 @@ def render_etf_ai(gemini_fn=None):
             f"5.【總經連動建議】在{regime}市場下，ETF佈局應如何因應",
             f"⚠️ 僅供學術研究與教育用途，非投資建議，盈虧自負",
         ]
-        full_prompt = '\n'.join(sections)
+        _base_prompt = '\n'.join(sections)
 
         if st.button('🤖 生成 ETF 綜合 AI 評斷', key='etf_ai_comp_btn', use_container_width=True):
             if not gemini_fn:
                 st.warning('⚠️ 請設定 GEMINI_API_KEY 才能使用 AI 功能')
             else:
+                # 收集本頁所有 ETF ticker，抓取各自新聞
+                _comp_tickers = []
+                if single_d:
+                    _comp_tickers.append((single_d['ticker'], single_d.get('name', '')))
+                if port_d:
+                    for _rr in port_d.get('rows', [])[:3]:
+                        _tk = _rr.get('ticker', '')
+                        if _tk and (_tk, '') not in _comp_tickers:
+                            _comp_tickers.append((_tk, ''))
+                if backtest_d:
+                    for _tk in list(backtest_d.get('weights', {}).keys())[:3]:
+                        if (_tk, '') not in _comp_tickers:
+                            _comp_tickers.append((_tk, ''))
+                _comp_news_lines = []
+                for _tk, _nm in _comp_tickers[:4]:
+                    _nn = _fetch_news_for(_tk, _nm, 2)
+                    if _nn and _nn != '（暫無相關新聞）':
+                        _comp_news_lines.append(f'[{_tk}]\n{_nn}')
+                _comp_news_str = '\n'.join(_comp_news_lines) if _comp_news_lines else '（暫無相關新聞）'
+                full_prompt = _base_prompt + f'\n\n【近期各ETF相關新聞】\n{_comp_news_str}'
                 with st.spinner('AI 整合分析中...'):
                     result = gemini_fn(full_prompt, max_tokens=1500)
                 if result and not result.startswith('⚠️'):

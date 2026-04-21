@@ -1330,6 +1330,40 @@ def _fetch_macro_news(n: int = 5) -> list:
     return _out[:n]
 
 
+def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5) -> list:
+    """抓取個股相關新聞（Google News RSS 中英文雙搜尋）。失敗時回傳空串列。"""
+    try:
+        import feedparser as _fp, html as _h, re as _re2
+    except ImportError:
+        return []
+    _q_tw = f"{stock_id} {stock_name}".strip()
+    _q_en = f"Taiwan stock {stock_id} {stock_name}".strip()
+    _feeds = [
+        ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_q_tw}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
+        ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_q_en}&hl=en-US&gl=US&ceid=US:en'),
+    ]
+    _out = []
+    for _src, _url in _feeds:
+        try:
+            _fd = _fp.parse(_url)
+            for _e in _fd.entries:
+                _title = _h.unescape(_e.get('title', '')).strip()
+                _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
+                _summ  = _re2.sub(r'<[^>]+>', '', _summ)[:150].strip()
+                _pub   = str(_e.get('published', ''))[:16]
+                if _title:
+                    _out.append({'title': _title, 'summary': _summ,
+                                 'source': _src, 'published': _pub})
+                if len(_out) >= n:
+                    break
+            print(f'[StockNews/{_src}] ✅ {stock_id} 累計 {len(_out)} 則')
+        except Exception as _ne:
+            print(f'[StockNews/{_src}] ❌ {_ne}')
+        if len(_out) >= n:
+            break
+    return _out[:n]
+
+
 def _build_llm_context(macro_info: dict) -> str:
     """將 session_state 中的量化總經數據格式化為純文字供 LLM 使用"""
     _vix = macro_info.get('vix') or {}
@@ -6855,6 +6889,12 @@ padding:12px 16px;margin:8px 0;">
                 f"大盤格局={_regime_txt2} | 健康評分={_mkt_info2.get('market_score','N/A')} | "
                 f"建議持股={_mkt_info2.get('exposure_limit_pct', st.session_state.get('macro_state',{}).get('exposure_limit_pct','N/A'))}%"
             )
+            # ── 抓取個股新聞 ──────────────────────────────────────
+            _stock_news2 = _fetch_stock_news(sid2, name2, 5)
+            _news_str2 = '\n'.join(
+                f'- {_n["title"]}（{_n.get("source","RSS")} · {_n.get("published","")}）'
+                for _n in _stock_news2
+            ) if _stock_news2 else '（暫無相關個股新聞）'
             # ── 建構新版 Prompt ───────────────────────────────────
             _ai_sum_prompt = f"""你是一位擁有 20 年經驗、精通量化分析與價值投資的「資深首席投資策略師」。你的分析風格冷靜、精準，且強調風險控管。
 
@@ -6871,6 +6911,9 @@ padding:12px 16px;margin:8px 0;">
 
 【財報體檢（MJ林明樟體系）】
 {_health_check_str2}
+
+【近期相關新聞】（RSS 即時，供輔助研判，不作為唯一依據）
+{_news_str2}
 
 【總體經濟背景】
 {_mkt_ctx2}
@@ -7811,6 +7854,18 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             _reg_p = st.session_state.get('mkt_info', {}).get('regime', 'neutral')
             _reg_txt_p = '多頭市場（積極操作）' if _reg_p == 'bull' else ('空頭市場（縮減部位）' if _reg_p == 'bear' else '震盪整理（謹慎觀望）')
             _exp_p = st.session_state.get('macro_state', {}).get('exposure_limit_pct', 'N/A')
+            # ── 抓取組合中各股個別新聞（最多前4檔，每檔2則）──────────
+            _t3_news_lines = []
+            for _rp_n in results_t3[:4]:
+                _sid_n = _rp_n.get('stock_id', _rp_n.get('代碼',''))
+                _nm_n  = _rp_n.get('stock_name', _rp_n.get('名稱', _sid_n))
+                _nn    = _fetch_stock_news(_sid_n, _nm_n, 2)
+                _nn_lines = '\n'.join(
+                    f'  - {_ni["title"]}（{_ni.get("published","")}）'
+                    for _ni in _nn
+                ) if _nn else '  （暫無新聞）'
+                _t3_news_lines.append(f'[{_sid_n} {_nm_n}]\n{_nn_lines}')
+            _t3_news_str = '\n'.join(_t3_news_lines) if _t3_news_lines else '（暫無相關新聞）'
             _prompt_parts = [
                 "你是一位掌管百億資金的「台股資深基金經理人」與「量化策略師」。",
                 "專長是從投資組合高度進行資金效能最大化、汰弱留強與風險對沖。分析冷靜、客觀。",
@@ -7820,6 +7875,9 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                 "",
                 "投資組合數據：",
             ] + _port_lines + [
+                "",
+                "【近期各股相關新聞】（RSS即時，輔助研判用）",
+                _t3_news_str,
                 "",
                 "請依以下格式輸出《投資組合戰略優化報告》：",
                 "",
