@@ -1529,7 +1529,9 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
-                             "應收帳款，淨額", "貿易應收款"])
+                             "應收帳款，淨額", "貿易應收款",
+                             "應收款項", "應收款項合計", "應收帳款及其他應收款",
+                             "ReceivablesNet", "NetReceivables"])
     ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
                              "NoteAndAccountsPayable", "應付帳款及票據應付款",
                              "應付票據及帳款", "貿易應付款"])
@@ -1573,6 +1575,52 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     if liab == 0 and assets > 0 and equity > 0:
         liab = max(assets - equity, 0)
         print(f"[fetch_fin] {stock_id} 負債欄位查無資料，改用 資產-權益 計算: {round(liab/1e3)}千")
+
+    # ── yfinance 備援：對仍為零的關鍵欄位嘗試補值 ────────────────────────
+    if ar == 0 or liab == 0 or assets == 0:
+        try:
+            import yfinance as _yf_ffs, pandas as _pd_yf_ffs
+            _yf_bs_df = None
+            for _sfx_yf in (".TW", ".TWO"):
+                _tk_yf = _yf_ffs.Ticker(f"{stock_id}{_sfx_yf}")
+                _qbs_yf = getattr(_tk_yf, "quarterly_balance_sheet", None)
+                if _qbs_yf is not None and not _qbs_yf.empty:
+                    _yf_bs_df = _qbs_yf
+                    break
+            if _yf_bs_df is not None and not _yf_bs_df.empty:
+                _yfc = _yf_bs_df.columns[0]
+                def _yf_v(*_keys_yf):
+                    for _k in _keys_yf:
+                        for _idx in _yf_bs_df.index:
+                            if _k.lower() in str(_idx).lower():
+                                try:
+                                    _v = float(_yf_bs_df.loc[_idx, _yfc])
+                                    if _pd_yf_ffs.notna(_v) and _v != 0:
+                                        return _v
+                                except Exception:
+                                    pass
+                    return 0.0
+                _filled_yf = []
+                if assets == 0:
+                    _va = _yf_v("total assets")
+                    if _va > 0:
+                        assets = _va; _filled_yf.append("assets")
+                if liab == 0:
+                    _vl = _yf_v("total liab", "total liabilities")
+                    if _vl > 0:
+                        liab = _vl; _filled_yf.append("liab")
+                if ar == 0:
+                    _var = _yf_v("net receivables", "accounts receivable", "receivables")
+                    if _var > 0:
+                        ar = _var; _filled_yf.append("ar")
+                if _filled_yf:
+                    print(f"[fetch_fin] {stock_id} yfinance備援補值 {_filled_yf}: "
+                          f"assets={assets:.0f} liab={liab:.0f} ar={ar:.0f} 千")
+                    # 若 yfinance 補了 assets/equity，再試一次 IFRS identity
+                    if liab == 0 and assets > 0 and equity > 0:
+                        liab = max(assets - equity, 0)
+        except Exception as _e_yf:
+            print(f"[fetch_fin] {stock_id} yfinance備援異常: {_e_yf}")
 
     _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab), ("equity", equity)] if v == 0]
     if _zero_fields:
