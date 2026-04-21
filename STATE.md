@@ -2,18 +2,23 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.5 | main `66fb06b`
-- **最新異動**: Bug Fix — 財報體檢 AI 失效降級 + token 缺失警告
+- **版本**: v9.6 | main `534a6a6`
+- **最新異動**: 財報體檢改為純計算架構 + UI 修復三項
 
-## ✅ 已完成任務：Bug Fix 財報體檢 N/A + AI 失效（v9.5，commit 66fb06b）
+## ✅ 已完成任務：財報體檢重構 + UI 修復（v9.6，commits b6c5ca4 → 534a6a6）
 
-| 項目 | 內容 |
-|------|------|
-| `financial_health_engine.py` | 新增 `_derive_basic_from_fin_data()`：AI 失效時直接從 fin_data 計算基礎指標 |
-| AI 失效降級 | `analyze_financial_health()` exception 路徑改為回傳基礎計算（不帶 `error:True`），避免 tab2/tab3 整個體檢區塊空白 |
-| `app.py` Tab3 | 批次體檢前置 token 檢查：未設定 FINMIND_TOKEN/GEMINI_API_KEY 時顯示明確 warning |
-| `data_loader.py` | FinMind 非 200 回應加印 status+msg，便於 debug N/A 原因 |
-| Bug 根因 | FINMIND_TOKEN 失效 → FinMind 返回非200 → empty data → `{"error":...}` → FAIL_SAFE |
+| commit | 項目 | 內容 |
+|--------|------|------|
+| `b6c5ca4` | tab1 市場狀態欄 | `_is_refreshing=True` 時不渲染頂部紅綠燈，避免顯示舊快取數據 |
+| `b6c5ca4` | tab2 移除 AI 財務長報告 | 刪除 AI CFO 區塊；AI 首席顧問 prompt 升級五步驟，整合 OPM/地雷警示 |
+| `b066087` | 6 子模組降級修復 | 每個子模組 AI 失效時呼叫對應 `_no_ai_*()` 降級函式，修正 shallow copy bug |
+| `534a6a6` | **財報體檢純計算重構** | `analyze_financial_health()` 完全移除 AI 呼叫（從 ~30 秒降為 <1 秒）；AI 僅在使用者點擊「生成 AI 首席顧問戰略評估報告」時觸發，一次性傳入五維資料給 Gemini 綜合分析 |
+
+### 新架構說明
+- **資料載入階段**：純 FinMind 抓取 + 數學計算，無任何 AI 呼叫
+- **6 個 `_no_ai_*()` 函式**：Survival/Operating/Profitability/Financial_Structure/Solvency/Advanced_Diagnostic 各自直接從 `fin_data` 計算
+- **AI 觸發點**：使用者主動點擊按鈕 → 傳入技術面+籌碼+基本面+財報體檢+總經 五維資料 → Gemini 一次性綜合報告
+
 
 ## ✅ 已完成任務：MJ 財報體檢 Part 6 綜合診斷模組（v9.4，commit 4aa2157）
 
