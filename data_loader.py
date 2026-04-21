@@ -1507,17 +1507,23 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
 
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
-    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
+    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額",
+                             "負債及權益總計"])
     cur_assets = _v(_bs, _lat, ["CurrentAssets", "流動資產合計", "流動資產總計", "流動資產"])
-    cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債"])
+    cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債總計", "流動負債"])
     ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
-                             "NoteAndAccountsReceivable", "應收帳款及票據應收款"])
+                             "NoteAndAccountsReceivable", "應收帳款及票據應收款",
+                             "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
+                             "應收帳款，淨額", "貿易應收款"])
     ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
-                             "NoteAndAccountsPayable", "應付帳款及票據應付款"])
+                             "NoteAndAccountsPayable", "應付帳款及票據應付款",
+                             "應付票據及帳款", "貿易應付款"])
     inv    = _v(_bs, _lat, ["Inventories", "存貨", "存貨淨額"])
     inv_p  = _v(_bs, _prv, ["Inventories", "存貨", "存貨淨額"])
     ppe    = _v(_bs, _lat, ["PropertyPlantAndEquipmentNet", "不動產、廠房及設備淨額",
-                             "固定資產淨額", "不動產廠房及設備"])
+                             "固定資產淨額", "不動產廠房及設備",
+                             "PropertyPlantAndEquipment", "不動產廠房及設備淨額",
+                             "不動產、廠房及設備"])
     lt_inv = _v(_bs, _lat, ["LongTermInvestments", "長期投資", "採權益法之投資"])
 
     ocf    = _v(_cf, _lat, ["CashFlowsFromOperatingActivities",
@@ -1540,6 +1546,15 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     ar_p   = _v(_bs, _prv, ["AccountsReceivable", "應收帳款淨額", "應收帳款"])
     equity = _v(_bs, _lat, ["TotalEquity", "權益總額", "股東權益合計",
                              "TotalStockholdersEquity", "股東權益總額"])
+    # Fallback: Assets = Liabilities + Equity (IFRS identity)
+    if liab == 0 and assets > 0 and equity > 0:
+        liab = max(assets - equity, 0)
+        print(f"[fetch_fin] {stock_id} 負債欄位查無資料，改用 資產-權益 計算: {round(liab/1e3)}千")
+
+    _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab)] if v == 0]
+    if _zero_fields:
+        _avail = list((_bs.get(_lat) or {}).keys())[:30]
+        print(f"[fetch_fin] {stock_id} 零值欄位={_zero_fields} 可用BS欄位(前30)={_avail}")
 
     cash_ratio = round(cash / assets * 100, 1) if assets > 0 else 0
     debt_ratio = round(liab / assets * 100, 1) if assets > 0 else 0
