@@ -2,8 +2,21 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.7 | main `7fe9155`
-- **最新異動**: FinMind BS 欄位擴充 + 所有 AI 按鈕整合即時個股/ETF 新聞
+- **版本**: v9.8 | main `fd87779`
+- **最新異動**: 財報健檢全面修復（DSO/負債比/以長支長/equity 系統性零值問題）
+
+## ✅ 已完成任務：財報健檢系統性零值修復（v9.8，commits c3ef0f0 → fd87779）
+
+| commit | 項目 | 內容 |
+|--------|------|------|
+| `c3ef0f0` | **equity 欄位擴充 + 理智校驗** | 新增 EquityAttributableToOwnersOfParent / 歸屬於母公司業主之權益合計 / 權益合計 別名；equity < 0.1% of assets 時改用 assets−liab 重算，防止子項目誤配 |
+| `e6a2bb1` | **DSO/以長支長誤判修復** | `ar==0` 時 DSO 改顯示 N/A（避免誤判為 Pass）；`eq < ppe×0.001` 時以長支長改 N/A（避免 0% 誤報短債長投）；Tab2+Tab3 UI 補 N/A 灰色處理 |
+| `fd87779` | **負債比率全部 N/A 根本修復** | FinMind 不提供「負債合計」彙總行，改用 `cur_liab + non_cur_liab` 相加；移除錯誤的「負債及權益總計」別名 |
+
+### 修復後預期行為
+- **負債佔資產比率**：正常顯示（之前全部 N/A 是因 FinMind 無彙總行）
+- **收現速度/DSO**：查無 AR 資料時顯示灰色 N/A，不誤判為 Pass
+- **以長支長**：equity 異常時顯示 N/A，不誤報「短債長投」紅燈
 
 ## ✅ 已完成任務：FinMind 欄位擴充 + AI 新聞整合（v9.7，commits 21aa9ba → 7fe9155）
 
