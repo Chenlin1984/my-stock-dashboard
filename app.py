@@ -6690,15 +6690,17 @@ padding:12px 16px;margin:8px 0;">
                     # 2 以長支長比率
                     _ltf2 = _fstr2.get('Long_Term_Funding_Ratio', {})
                     _ltf2_s = _ltf2.get('Status', '')
-                    _ltf2_c = '#3fb950' if _ltf2_s == 'Pass' else '#f85149'
+                    _ltf2_c = '#3fb950' if _ltf2_s == 'Pass' else ('#8b949e' if _ltf2_s == 'N/A' else '#f85149')
+                    _ltf2_label = ('✅ 資金配置正確（>100%）' if _ltf2_s == 'Pass'
+                                   else ('⚪ 資料不足，無法判斷' if _ltf2_s == 'N/A'
+                                         else '🔴 短債長投！資金鏈危機'))
                     with _fs2c[1]:
                         st.markdown(
                             f'<div style="background:{_ltf2_c}18;border:1px solid {_ltf2_c}55;'
                             f'border-radius:10px;padding:14px;text-align:center;">'
                             f'<div style="font-size:11px;color:#8b949e;">以長支長比率</div>'
                             f'<div style="font-size:26px;font-weight:900;color:{_ltf2_c};">{_ltf2.get("Value","N/A")}</div>'
-                            f'<div style="font-size:11px;color:{_ltf2_c};">'
-                            f'{"✅ 資金配置正確（>100%）" if _ltf2_s=="Pass" else "🔴 短債長投！資金鏈危機"}'
+                            f'<div style="font-size:11px;color:{_ltf2_c};">{_ltf2_label}'
                             f'</div></div>', unsafe_allow_html=True)
                     if _fstr2.get('Final_Insight'):
                         st.caption(f'🏗️ {_fstr2["Final_Insight"]}')
@@ -7714,7 +7716,10 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div></div>', unsafe_allow_html=True)
                     _ltf_f = _fstr_f.get('Long_Term_Funding_Ratio', {})
                     _ltf_f_s = _ltf_f.get('Status', '')
-                    _ltf_f_c = '#3fb950' if _ltf_f_s == 'Pass' else '#f85149'
+                    _ltf_f_c = '#3fb950' if _ltf_f_s == 'Pass' else ('#8b949e' if _ltf_f_s == 'N/A' else '#f85149')
+                    _ltf_f_label = ('✅ 資金配置正確' if _ltf_f_s == 'Pass'
+                                    else ('⚪ 資料不足' if _ltf_f_s == 'N/A'
+                                          else '🔴 短債長投危機'))
                     with _fsf2c[1]:
                         st.markdown(
                             f'<div style="background:{_ltf_f_c}18;border:1px solid {_ltf_f_c}55;'
@@ -7722,7 +7727,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'<div style="font-size:10px;color:#8b949e;">以長支長比率</div>'
                             f'<div style="font-size:20px;font-weight:900;color:{_ltf_f_c};">{_ltf_f.get("Value","N/A")}</div>'
                             f'<div style="font-size:10px;color:{_ltf_f_c};">'
-                            f'{"✅ 資金配置正確" if _ltf_f_s=="Pass" else "🔴 短債長投危機"}'
+                            f'{_ltf_f_label}'
                             f'</div></div>', unsafe_allow_html=True)
                     if _fstr_f.get('Final_Insight'):
                         st.caption(f'🏗️ {_fstr_f["Final_Insight"]}')

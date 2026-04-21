@@ -448,13 +448,23 @@ def _no_ai_financial_structure(fd: dict) -> dict:
     lt_liab = fd.get("非流動負債(千)", 0) or 0
     ppe = fd.get("固定資產(千)", 0) or 0
     if ppe > 0:
-        lt_ratio = round((eq + lt_liab) / ppe * 100, 1)
-        lt_st = "Pass" if lt_ratio >= 100 else "Fail"
-        lt_val = f"{lt_ratio:.1f}%"
+        if eq == 0 and lt_liab == 0:
+            # equity 查找失敗，避免誤報「短債長投」
+            lt_st, lt_val = "N/A", "N/A (股東權益資料不足)"
+        else:
+            lt_ratio = round((eq + lt_liab) / ppe * 100, 1)
+            lt_st = "Pass" if lt_ratio >= 100 else "Fail"
+            lt_val = f"{lt_ratio:.1f}%"
     else:
         lt_st, lt_val = "Pass", "N/A (輕資產)"
+    # debt=0 且無法推算時標記為資料不足，避免誤顯「穩健 0%」
+    if debt == 0:
+        debt_st, debt_val = "N/A", "N/A (負債資料不足)"
+    else:
+        debt_st = "Pass" if debt < 60 else ("Warning" if debt <= 70 else "Fail")
+        debt_val = f"{debt:.1f}%"
     return {"Financial_Structure_Module": {
-        "Debt_Ratio": {"Value": f"{debt:.1f}%", "Status": "Pass" if debt < 60 else ("Warning" if debt <= 70 else "Fail")},
+        "Debt_Ratio": {"Value": debt_val, "Status": debt_st},
         "Long_Term_Funding_Ratio": {"Value": lt_val, "Status": lt_st},
         "Final_Insight": "原始數據直接計算（無 AI 分析）",
     }}

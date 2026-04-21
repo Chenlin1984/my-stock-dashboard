@@ -1545,13 +1545,17 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     rev_p  = _v(_is, _prv, ["Revenue", "營業收入合計", "營業收入"])
     ar_p   = _v(_bs, _prv, ["AccountsReceivable", "應收帳款淨額", "應收帳款"])
     equity = _v(_bs, _lat, ["TotalEquity", "權益總額", "股東權益合計",
-                             "TotalStockholdersEquity", "股東權益總額"])
+                             "TotalStockholdersEquity", "股東權益總額",
+                             "EquityAttributableToOwnersOfParent",
+                             "歸屬於母公司業主之權益合計",
+                             "歸屬於母公司業主之權益",
+                             "權益合計"])
     # Fallback: Assets = Liabilities + Equity (IFRS identity)
     if liab == 0 and assets > 0 and equity > 0:
         liab = max(assets - equity, 0)
         print(f"[fetch_fin] {stock_id} 負債欄位查無資料，改用 資產-權益 計算: {round(liab/1e3)}千")
 
-    _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab)] if v == 0]
+    _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab), ("equity", equity)] if v == 0]
     if _zero_fields:
         _avail = list((_bs.get(_lat) or {}).keys())[:30]
         print(f"[fetch_fin] {stock_id} 零值欄位={_zero_fields} 可用BS欄位(前30)={_avail}")
