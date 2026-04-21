@@ -2,8 +2,24 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.14）
-- **版本**: v9.6 | main `534a6a6`
-- **最新異動**: 財報體檢改為純計算架構 + UI 修復三項
+- **版本**: v9.7 | main `7fe9155`
+- **最新異動**: FinMind BS 欄位擴充 + 所有 AI 按鈕整合即時個股/ETF 新聞
+
+## ✅ 已完成任務：FinMind 欄位擴充 + AI 新聞整合（v9.7，commits 21aa9ba → 7fe9155）
+
+| commit | 項目 | 內容 |
+|--------|------|------|
+| `21aa9ba` | **data_loader BS 欄位擴充** | `ar` 新增 5 個別名（應收票據及帳款/貿易應收款等）；`ppe` 新增 3 個別名；`liab` 加入「資產-權益」IFRS 恆等式兜底計算；新增零值欄位 debug log，印出可用 BS key 前 30 個 |
+| `7fe9155` | **所有 AI 按鈕整合即時新聞** | Tab2 個股首席顧問：新增 `_fetch_stock_news(stock_id, name, 5)` 抓個股 Google News RSS；Tab3 投資組合：組合前 4 檔個股各抓 2 則新聞；ETF Tab⑥⑦⑧⑨ 各按鈕：新增 `_fetch_news_for(ticker, name)` 抓對應 ETF 新聞 |
+
+### 新聞整合架構
+- **個股（Tab2）**：Google News RSS 搜尋 `{stock_id} {stock_name}`（中/英文雙路），最新 5 則
+- **投資組合（Tab3）**：組合前 4 檔各自搜尋，每檔最新 2 則
+- **ETF 單一診斷（Tab⑥）**：搜尋該 ETF ticker + name
+- **ETF 組合/回測（Tab⑦⑧）**：各持倉 ETF 各抓 2 則
+- **ETF 綜合評斷（Tab⑨）**：彙整全部分頁 ETF ticker 去重後抓取
+- **觸發時機**：使用者點擊 AI 按鈕時才抓取（不影響頁面載入速度）
+- **降級機制**：feedparser 未安裝 / 網路失敗 → 回傳「暫無相關新聞」，不中斷主程式
 
 ## ✅ 已完成任務：財報體檢重構 + UI 修復（v9.6，commits b6c5ca4 → 534a6a6）
 
