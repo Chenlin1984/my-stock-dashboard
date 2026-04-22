@@ -18,6 +18,9 @@ temp/
 *.csv
 *.xlsx
 
+# Runtime state (generated at runtime, must not be committed)
+macro_state.json
+
 # Test coverage
 .coverage
 htmlcov/
