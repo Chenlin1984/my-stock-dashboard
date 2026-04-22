@@ -6772,15 +6772,30 @@ padding:12px 16px;margin:8px 0;">
                         f'border-radius:10px;padding:10px 16px;margin-bottom:10px;">'
                         f'<span style="font-size:14px;font-weight:900;color:{_sv2_bc};">'
                         f'{_sv2_icon} {_sv2_v}</span></div>', unsafe_allow_html=True)
-                    # 兩比率卡片
+                    # 保命符：嚴格限定 Final_Solvency_Verdict 含「條件B：天天收現」才算啟動
+                    _is_dso_exception = "條件B：天天收現" in _sv2_v
+                    # 兩比率卡片（保命符啟動時流動比率放寬至 >150%）
                     _sv2c = st.columns(2)
                     for _col, (_key, _label, _thresh) in zip(_sv2c, [
-                        ('Current_Ratio', '流動比率（MJ嚴格 >300%）', 300),
-                        ('Quick_Ratio',   '速動比率（MJ嚴格 >150%）', 150),
+                        ('Current_Ratio',
+                         '流動比率（保命符放寬 >150%）' if _is_dso_exception else '流動比率（MJ嚴格 >300%）',
+                         150 if _is_dso_exception else 300),
+                        ('Quick_Ratio', '速動比率（MJ嚴格 >150%）', 150),
                     ]):
                         _si = _solv2.get(_key, {})
                         _si_s = _si.get('Status', '')
-                        _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
+                        # 保命符啟動時，重新以放寬閾值判定流動比率顏色與標籤
+                        if _key == 'Current_Ratio' and _is_dso_exception:
+                            try:
+                                _cr_num = float(_si.get('Value', '0').replace('%', '').strip())
+                                if _cr_num > _thresh:
+                                    _si_c, _si_s = '#3fb950', f'Pass（保命符 >{_thresh}%）'
+                                else:
+                                    _si_c = '#f85149'
+                            except (ValueError, AttributeError):
+                                _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
+                        else:
+                            _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
                         with _col:
                             st.markdown(
                                 f'<div style="background:{_si_c}18;border:1px solid {_si_c}55;'
@@ -6789,8 +6804,9 @@ padding:12px 16px;margin:8px 0;">
                                 f'<div style="font-size:24px;font-weight:900;color:{_si_c};">{_si.get("Value","N/A")}</div>'
                                 f'<div style="font-size:11px;color:{_si_c};">{_si_s}</div>'
                                 f'</div>', unsafe_allow_html=True)
-                    if _solv2.get('Cross_Validation_Applied') == 'Yes':
-                        st.info('🔍 已啟動收現行業交叉驗證保命符')
+                    # Banner：只有 DSO ≤ 15 的天天收現例外才顯示
+                    if _is_dso_exception:
+                        st.info('🔍 已啟動收現行業交叉驗證保命符（DSO ≤ 15天，流動比率門檻放寬至 >150%）')
                     if _solv2.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv2["Final_Insight"]}')
 
