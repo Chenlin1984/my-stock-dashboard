@@ -1547,8 +1547,11 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     if assets == 0 and (cur_assets > 0 or _non_cur_assets > 0):
         assets = cur_assets + _non_cur_assets
         print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
-    # AR：優先加總分開列示的應收票據+帳款+關係人，再 fallback 聯合別名
+    # AR：L1 先加總分開列示的票據+帳款+關係人（避免與合計行重疊）
     ar = _vsum(_bs, _lat, ["應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項"])
+    # L2 若 L1 = 0，改抓合併列示的合計行（不與 L1 混加，避免重複計算）
+    if ar == 0:
+        ar = _vsum(_bs, _lat, ["應收票據及應收帳款", "應收帳款"])
     if ar == 0:
         ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",

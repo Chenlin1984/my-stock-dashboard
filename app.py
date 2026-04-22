@@ -6621,8 +6621,15 @@ padding:12px 16px;margin:8px 0;">
                 if _oper2:
                     st.markdown('#### ⚙️ 經營能力診斷（周轉效率 + 資金壓力）')
                     _oc1, _oc2, _oc3, _oc4 = st.columns(4)
-                    _opm_yes = _oper2.get('OPM_Strategy', 'No') == 'Yes'
-                    _ccc_color = '#3fb950' if _opm_yes else '#d29922'
+                    _ccc_str = str(_oper2.get('Cash_Gap_Days', 'N/A'))
+                    try:
+                        _ccc_num = float(_ccc_str.split()[0].replace('天', '').strip())
+                        _ccc_is_num = True
+                    except (ValueError, AttributeError):
+                        _ccc_num, _ccc_is_num = 0.0, False
+                    # OPM 護城河：引擎判定 Yes 且 CCC 為實質負數，兩者同時成立才顯示
+                    _opm_yes = (_oper2.get('OPM_Strategy', 'No') == 'Yes') and _ccc_is_num and (_ccc_num < 0)
+                    _ccc_color = '#3fb950' if _opm_yes else ('#8b949e' if not _ccc_is_num else '#d29922')
                     with _oc1:
                         st.metric('DSO 應收天數', _oper2.get('DSO', 'N/A'))
                     with _oc2:
@@ -6643,7 +6650,7 @@ padding:12px 16px;margin:8px 0;">
                             f'<div style="background:#161b22;border-radius:8px;padding:10px;">'
                             f'<div style="font-size:11px;color:#8b949e;">缺錢天數 (CCC)</div>'
                             f'<div style="font-size:18px;font-weight:900;color:{_ccc_color};">{_oper2.get("Cash_Gap_Days","N/A")}</div>'
-                            f'<div style="font-size:11px;color:{_ccc_color};">{"✅ OPM護城河：拿別人的錢做生意" if _opm_yes else "⚠️ 需自備營運資金"}</div>'
+                            f'<div style="font-size:11px;color:{_ccc_color};">{"✅ OPM護城河：拿別人的錢做生意" if _opm_yes else ("⚪ CCC 資料不足" if not _ccc_is_num else "⚠️ 需自備營運資金")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _oper2.get('Verdict'):
                         st.caption(f'💡 {_oper2["Verdict"]}')
