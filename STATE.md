@@ -32,17 +32,30 @@
 | **DSO/AR 別名擴充** | 新增 `合約資產`、`工程應收款`、`應收票據及應收帳款` 等建設業科目 |
 | **data_loader 回傳欄位** | `fetch_fin_data` 加入 `is_finance` 欄位供下游模組使用 |
 
-### 測試覆蓋率最終結果（commit `92cbb2b`）
+### 新增模組（commit `792a7e5`）
+| 檔案 | 說明 |
+|------|------|
+| `tw_stock_data_fetcher.py` | Proxy-aware 台股財報抓取模組（Goodinfo/MOPS 備援，501行）；`fetch_tw_financials()` 公開 API，與 `data_loader.fetch_fin_data()` 格式相容 |
+
+### PR 批次覆蓋率分析結果
+| 檔案 | 變動行數 | 測試缺口 | 處置 |
+|------|---------|---------|------|
+| `financial_health_engine.py` | 51 | B項3路徑、is_finance 6路徑、debt fallback 6路徑 | ✅ 新增 17 tests |
+| `scoring_engine.py` | 11 | 無（existing test 已覆蓋新 early-return）| ✅ 已驗證 |
+| `data_loader.py` | 9 | 無（alias 擴充 + is_finance key，整合測試範疇）| ✅ 已驗證 |
+
+### 測試覆蓋率最終結果（commit `92cbb2b` → `84a6027`）
 
 | 模組 | 原始 | 最終 | 新增測試 |
 |------|------|------|---------|
 | `scoring_engine.py` | 50% | **96%** | +168 |
 | `macro_state_locker.py` | 78% | **100%** | +18 |
 | `macro_alert.py` | 67% | **90%** | +10 |
+| `financial_health_engine.py` | 0% | **PR分支覆蓋** | +17 |
 | `risk_control.py` | 95% | 95% | — |
-| **整體** | **60%** | **96%** | **+196** |
+| **整體** | **60%** | **96%+** | **+213** |
 
-總測試數：295 → **409**（全部通過）
+總測試數：295 → **426**（全部通過）
 
 #### `scoring_engine.py` 新增測試類別
 - `TestCalcQualityScore` — 7 情境（None/GM↑Rev↑優質/GM↓Rev↓弱/GM→Rev↑穩健）
