@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.7 | main `769f945`
+- **版本**: v10.8 | main `d4cc9ee`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,23 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.8，main `d4cc9ee`）
+
+### `app.py` UI 層 3 個狀態判定 Bug 修復（commit `d4cc9ee`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **ROE 負值誤判真實獲利** | Tab2/Tab3 ROE 卡片 | 新增數值解析，`ROE <= 0` → `❌ 本業虧損`（紅燈） |
+| **OPM 護城河被 DSO=0 誤觸** | Tab2 OPM 商業話語權 | 移除 `_p_days > _r_days` 旁路；`_r_days==0` → info 缺漏提示 |
+| **N/A 誤標「特許行業」** | Tab2/Tab3 負債比率卡片 | `else "特許行業"` → 按 Value 字串區分「🏦 特許行業 / ⚪ 資料缺漏」 |
+
+### `ARCHITECTURE.md` 技術規格書完成（v6.5）
+| 章節 | 說明 |
+|------|------|
+| §1 目錄結構 | 專案根目錄樹、各層職責、程式碼規模（1.4） |
+| §2 分層架構 | L0–L5 六層設計、跨層依賴矩陣、環境變數 |
+| §3 資料流向 | Session State 架構、個股/ETF/市場三大流程、資料新鮮度 |
+| §4 核心函式 I/O | 8 模組 30+ 函式輸入/輸出/副作用表格（L1–L5 + app.py） |
 
 ## ✅ 最新異動（v10.7，main `769f945`）
 
