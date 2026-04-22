@@ -304,11 +304,15 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         cash_status, cash_icon = "Fail", "🔴"
 
     ocf_k = fin_data.get("OCF(千)", 0) or 0
-    ocf_b = round(ocf_k / 1e6, 2)
+    ocf_yi = round(ocf_k / 1e5, 2)   # 千 → 億（÷100,000）
     ocf_icon = "🟢" if ocf_k > 0 else "🔴"
 
-    debt_pct = fin_data.get("負債比率(%)", 0) or 0
-    if debt_pct <= 40:
+    # debt_pct=0 可能是資料缺漏，不可直接判綠燈
+    debt_pct = fin_data.get("負債比率(%)")
+    if not debt_pct:
+        debt_icon = "⚪"
+        debt_pct = 0
+    elif debt_pct <= 40:
         debt_icon = "🟢"
     elif debt_pct <= 60:
         debt_icon = "🟡"
@@ -350,9 +354,9 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
 
     radar = {
         "存活能力": _score(cash_pct, [(25, 80), (10, 60)]),
-        "經營能力": _score(ap_days - ar_days, [(10, 80), (0, 60), (-30, 40)]),
+        "經營能力": _score(ap_days - ar_days if ar_days > 0 else -999, [(10, 80), (0, 60), (-30, 40)]),
         "獲利能力": _score(gm, [(40, 80), (20, 60), (10, 40)]),
-        "財務結構": _score(100 - debt_pct, [(60, 80), (40, 60), (20, 40)]),
+        "財務結構": _score(100 - debt_pct if debt_pct > 0 else -999, [(60, 80), (40, 60), (20, 40)]),
         "償債能力": 60 if ocf_k > 0 else 30,
     }
 
@@ -360,13 +364,13 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         "cash_ratio_status": cash_icon,
         "cash_ratio_value": f"{cash_pct}%",
         "ocf_status": ocf_icon,
-        "ocf_value": f"{ocf_b}B",
+        "ocf_value": f"{ocf_yi}億",
         "debt_ratio_status": debt_icon,
         "debt_ratio_value": f"{debt_pct}%",
         "radar_scores": radar,
         "business_model_dna": dna,
         "opm_data": {"payable_days": ap_days, "receivable_days": ar_days,
-                     "advantage": ap_days > ar_days},
+                     "advantage": ar_days > 0 and ap_days > ar_days},
         "ai_insight": "⚠️ AI 服務暫時不可用，以下為原始財報數據直接計算結果（無 AI 分析）。",
         "red_flags": "None",
     }
@@ -442,7 +446,10 @@ def _no_ai_operating(fd: dict) -> dict:
     cycle_str = f"{round(ar + dio, 1):.1f} 天" if ar > 0 else f"N/A (DSO缺失，DIO={dio:.1f}天)"
     gap_str   = f"{round(ar + dio - ap, 1):.1f} 天" if ar > 0 else "N/A (DSO缺失)"
     at = round(rev / assets, 2) if assets > 0 else 0
-    opm = "Yes" if ap > ar else "No"
+    if ar <= 0:
+        opm = "N/A (DSO缺失，無法判定)"
+    else:
+        opm = "Yes" if ap > ar else "No"
     return {"Operating_Module": {
         "DSO": dso_str, "DIO": f"{dio:.1f} 天", "DPO": f"{ap:.1f} 天",
         "Complete_Cycle": cycle_str, "Cash_Gap_Days": gap_str,
