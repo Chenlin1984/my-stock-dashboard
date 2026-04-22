@@ -6563,11 +6563,13 @@ padding:12px 16px;margin:8px 0;">
                     _p_days = _opm.get('payable_days', 0)
                     _r_days = _opm.get('receivable_days', 0)
                     _adv = _opm.get('advantage', False)
-                    if _adv or _p_days > _r_days:
+                    if _adv:
                         st.success(
                             f'👑 具備快收慢付優勢\n\n'
                             f'應付帳款 **{_p_days}天** > 應收帳款 **{_r_days}天**'
                         )
+                    elif _r_days == 0:
+                        st.info('DSO (應收帳款天數) 資料缺漏，無法判定 OPM 護城河')
                     else:
                         st.warning(
                             f'⚠️ 營運資金壓力較大\n\n'
@@ -6702,14 +6704,19 @@ padding:12px 16px;margin:8px 0;">
                     # 5 ROE
                     _roe2 = _prof2.get('ROE', {})
                     _roe2_warn = _roe2.get('Leverage_Warning', 'None') != 'None'
-                    _roe2_c = '#d29922' if _roe2_warn else '#3fb950'
+                    try:
+                        _roe2_num = float(_roe2.get('Value', '0').replace('%', '').strip())
+                    except (ValueError, AttributeError):
+                        _roe2_num = None
+                    _roe2_positive = _roe2_num is not None and _roe2_num > 0
+                    _roe2_c = '#d29922' if _roe2_warn else ('#3fb950' if _roe2_positive else '#f85149')
                     with _p5c[4]:
                         st.markdown(
                             f'<div style="background:{_roe2_c}18;border:1px solid {_roe2_c}55;'
                             f'border-radius:8px;padding:10px;text-align:center;">'
                             f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
                             f'<div style="font-size:17px;font-weight:900;color:{_roe2_c};">{_roe2.get("Value","N/A")}</div>'
-                            f'<div style="font-size:10px;color:{_roe2_c};">{"⚠️ 高槓桿驅動" if _roe2_warn else "✅ 真實獲利"}</div>'
+                            f'<div style="font-size:10px;color:{_roe2_c};">{"⚠️ 高槓桿驅動" if _roe2_warn else ("✅ 真實獲利" if _roe2_positive else "❌ 本業虧損")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _prof2.get('Final_Insight'):
                         st.caption(f'🎯 {_prof2["Final_Insight"]}')
@@ -6730,7 +6737,7 @@ padding:12px 16px;margin:8px 0;">
                             f'<div style="font-size:11px;color:#8b949e;">負債佔資產比率</div>'
                             f'<div style="font-size:26px;font-weight:900;color:{_dr2_c};">{_dr2.get("Value","N/A")}</div>'
                             f'<div style="font-size:11px;color:{_dr2_c};">'
-                            f'{"✅ 穩健（<60%）" if _dr2_s=="Pass" else ("⚠️ 偏高（60-70%）" if _dr2_s=="Warning" else ("🔴 高危（>70%）" if _dr2_s=="Fail" else "特許行業"))}'
+                            f'{"✅ 穩健（<60%）" if _dr2_s=="Pass" else ("⚠️ 偏高（60-70%）" if _dr2_s=="Warning" else ("🔴 高危（>70%）" if _dr2_s=="Fail" else ("🏦 特許行業" if "金融" in _dr2.get("Value","") else "⚪ 資料缺漏")))}'
                             f'</div></div>', unsafe_allow_html=True)
                     # 2 以長支長比率
                     _ltf2 = _fstr2.get('Long_Term_Funding_Ratio', {})
@@ -7761,14 +7768,19 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div>', unsafe_allow_html=True)
                     _roe_f = _prof_f.get('ROE', {})
                     _roe_f_warn = _roe_f.get('Leverage_Warning', 'None') != 'None'
-                    _roe_f_c = '#d29922' if _roe_f_warn else '#3fb950'
+                    try:
+                        _roe_f_num = float(_roe_f.get('Value', '0').replace('%', '').strip())
+                    except (ValueError, AttributeError):
+                        _roe_f_num = None
+                    _roe_f_positive = _roe_f_num is not None and _roe_f_num > 0
+                    _roe_f_c = '#d29922' if _roe_f_warn else ('#3fb950' if _roe_f_positive else '#f85149')
                     with _p5f[4]:
                         st.markdown(
                             f'<div style="background:{_roe_f_c}18;border:1px solid {_roe_f_c}55;'
                             f'border-radius:8px;padding:8px;text-align:center;">'
                             f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
                             f'<div style="font-size:15px;font-weight:900;color:{_roe_f_c};">{_roe_f.get("Value","N/A")}</div>'
-                            f'<div style="font-size:9px;color:{_roe_f_c};">{"⚠️ 高槓桿" if _roe_f_warn else "✅ 真實獲利"}</div>'
+                            f'<div style="font-size:9px;color:{_roe_f_c};">{"⚠️ 高槓桿" if _roe_f_warn else ("✅ 真實獲利" if _roe_f_positive else "❌ 本業虧損")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _prof_f.get('Final_Insight'):
                         st.caption(f'🎯 {_prof_f["Final_Insight"]}')
@@ -7788,7 +7800,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'<div style="font-size:10px;color:#8b949e;">負債佔資產比率</div>'
                             f'<div style="font-size:20px;font-weight:900;color:{_dr_f_c};">{_dr_f.get("Value","N/A")}</div>'
                             f'<div style="font-size:10px;color:{_dr_f_c};">'
-                            f'{"✅ 穩健" if _dr_f_s=="Pass" else ("⚠️ 偏高" if _dr_f_s=="Warning" else ("🔴 高危" if _dr_f_s=="Fail" else "特許行業"))}'
+                            f'{"✅ 穩健" if _dr_f_s=="Pass" else ("⚠️ 偏高" if _dr_f_s=="Warning" else ("🔴 高危" if _dr_f_s=="Fail" else ("🏦 特許行業" if "金融" in _dr_f.get("Value","") else "⚪ 資料缺漏")))}'
                             f'</div></div>', unsafe_allow_html=True)
                     _ltf_f = _fstr_f.get('Long_Term_Funding_Ratio', {})
                     _ltf_f_s = _ltf_f.get('Status', '')
