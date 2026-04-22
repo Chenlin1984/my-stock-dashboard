@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.8 | main `d4cc9ee`
+- **版本**: v10.11 | main `d546216`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,22 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.11，main `d546216`）
+
+### 財報 N/A 與 OPM 護城河誤渲染修復（3 commits `ef7a9bf` → `d546216`）
+| commit | 項目 | 內容 |
+|--------|------|------|
+| `ef7a9bf` | **短期償債能力保命符邏輯脫鉤** | Banner 改讀 `Final_Solvency_Verdict` 字串精確比對「條件B：天天收現」；流動比率保命符啟動時閾值 300%→150%，顏色/標籤連動 |
+| `9810cd4` | **ARCHITECTURE.md v6.5 + STATE.md** | 更新版本日期；STATE.md 補記 v10.8 |
+| `d546216` | **AR/負債 N/A + OPM 護城河誤觸** | AR 兩段式加總（L1拆開+L2合計行）；補全 FIELD_ALIASES（資產總額/負債總額）；OPM 雙重驗證（CCC 必須是實質負數） |
+
+### 財報判定 3 大 UI Bug 修復（commit `d4cc9ee`）
+| Bug | 修復 |
+|-----|------|
+| ROE 負值誤判真實獲利 | 解析數值，`ROE<=0` → ❌ 本業虧損 |
+| OPM N/A 誤觸護城河 | 移除 `_p_days>_r_days` 旁路 |
+| N/A 誤標「特許行業」 | 按 Value 字串區分 🏦/⚪ |
 
 ## ✅ 最新異動（v10.8，main `d4cc9ee`）
 
