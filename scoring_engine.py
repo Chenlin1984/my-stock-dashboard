@@ -136,9 +136,13 @@ def chip_score(foreign_buy, trust_buy=0, dealer_buy=0, foreign_5d_net=None) -> i
 def calc_chip_score(df, foreign_buy=None, trust_buy=None, dealer_buy=None) -> float:
     """
     籌碼分數（0-100）。
-    優先嘗試從 df 計算 5 日外資累積買超（雜訊過濾），
-    若無法取得則降級用單日 foreign_buy，最終無資料回傳 50（中性）。
+    明確傳入的 foreign_buy/trust_buy/dealer_buy 優先；
+    未傳入時才從 df 的 5 日累積外資買超計算；最終無資料回傳 50（中性）。
     """
+    # 明確傳入參數優先（不為 None 即代表呼叫端有明確意圖）
+    if foreign_buy is not None:
+        raw = chip_score(foreign_buy or 0, trust_buy or 0, dealer_buy or 0)
+        return round(raw / 5 * 100, 1)
     # 嘗試從 df 計算 5 日累積外資買超
     if df is not None and not df.empty:
         fb_col = next((c for c in ('外資買超', '外資') if c in df.columns), None)
@@ -150,9 +154,6 @@ def calc_chip_score(df, foreign_buy=None, trust_buy=None, dealer_buy=None) -> fl
             db  = float(df[db_col].iloc[-1]) if db_col else (dealer_buy or 0)
             raw = chip_score(0, tb, db, foreign_5d_net=f5d)
             return round(raw / 5 * 100, 1)
-    if foreign_buy is not None:
-        raw = chip_score(foreign_buy or 0, trust_buy or 0, dealer_buy or 0)
-        return round(raw / 5 * 100, 1)
     return 50.0  # 無籌碼資料 → 中性（不加分不扣分）
 
 # ── 4. 量價分數 ───────────────────────────────────────────────
