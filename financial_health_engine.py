@@ -392,17 +392,23 @@ def _no_ai_survival(fd: dict) -> dict:
     inv_p = fd.get("存貨前期(千)", 0) or 0
     a_val = round(ocf / cl * 100, 1) if cl > 0 else None
     a_st = ("Pass" if a_val and a_val > 100 else "Fail") if a_val is not None else "N/A"
-    # B項：現金流量允當比率（標準公式需5年，此處以單季估算）
-    inv_inc = max(inv - inv_p, 0)
-    b_denom = capex + inv_inc + div
-    if b_denom > 0:
-        b_val = round(ocf / b_denom * 100, 1)
-        b_display = f"{b_val:.1f}%(1Q估)"
-        b_st = "Pass" if b_val >= 100 else "Fail"
+    # B項：現金流量允當比率
+    # 優先使用呼叫方預填的 5 年精確值（fetch_5_years_cash_flow 回傳）
+    _b5 = fd.get("b_item_5y") or {}
+    if _b5.get("status") == "ok" and _b5.get("ratio") is not None:
+        b_val     = _b5["ratio"]
+        b_display = _b5["label"]                          # e.g. "127.3%（5年實際）"
+        b_st      = "Pass" if b_val >= 100 else "Fail"
     else:
-        b_val = None
-        b_display = "N/A"
-        b_st = "N/A"
+        # fallback：單季估算
+        inv_inc = max(inv - inv_p, 0)
+        b_denom = capex + inv_inc + div
+        if b_denom > 0:
+            b_val     = round(ocf / b_denom * 100, 1)
+            b_display = f"{b_val:.1f}%(1Q估)"
+            b_st      = "Pass" if b_val >= 100 else "Fail"
+        else:
+            b_val, b_display, b_st = None, "N/A", "N/A"
     c_val = round((ocf - div) / (ppe + lt) * 100, 1) if (ppe + lt) > 0 else None
     c_st = ("Pass" if c_val and c_val > 10 else "Fail") if c_val is not None else "N/A"
     rule_st = "Pass" if (a_st in ("Pass", "N/A") and b_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
@@ -414,7 +420,10 @@ def _no_ai_survival(fd: dict) -> dict:
             "Cash_Flow_Ratio": f"{a_val}%" if a_val is not None else "N/A",
             "Cash_Flow_Adequacy": b_display,
             "Cash_Reinvestment": f"{c_val}%" if c_val is not None else "N/A",
-            "Status": rule_st, "Insight": "原始數據直接計算（B項為單季估算，非標準5年）",
+            "Status": rule_st,
+            "Insight": ("原始數據直接計算（B項5年實際）"
+                        if (_b5.get("status") == "ok")
+                        else "原始數據直接計算（B項單季估算）"),
         },
         "Final_Survival_Verdict": verdict,
     }}

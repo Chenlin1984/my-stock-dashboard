@@ -6477,6 +6477,12 @@ padding:12px 16px;margin:8px 0;">
                     if _fin_raw.get('error'):
                         st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
                     else:
+                        # B項：預填 5 年現金流量允當比率（精確版）
+                        try:
+                            from tw_stock_data_fetcher import fetch_5_years_cash_flow
+                            _fin_raw['b_item_5y'] = fetch_5_years_cash_flow(sid2, FINMIND_TOKEN)
+                        except Exception:
+                            pass  # fallback 到 1Q 估算
                         _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
                         st.session_state[_fh_key2] = _fh_out
             _fh = st.session_state.get(_fh_key2)
@@ -7526,7 +7532,14 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             _fh3_new = {}
             _prog3 = st.progress(0, text='財報體檢中（純計算，無 AI 呼叫）...')
             def _fh3_fn(sid):
-                return sid, analyze_financial_health("", sid, fetch_financial_statements(sid, _fk3))
+                _fd3 = fetch_financial_statements(sid, _fk3)
+                if not _fd3.get('error'):
+                    try:
+                        from tw_stock_data_fetcher import fetch_5_years_cash_flow
+                        _fd3['b_item_5y'] = fetch_5_years_cash_flow(sid, _fk3)
+                    except Exception:
+                        pass
+                return sid, analyze_financial_health("", sid, _fd3)
             _done3 = 0
             with ThreadPoolExecutor(max_workers=3) as _ex3:
                 _fts3 = {_ex3.submit(_fh3_fn, s): s for s in stock_list_t3}
