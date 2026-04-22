@@ -1515,6 +1515,21 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                     pass
         return 0.0
 
+    def _vsum(m, d, keys):
+        """加總 keys 中所有非零欄位（用於應收票據+帳款需分開列示的報表）"""
+        slot = m.get(d, {})
+        total = 0.0
+        for k in keys:
+            v = slot.get(k)
+            if v is not None:
+                try:
+                    fv = float(str(v).replace(",", "") or 0)
+                    if fv > 0:
+                        total += fv
+                except Exception:
+                    pass
+        return total
+
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
     liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
@@ -1532,7 +1547,10 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     if assets == 0 and (cur_assets > 0 or _non_cur_assets > 0):
         assets = cur_assets + _non_cur_assets
         print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
-    ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
+    # AR：優先加總分開列示的應收票據+帳款+關係人，再 fallback 聯合別名
+    ar = _vsum(_bs, _lat, ["應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項"])
+    if ar == 0:
+        ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
                              "應收帳款，淨額", "貿易應收款",
