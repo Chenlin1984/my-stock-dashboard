@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.3 | main `7dee8f9`
+- **版本**: v10.4 | main `213f57a`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.4，main `213f57a`）
+
+### `data_loader.py` NameError 修復
+| 項目 | 說明 |
+|------|------|
+| **錯誤** | `fetch_financial_statements` line 1755 回傳 `is_finance` 但函式內從未定義 |
+| **根因** | `_is_financial_stock()` 是 `StockDataLoader` 的巢狀函式，外部不可呼叫 |
+| **修法** | 改用 `stock_id.startswith(('28','58'))` 保底邏輯，與原函式 fallback 一致 |
 
 ## ✅ 最新異動（v10.3，main）
 
