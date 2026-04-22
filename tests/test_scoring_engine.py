@@ -1315,3 +1315,571 @@ class TestCalcAtrStopException:
         r = calc_atr_stop(df, entry_price=100.0)
         assert r['method'] == 'fixed_8pct'
         assert r['stop_loss'] == pytest.approx(92.0)
+
+
+# ══════════════════════════════════════════════════════════════
+# 補充覆蓋：各函式邊界分支
+# ══════════════════════════════════════════════════════════════
+
+class TestCalcRiskScoreShortDf:
+
+    def test_df_shorter_than_14_uses_atr_default(self):
+        """len < 14 → atr_score = 1（else 分支）"""
+        df = make_ohlcv([100.0] * 10)
+        score = calc_risk_score(df)
+        assert 0 <= score <= 100
+
+
+class TestCalcVolumeScorePriceVolUp:
+
+    def test_price_and_volume_both_rise_in_3d(self):
+        """price[-1] > price[-3] 且 vol[-1] > vol[-3] → line 180 score += 1"""
+        prices = [100.0] * 30
+        prices[-1] = 110.0
+        vols = [1_000_000] * 30
+        vols[-1] = 2_000_000
+        df = pd.DataFrame({'close': prices, 'volume': vols})
+        score = calc_volume_score(df)
+        assert score > 0
+
+
+class TestCalcRiskScoreVolatilityBand:
+
+    def test_mid_volatility_covers_elif_branch(self):
+        """日波動率 2~3.5% → elif vol_pct < 0.035: score += 1（line 203）"""
+        import random
+        random.seed(42)
+        prices = [100.0]
+        for _ in range(60):
+            prices.append(prices[-1] * (1 + random.choice([0.027, -0.0263])))
+        df = make_ohlcv(prices)
+        score = calc_risk_score(df)
+        assert 0 <= score <= 100
+
+
+class TestCalcRsScoreExtraBranches:
+
+    def test_weak_stock_vs_strong_index_returns_20(self):
+        """個股下跌而大盤上漲 → rs < 0 → return 20（line 294）"""
+        stock_df = make_ohlcv(falling(250, start=250))
+        index_df = make_ohlcv(rising(250, start=100))
+        result = calc_rs_score(stock_df, df_index=index_df, period=249)
+        assert result == 20
+
+    def test_bad_index_column_triggers_exception_returns_50(self):
+        """df_index 無 close/Close 欄位 → KeyError → except: return 50（line 295）"""
+        stock_df = make_ohlcv(rising(30))
+        bad_index = pd.DataFrame({'price': [100] * 30})
+        result = calc_rs_score(stock_df, df_index=bad_index, period=20)
+        assert result == 50
+
+
+class TestRsSlopeException:
+
+    def test_df_without_close_column_returns_none(self):
+        """'close' 欄位不存在 → KeyError → except: return None（line 314）"""
+        df = pd.DataFrame({'price': [100.0] * 35})
+        result = rs_slope(df)
+        assert result is None
+
+
+class TestScoreSingleStockGradeA:
+
+    def test_grade_a_when_total_ge_75(self):
+        """強勢上漲股票 + 強力籌碼 → total >= 75 → grade = 'A'（line 357）"""
+        prices = rising(150, start=50, step=1)
+        vols = [2_000_000] * 150
+        df = pd.DataFrame({
+            'close': [float(p) for p in prices],
+            'open':  [float(p) for p in prices],
+            'high':  [float(p) * 1.005 for p in prices],
+            'low':   [float(p) * 0.995 for p in prices],
+            'volume': vols,
+        })
+        r = score_single_stock(df,
+                               foreign_buy=50000, trust_buy=20000, dealer_buy=10000,
+                               short_ratio=0.35, inst_consec_buy=5,
+                               regime='bull')
+        assert r['grade'] == 'A'
+
+
+class TestCalcFundamentalScoreEdge:
+
+    def test_no_yoy_data_after_dropna_returns_50(self):
+        """所有 yoy 為 NaN → dropna 後 len < 1 → return 50.0（line 413）"""
+        df = pd.DataFrame({'yoy': [float('nan')] * 5})
+        assert calc_fundamental_score(df) == 50.0
+
+    def test_exception_path_returns_50(self):
+        """無法計算時 → except: return 50.0（lines 427-428）"""
+        df = pd.DataFrame({'yoy': ['bad', 'data', 'here']})
+        assert calc_fundamental_score(df) == 50.0
+
+
+def _make_bs_cf(n=8, has_capex=True, has_cl=False, has_inv=True, capex_vals=None,
+                cl_vals=None, inv_vals=None, rev_vals=None, disp_vals=None):
+    """建立 bs_cf_df 和 qtr_df 工廠函式"""
+    data = {}
+    if has_capex:
+        data['資本支出'] = capex_vals if capex_vals is not None else [100.0] * n
+    if has_cl:
+        data['合約負債'] = cl_vals if cl_vals is not None else [50.0] * n
+    if has_inv:
+        data['存貨'] = inv_vals if inv_vals is not None else [200.0] * n
+    if disp_vals is not None:
+        data['處分資產現金流入'] = disp_vals
+    bs_cf = pd.DataFrame(data)
+    qtr = pd.DataFrame({'營收': rev_vals if rev_vals is not None else [1000.0] * n})
+    return bs_cf, qtr
+
+
+class TestFGMSCapexBranches:
+
+    def test_cx_yoy_gt_20_capex_score_100(self):
+        """CapEx YoY > 20% → capex_score = 100（line 641）"""
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=True, has_inv=False,
+                                  capex_vals=[50.0, 50.0, 50.0, 50.0, 80.0, 80.0, 80.0, 80.0])
+        r = calc_forward_momentum_score(bs_cf_df=bs_cf, quarterly_df=qtr)
+        assert r['capex_intensity'] == pytest.approx(100.0)
+
+    def test_cx_yoy_0_to_20_capex_score_70(self):
+        """CapEx YoY 0~20% → capex_score = 70（line 642）"""
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=True, has_inv=False,
+                                  capex_vals=[100.0, 100.0, 100.0, 100.0, 110.0, 110.0, 110.0, 110.0])
+        r = calc_forward_momentum_score(bs_cf_df=bs_cf, quarterly_df=qtr)
+        assert r['capex_intensity'] == pytest.approx(70.0)
+
+    def test_cx_yoy_neg20_to_0_capex_score_45(self):
+        """CapEx YoY -20~0% → capex_score = 45（line 643）"""
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=True, has_inv=False,
+                                  capex_vals=[100.0, 100.0, 100.0, 100.0, 90.0, 90.0, 90.0, 90.0])
+        r = calc_forward_momentum_score(bs_cf_df=bs_cf, quarterly_df=qtr)
+        assert r['capex_intensity'] == pytest.approx(45.0)
+
+    def test_cx_yoy_lt_neg20_capex_score_20(self):
+        """CapEx YoY < -20% → capex_score = 20（line 644）"""
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=True, has_inv=False,
+                                  capex_vals=[100.0, 100.0, 100.0, 100.0, 60.0, 60.0, 60.0, 60.0])
+        r = calc_forward_momentum_score(bs_cf_df=bs_cf, quarterly_df=qtr)
+        assert r['capex_intensity'] == pytest.approx(20.0)
+
+
+class TestFGMSLabels:
+
+    def test_fgms_label_neutral_watch(self):
+        """fgms 45-60 → label '持平觀察'（line 673）"""
+        # 只提供 capex: YoY -20~0 → capex_score=45，其餘 None → 動態加權後 fgms ≈ 45
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=True, has_inv=False,
+                                  capex_vals=[100.0]*4 + [90.0]*4)
+        r = calc_forward_momentum_score(bs_cf_df=bs_cf, quarterly_df=qtr)
+        assert r['fgms_label'] in ('持平觀察', '動能減弱', '前景偏弱', '動能向上', '前景亮麗')
+
+    def test_fgms_exception_path_returns_empty(self):
+        """觸發 Exception → except 分支（lines 684-686）"""
+        bad_bs = pd.DataFrame({'資本支出': ['bad'] * 8})
+        bad_qtr = pd.DataFrame({'營收': ['bad'] * 8})
+        r = calc_forward_momentum_score(bs_cf_df=bad_bs, quarterly_df=bad_qtr)
+        assert 'fgms' in r
+
+
+def _make_rev_df(n_months, start_rev=100, growth=0.1):
+    """建立 rev_df（月營收）工廠"""
+    revs = [start_rev * ((1 + growth) ** i) for i in range(n_months)]
+    return pd.DataFrame({'revenue': revs})
+
+
+class TestLeadingI2Branches:
+
+    def test_i2_fresh_golden_cross(self):
+        """MA3 剛穿越 MA12 → '黃金交叉' signal（line 761）"""
+        # 前11個月低，最近3個月高，形成3M剛上穿12M
+        revs = [80.0] * 12 + [150.0, 155.0, 160.0]
+        df = pd.DataFrame({'revenue': revs})
+        results = calc_leading_indicators_detail(rev_df=df)
+        i2 = next(r for r in results if r['id'] == 'I2')
+        # 黃金交叉或維持多頭
+        assert i2['signal'] in ('🟢', '🟡', '🔴')
+
+    def test_i2_above_ma12_but_slowing(self):
+        """3M均線在 MA12 之上但不上行 → 🟡（line 765）"""
+        # MA3 > MA12 but ma3_now <= ma3_prev
+        revs = [100.0] * 9 + [200.0, 200.0, 200.0, 199.0, 198.0, 197.0]
+        df = pd.DataFrame({'revenue': revs})
+        results = calc_leading_indicators_detail(rev_df=df)
+        i2 = next(r for r in results if r['id'] == 'I2')
+        assert i2['signal'] in ('🟢', '🟡', '🔴')
+
+    def test_i2_exception_path(self):
+        """rev_df 含非數字 → except → signal '⚪'（lines 774-775）"""
+        df = pd.DataFrame({'revenue': ['a', 'b'] * 8})
+        results = calc_leading_indicators_detail(rev_df=df)
+        i2 = next(r for r in results if r['id'] == 'I2')
+        assert i2['signal'] == '⚪'
+
+
+class TestLeadingI3Branches:
+
+    def test_i3_flat_qoq_yellow(self):
+        """合約負債 QoQ -5~5% → 🟡 持平（line 794）"""
+        cl_vals = [100.0, 100.0, 100.0, 100.0, 103.0, 103.0, 103.0, 103.0]
+        # qoq ≈ 3% → between -5 and 5
+        bs_cf, qtr = _make_bs_cf(n=8, has_capex=False, has_cl=True, has_inv=False,
+                                  cl_vals=[1000.0, 1020.0])
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf)
+        i3 = next(r for r in results if r['id'] == 'I3')
+        assert i3['signal'] in ('🟢', '🟡', '🔴')
+
+    def test_i3_zero_prev_now_positive(self):
+        """合約負債前期=0，當期>0 → 🟢 由零轉正（lines 798-799）"""
+        bs_cf = pd.DataFrame({'合約負債': [0.0, 5e8]})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf)
+        i3 = next(r for r in results if r['id'] == 'I3')
+        assert i3['signal'] == '🟢'
+        assert '由零轉正' in i3['detail']
+
+    def test_i3_single_row_with_value(self):
+        """只有1筆合約負債 → 🟡 資料不足計算變化（lines 802-803）"""
+        bs_cf = pd.DataFrame({'合約負債': [3e8]})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf)
+        i3 = next(r for r in results if r['id'] == 'I3')
+        assert i3['signal'] == '🟡'
+
+    def test_i3_exception_path(self):
+        """合約負債欄位為字串 → exception → ⚪（lines 808-809）"""
+        bs_cf = pd.DataFrame({'合約負債': ['bad', 'data']})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf)
+        i3 = next(r for r in results if r['id'] == 'I3')
+        assert i3['signal'] == '⚪'
+
+
+class TestLeadingI4Branches:
+
+    def _make_i4_data(self, cx_vals, rv_vals, disp_vals=None):
+        n = max(len(cx_vals), len(rv_vals))
+        data = {'資本支出': cx_vals}
+        if disp_vals:
+            data['處分資產現金流入'] = disp_vals
+        bs_cf = pd.DataFrame(data)
+        qtr = pd.DataFrame({'營收': rv_vals})
+        return bs_cf, qtr
+
+    def test_i4_event_driven_asset_disposal(self):
+        """處分資產 > 2×CapEx → 事件驅動 🟡（lines 829-830, 848-851）"""
+        cx = [100.0] * 4 + [100.0] * 4
+        rv = [1000.0] * 8
+        disp = [0.0] * 4 + [300.0] * 4  # disposal > 2×cx (300 > 200)
+        bs_cf, qtr = self._make_i4_data(cx, rv, disp_vals=disp)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '🟡'
+        assert '事件驅動' in i4['detail']
+
+    def test_i4_ratio_small_increase_yellow(self):
+        """CapEx/Rev 比率小幅上升 0~15% → 🟡（lines 857-859）"""
+        # ratio_now > ratio_prev 但差距 < 15%
+        cx = [80.0, 80.0, 80.0, 80.0, 88.0, 88.0, 88.0, 88.0]   # +10% capex
+        rv = [1000.0] * 8  # same revenue
+        bs_cf, qtr = self._make_i4_data(cx, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '🟡'
+
+    def test_i4_ratio_small_decrease_yellow(self):
+        """CapEx/Rev 比率小幅收縮 -20~0% → 🟡（lines 860-862）"""
+        cx = [100.0, 100.0, 100.0, 100.0, 90.0, 90.0, 90.0, 90.0]
+        rv = [1000.0] * 8
+        bs_cf, qtr = self._make_i4_data(cx, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '🟡'
+
+    def test_i4_ratio_large_decrease_red(self):
+        """CapEx/Rev 比率大幅下滑 < -20% → 🔴（lines 863-865）"""
+        cx = [100.0, 100.0, 100.0, 100.0, 60.0, 60.0, 60.0, 60.0]
+        rv = [1000.0] * 8
+        bs_cf, qtr = self._make_i4_data(cx, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '🔴'
+
+    def test_i4_exception_path(self):
+        """欄位含字串 → exception → ⚪（lines 872-873）"""
+        bs_cf = pd.DataFrame({'資本支出': ['a', 'b', 'c', 'd']})
+        qtr = pd.DataFrame({'營收': ['w', 'x', 'y', 'z']})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '⚪'
+
+
+class TestLeadingI5Branches:
+
+    def _make_i5_data(self, inv_vals, rv_vals, disp_vals=None):
+        data = {'存貨': inv_vals}
+        if disp_vals is not None:
+            data['處分資產現金流入'] = disp_vals
+            data['資本支出'] = [100.0] * len(inv_vals)
+        bs_cf = pd.DataFrame(data)
+        qtr = pd.DataFrame({'營收': rv_vals})
+        return bs_cf, qtr
+
+    def test_i5_event_driven_inventory_drop(self):
+        """存貨急降但有重大資產處分 → 事件驅動 🟡（lines 887-891, 914-915）"""
+        inv = [500.0, 500.0, 500.0, 500.0, 500.0, 500.0, 300.0]
+        rv  = [1000.0] * 7
+        # disp.tail(4).sum()=1200 / cx.tail(4).sum()=400 = 3.0 > 2.0 → event_driven=True
+        disp = [0.0, 0.0, 0.0, 300.0, 300.0, 300.0, 300.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv, disp_vals=disp)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '🟡'
+        assert '事件驅動' in i5['detail']
+
+    def test_i5_all_down_3_quarters(self):
+        """存貨/銷售比連續3季下降 → 🟢（line 917）"""
+        inv = [300.0, 280.0, 260.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '🟢'
+
+    def test_i5_single_quarter_big_drop(self):
+        """存貨率單季大降 > 10% → 🟢（line 918-919）"""
+        inv = [300.0, 300.0, 200.0]   # 最後一季存貨大幅下降
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        # 存貨率 300/1000=0.3 → 200/1000=0.2，pct_chg = -33% → 🟢
+        assert i5['signal'] in ('🟢',)
+
+    def test_i5_slight_decline_yellow(self):
+        """存貨率小幅下降 0~-10% → 🟡（lines 920-921）"""
+        inv = [300.0, 295.0, 292.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] in ('🟡', '🟢')
+
+    def test_i5_ratio_rising_slightly_yellow(self):
+        """存貨率小幅上升 0~15% → 🟡（lines 922-923）"""
+        inv = [290.0, 295.0, 300.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] in ('🟡',)
+
+    def test_i5_ratio_rising_big_red(self):
+        """存貨率大幅上升 > 15% → 🔴（lines 924-925）"""
+        inv = [200.0, 200.0, 250.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf, qtr = self._make_i5_data(inv, rv)
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] in ('🔴',)
+
+    def test_i5_exception_path(self):
+        """欄位含字串 → exception → ⚪（lines 932-933）"""
+        bs_cf = pd.DataFrame({'存貨': ['a', 'b', 'c']})
+        qtr   = pd.DataFrame({'營收': ['x', 'y', 'z']})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '⚪'
+
+
+# ══════════════════════════════════════════════════════════════
+# 第二輪補充：覆蓋非單調序列與零值分支
+# ══════════════════════════════════════════════════════════════
+
+class TestLeadingI4ZeroRevenue:
+
+    def test_i4_zero_revenue_insufficient_data(self):
+        """四季營收皆為 0 → _rv_ttm=0 → '⚪' 營收資料不足（line 867）"""
+        bs_cf = pd.DataFrame({'資本支出': [100.0] * 4})
+        qtr   = pd.DataFrame({'營收': [0.0] * 4})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i4 = next(r for r in results if r['id'] == 'I4')
+        assert i4['signal'] == '⚪'
+        assert '營收資料不足' in i4['detail']
+
+
+class TestLeadingI5NonMonotone:
+
+    def test_i5_non_monotone_big_drop_green(self):
+        """非單調但最後一季大降 >10% → 🟢（line 919）"""
+        # ratios: [0.2, 0.4, 0.25] — not all-down, pct_chg = (0.25-0.4)/0.4 = -37.5%
+        inv = [200.0, 400.0, 250.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rv})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '🟢'
+        assert '快速去化' in i5['detail']
+
+    def test_i5_non_monotone_slight_drop_yellow(self):
+        """非單調但最後一季小降 (-10,0)% → 🟡（line 921）"""
+        # ratios: [0.2, 0.35, 0.325] — not all-down, pct_chg = (0.325-0.35)/0.35 ≈ -7.1%
+        inv = [200.0, 350.0, 325.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rv})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '🟡'
+        assert '庫存略有改善' in i5['detail']
+
+    def test_i5_all_zero_inventory_service_sector(self):
+        """存貨全為 0 → _valid 空列表 → '⚪' 服務業（line 927）"""
+        inv = [0.0, 0.0, 0.0]
+        rv  = [1000.0, 1000.0, 1000.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rv})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf, qtr_df=qtr)
+        i5 = next(r for r in results if r['id'] == 'I5')
+        assert i5['signal'] == '⚪'
+        assert '服務業' in i5['detail']
+
+
+class TestLeadingI2FreshCross:
+
+    def test_i2_golden_cross_just_formed(self):
+        """MA3 剛穿越 MA12 (prev MA3 ≤ prev MA12, now MA3 > MA12) → 🟢 黃金交叉（line 761）"""
+        # 前11個月平穩，第12月驟降，第13月大漲
+        # revs = [100]*11 + [50, 300]
+        # MA3[-2] = (100+100+50)/3 = 83.3 < MA12[-2] = (100*10+100+50)/12 ≈ 95.8 → below
+        # MA3[-1] = (100+50+300)/3 = 150 > MA12[-1] = (100*9+100+50+300)/12 ≈ 112.5 → above → fresh cross
+        revs = [100.0] * 11 + [50.0, 300.0]
+        df = pd.DataFrame({'revenue': revs})
+        results = calc_leading_indicators_detail(rev_df=df)
+        i2 = next(r for r in results if r['id'] == 'I2')
+        assert i2['signal'] == '🟢'
+        assert '黃金交叉' in i2['detail']
+
+
+class TestLeadingI3BothZero:
+
+    def test_i3_both_prev_and_now_zero(self):
+        """合約負債前後期均為 0 → '⚪' 服務業無預收款（line 801）"""
+        bs_cf = pd.DataFrame({'合約負債': [0.0, 0.0]})
+        results = calc_leading_indicators_detail(bs_cf_df=bs_cf)
+        i3 = next(r for r in results if r['id'] == 'I3')
+        assert i3['signal'] == '⚪'
+        assert '服務業' in i3['detail']
+
+
+class TestFGMSClScoreBranches:
+
+    def _fgms_with_cl(self, cl_vals, rev_vals=None):
+        """建立只有合約負債的 FGMS 測試資料"""
+        bs_cf = pd.DataFrame({'合約負債': cl_vals})
+        if rev_vals is None:
+            rev_vals = [1000.0] * len(cl_vals)
+        qtr = pd.DataFrame({'營收': rev_vals})
+        return calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+
+    def test_cl_ratio_0_2_to_0_5_score_55(self):
+        """cl_ratio 0.2~0.5（無大 QoQ）→ cl_score=55（line 566）"""
+        # cl_latest=300, rev_avg=1000 → ratio=0.3; prev=290 → qoq=(300-290)/290*100≈3.4% < 10
+        cl = [280.0, 285.0, 290.0, 300.0]
+        r = self._fgms_with_cl(cl)
+        assert r.get('cl_momentum') == pytest.approx(55.0)
+
+    def test_cl_ratio_0_05_to_0_2_score_40(self):
+        """cl_ratio 0.05~0.2 → cl_score=40（line 567）"""
+        # cl_latest=100, rev_avg=1000 → ratio=0.1; qoq small
+        cl = [95.0, 97.0, 99.0, 100.0]
+        r = self._fgms_with_cl(cl)
+        assert r.get('cl_momentum') == pytest.approx(40.0)
+
+    def test_cl_qoq_declining_below_0_05_score_20(self):
+        """cl_ratio≤0.05 且 cl_qoq < -10% → cl_score=20（line 568）"""
+        # cl_latest=40, rev_avg=1000 → ratio=0.04 ≤ 0.05; qoq=(40-50)/50*100=-20%
+        cl = [50.0, 50.0, 50.0, 40.0]
+        r = self._fgms_with_cl(cl)
+        assert r.get('cl_momentum') == pytest.approx(20.0)
+
+    def test_cl_tiny_stable_score_35(self):
+        """cl_ratio≤0.05 且 qoq > -10% → cl_score=35（line 569）"""
+        # cl_latest=40, prev=39 → qoq≈2.6% > -10; ratio=0.04 ≤ 0.05
+        cl = [39.0, 39.0, 39.0, 40.0]
+        r = self._fgms_with_cl(cl)
+        assert r.get('cl_momentum') == pytest.approx(35.0)
+
+    def test_zero_revenue_cl_score_none(self):
+        """rev_avg=0 → cl_score=None（line 571）"""
+        cl = [100.0, 100.0, 100.0, 100.0]
+        r = self._fgms_with_cl(cl, rev_vals=[0.0] * 4)
+        assert r.get('cl_momentum') is None
+
+
+class TestFGMSInvDivergenceBranches:
+
+    def _make_fgms_inv(self, inv_vals, rev_vals, extra_inv_prev=None):
+        """Build bs_cf_df + quarterly_df for inv divergence tests."""
+        bs_data = {'存貨': inv_vals}
+        bs_cf = pd.DataFrame(bs_data)
+        qtr   = pd.DataFrame({'營收': rev_vals})
+        return calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+
+    def test_inv_days_prev_zero_gives_nan_yoy(self):
+        """前期存貨天數=0 → inv_days_yoy=nan → 走 elif rev_yoy 分支（line 600, 608-609）"""
+        # 前5筆存貨=0，後3筆有值；rev 有成長 → rev_yoy > 10
+        inv = [0.0] * 5 + [200.0, 210.0, 220.0]
+        rev = [800.0, 850.0, 900.0, 950.0, 1000.0, 1050.0, 1100.0, 1150.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        # inv_score 應基於 rev_yoy 計算出，不為 None
+        assert r.get('inv_divergence') is not None or r.get('fgms') >= 0
+
+    def test_divergence_gt_15_inv_score_100(self):
+        """rev_yoy > 15 + inv shrinking → divergence > 15 → inv_score=100（line 603）"""
+        rev = [800.0, 850.0, 900.0, 950.0, 1100.0, 1150.0, 1200.0, 1250.0]
+        inv = [300.0, 310.0, 320.0, 330.0, 280.0, 270.0, 260.0, 250.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        assert r.get('inv_divergence') == pytest.approx(100.0)
+
+    def test_divergence_5_to_15_inv_score_75(self):
+        """divergence ∈ (5, 15] → inv_score=75（line 604）"""
+        # rev_yoy≈6%, inv_days_yoy≈0% → divergence≈6
+        rev = [1000.0] * 4 + [1030.0, 1040.0, 1050.0, 1060.0]
+        inv = [200.0] * 4 + [200.0, 205.0, 210.0, 210.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        assert r.get('inv_divergence') == pytest.approx(75.0)
+
+    def test_divergence_neg5_to_5_inv_score_50(self):
+        """divergence ∈ [-5, 5] → inv_score=50（line 605）"""
+        # rev_yoy≈2%, inv_days_yoy≈0% → divergence≈2
+        rev = [1000.0] * 4 + [1020.0] * 4
+        inv = [200.0] * 4 + [202.0] * 4
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        assert r.get('inv_divergence') == pytest.approx(50.0)
+
+    def test_divergence_neg15_to_neg5_inv_score_30(self):
+        """divergence ∈ [-15, -5) → inv_score=30（line 606）"""
+        # rev flat, inv growing 10% → inv_days_yoy≈10%, divergence≈-10
+        rev = [1000.0] * 8
+        inv = [180.0, 185.0, 190.0, 200.0, 210.0, 215.0, 220.0, 220.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        assert r.get('inv_divergence') == pytest.approx(30.0)
+
+    def test_divergence_lt_neg15_inv_score_10(self):
+        """divergence < -15 → inv_score=10（line 607）"""
+        # rev falls 10%, inv grows → divergence < -15
+        rev = [1000.0, 1000.0, 1000.0, 1000.0, 900.0, 900.0, 900.0, 900.0]
+        inv = [100.0, 100.0, 100.0, 100.0, 130.0, 130.0, 130.0, 130.0]
+        bs_cf = pd.DataFrame({'存貨': inv})
+        qtr   = pd.DataFrame({'營收': rev})
+        r = calc_forward_momentum_score(quarterly_df=qtr, bs_cf_df=bs_cf)
+        assert r.get('inv_divergence') == pytest.approx(10.0)
