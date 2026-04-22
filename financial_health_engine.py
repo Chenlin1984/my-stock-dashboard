@@ -387,20 +387,34 @@ def _no_ai_survival(fd: dict) -> dict:
     div = fd.get("現金股利(千)", 0) or 0
     ppe = fd.get("固定資產(千)", 0) or 0
     lt = fd.get("長期投資(千)", 0) or 0
+    capex = fd.get("資本支出(千)", 0) or 0
+    inv = fd.get("存貨(千)", 0) or 0
+    inv_p = fd.get("存貨前期(千)", 0) or 0
     a_val = round(ocf / cl * 100, 1) if cl > 0 else None
     a_st = ("Pass" if a_val and a_val > 100 else "Fail") if a_val is not None else "N/A"
+    # B項：現金流量允當比率（標準公式需5年，此處以單季估算）
+    inv_inc = max(inv - inv_p, 0)
+    b_denom = capex + inv_inc + div
+    if b_denom > 0:
+        b_val = round(ocf / b_denom * 100, 1)
+        b_display = f"{b_val:.1f}%(1Q估)"
+        b_st = "Pass" if b_val >= 100 else "Fail"
+    else:
+        b_val = None
+        b_display = "N/A"
+        b_st = "N/A"
     c_val = round((ocf - div) / (ppe + lt) * 100, 1) if (ppe + lt) > 0 else None
     c_st = ("Pass" if c_val and c_val > 10 else "Fail") if c_val is not None else "N/A"
-    rule_st = "Pass" if (a_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
+    rule_st = "Pass" if (a_st in ("Pass", "N/A") and b_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
     verdict = f"Cash={cr_st} DSO={dso_st} 100-100-10={rule_st}（無AI，原始計算）"
     return {"Survival_Module": {
         "Cash_Ratio": {"Value": f"{cash}%", "Status": cr_st, "Insight": "原始數據直接計算"},
         "DSO_Speed": {"Value": dso_val, "Status": dso_st, "Insight": "原始數據直接計算"},
         "Rule_100_100_10": {
             "Cash_Flow_Ratio": f"{a_val}%" if a_val is not None else "N/A",
-            "Cash_Flow_Adequacy": "N/A",
+            "Cash_Flow_Adequacy": b_display,
             "Cash_Reinvestment": f"{c_val}%" if c_val is not None else "N/A",
-            "Status": rule_st, "Insight": "原始數據直接計算（5年數據不足，B項略）",
+            "Status": rule_st, "Insight": "原始數據直接計算（B項為單季估算，非標準5年）",
         },
         "Final_Survival_Verdict": verdict,
     }}
@@ -450,13 +464,14 @@ def _no_ai_profitability(fd: dict) -> dict:
 
 
 def _no_ai_financial_structure(fd: dict) -> dict:
+    is_finance = fd.get("is_finance", False)
     debt   = fd.get("負債比率(%)", 0) or 0
     eq     = fd.get("股東權益(千)", 0) or 0
     lt_liab = fd.get("非流動負債(千)", 0) or 0
     ppe    = fd.get("固定資產(千)", 0) or 0
 
     # ── 負債比率兜底：當上游 debt_ratio=0 時，從原始欄位自行重算 ──────
-    if debt == 0:
+    if debt == 0 and not is_finance:
         _tl = fd.get("總負債(千)", 0) or 0
         _ta = fd.get("總資產(千)", 0) or 0
         _cl = fd.get("流動負債(千)", 0) or 0
@@ -484,8 +499,10 @@ def _no_ai_financial_structure(fd: dict) -> dict:
             lt_val = f"{lt_ratio:.1f}%"
     else:
         lt_st, lt_val = "Pass", "N/A (輕資產)"
-    # debt=0 且無法推算時標記為資料不足，避免誤顯「穩健 0%」
-    if debt == 0:
+    # 金融特許行業：負債高槓桿屬正常，不適用一般比率標準
+    if is_finance:
+        debt_st, debt_val = "N/A", f"N/A (金融特許行業)" if debt == 0 else f"{debt:.1f}% (金融業)"
+    elif debt == 0:
         debt_st, debt_val = "N/A", "N/A (負債資料不足)"
     else:
         debt_st = "Pass" if debt < 60 else ("Warning" if debt <= 70 else "Fail")

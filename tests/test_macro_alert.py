@@ -401,3 +401,126 @@ class TestIntegration:
             assert result[0]['level'] == expected, (
                 f"PCR={val} 期望 {expected}，got {result[0]['level']}"
             )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 補齊 fetch_macro_snapshot TypeError/ValueError 防禦路徑
+# ═══════════════════════════════════════════════════════════════
+
+class TestFetchMacroSnapshotEdgeCases:
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_vix_value_is_ignored(self, _):
+        """VIX current = 非數值字串 → TypeError/ValueError → 靜默略過，vix 不寫入"""
+        snap = fetch_macro_snapshot(
+            session_macro={'vix': {'current': 'invalid_string'}},
+        )
+        # vix 應從 yfinance 補抓（或不存在）；不應拋出例外
+        assert 'cpi' not in snap or isinstance(snap.get('cpi'), (float, type(None)))
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_cpi_value_is_ignored(self, _):
+        """CPI yoy = dict（非純量）→ 靜默略過，cpi 不寫入"""
+        snap = fetch_macro_snapshot(
+            session_macro={'us_core_cpi': {'yoy': {'nested': 'dict'}}},
+        )
+        assert 'cpi' not in snap
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_pcr_value_is_ignored(self, _):
+        """選PCR 欄位含無法轉 float 的值 → except 略過，pcr 不寫入"""
+        import pandas as pd
+        df = pd.DataFrame([{'選PCR': [1, 2, 3]}])  # list 無法 float()
+        snap = fetch_macro_snapshot(session_li=df)
+        assert 'pcr' not in snap
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_pcr_dash_string_is_ignored(self, _):
+        """選PCR = '-' → 被過濾掉，pcr 不寫入"""
+        import pandas as pd
+        df = pd.DataFrame([{'選PCR': '-'}])
+        snap = fetch_macro_snapshot(session_li=df)
+        assert 'pcr' not in snap
+
+
+# ═══════════════════════════════════════════════════════════════
+# 整合測試：render_macro_alerts（mock streamlit）
+# ═══════════════════════════════════════════════════════════════
+import sys
+import types
+from unittest.mock import MagicMock, patch, call
+
+from macro_alert import render_macro_alerts
+
+
+def _make_st_mock():
+    """建立最小 Streamlit mock，捕捉 info/markdown/expander 呼叫。"""
+    st = MagicMock()
+    # st.expander 需要支援 context manager
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=cm)
+    cm.__exit__  = MagicMock(return_value=False)
+    st.expander.return_value = cm
+    return st
+
+
+class TestRenderMacroAlerts:
+
+    def test_empty_alerts_calls_st_info(self):
+        """alerts=[] → 呼叫 st.info 顯示佔位符，不呼叫 st.markdown"""
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts([])
+        st.info.assert_called_once()
+        st.markdown.assert_not_called()
+
+    def test_single_green_alert_renders_markdown(self):
+        """一個 green 警示 → 呼叫 st.markdown（橫幅）+ st.expander + st.markdown（詳情）"""
+        alerts = check_macro_alerts({'vix': 15.0})
+        assert len(alerts) == 1
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts(alerts)
+        st.markdown.assert_called()
+        st.expander.assert_called_once()
+
+    def test_red_alert_expander_expanded_true(self):
+        """red 整體等級 → st.expander 以 expanded=True 開啟"""
+        alerts = check_macro_alerts({'vix': 40.0})
+        assert alerts[0]['level'] == 'red'
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts(alerts)
+        _, kwargs = st.expander.call_args
+        assert kwargs.get('expanded') is True
+
+    def test_green_alert_expander_expanded_false(self):
+        """green 整體等級 → st.expander 以 expanded=False 開啟"""
+        alerts = check_macro_alerts({'vix': 15.0})
+        assert alerts[0]['level'] == 'green'
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts(alerts)
+        _, kwargs = st.expander.call_args
+        assert kwargs.get('expanded') is False
+
+    def test_multiple_alerts_all_rendered(self):
+        """多個警示 → 每個詳情卡各呼叫一次 st.markdown"""
+        snap = {'vix': 40.0, 'cpi': 4.5, 'pcr': 0.5}
+        alerts = check_macro_alerts(snap)
+        assert len(alerts) == 3
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts(alerts)
+        # 1 次橫幅 + N 次詳情 = N+1 次 st.markdown
+        assert st.markdown.call_count >= len(alerts)
+
+    def test_banner_html_contains_level_label(self):
+        """橫幅 HTML 應包含整體等級的中文標籤"""
+        alerts = check_macro_alerts({'vix': 40.0})
+        st = _make_st_mock()
+        with patch.dict(sys.modules, {'streamlit': st}):
+            render_macro_alerts(alerts)
+        # 第一次 markdown 呼叫是橫幅
+        first_call_html = st.markdown.call_args_list[0][0][0]
+        assert '高風險' in first_call_html

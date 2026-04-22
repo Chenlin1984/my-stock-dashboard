@@ -7,6 +7,7 @@ MacroStateLocker 單元測試（無 HTTP、無 Streamlit）
 import json
 import os
 import tempfile
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -325,3 +326,185 @@ class TestLoadMacroState:
         data = load_macro_state(path)
         assert isinstance(data["exposure_limit_pct"], int)
         assert data["exposure_limit_pct"] == 60
+
+
+# ═══════════════════════════════════════════════════════════════
+# TestDefaultGeminiCall — _default_gemini_call() HTTP paths
+# ═══════════════════════════════════════════════════════════════
+from macro_state_locker import _default_gemini_call
+
+
+class TestDefaultGeminiCall:
+
+    def test_no_api_key_returns_warning(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
+            result = _default_gemini_call("test prompt")
+        assert result.startswith("⚠️ 缺少 GEMINI_API_KEY")
+
+    def test_successful_200_returns_text(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "AI 分析結果"}]}}]
+        }
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", return_value=mock_resp):
+                result = _default_gemini_call("prompt")
+        assert result == "AI 分析結果"
+
+    def test_404_skips_to_next_model_all_fail(self):
+        """所有模型都回 404 → 回傳 AI 服務暫時無法使用"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", return_value=mock_resp):
+                result = _default_gemini_call("prompt")
+        assert result.startswith("⚠️ AI 服務暫時無法使用")
+
+    def test_safety_filter_continues_next_model(self):
+        """第一個模型 SAFETY → 嘗試下一個；所有都 SAFETY → 最終失敗"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "candidates": [{"finishReason": "SAFETY", "content": {"parts": []}}]
+        }
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", return_value=mock_resp):
+                result = _default_gemini_call("prompt")
+        assert result.startswith("⚠️ AI 服務暫時無法使用")
+
+    def test_429_rate_limit_sleeps_and_retries(self):
+        """429 → 呼叫 time.sleep(5) 後繼續嘗試下一個模型"""
+        mock_resp_429 = MagicMock()
+        mock_resp_429.status_code = 429
+        mock_resp_ok = MagicMock()
+        mock_resp_ok.status_code = 200
+        mock_resp_ok.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "retry success"}]}}]
+        }
+        responses = [mock_resp_429, mock_resp_ok]
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", side_effect=responses):
+                with patch("time.sleep"):
+                    result = _default_gemini_call("prompt")
+        assert result == "retry success"
+
+    def test_request_exception_logs_and_continues(self):
+        """requests 拋出異常 → 繼續嘗試下一個模型；全失敗 → 警告"""
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", side_effect=ConnectionError("timeout")):
+                with patch("time.sleep"):
+                    result = _default_gemini_call("prompt")
+        assert result.startswith("⚠️ AI 服務暫時無法使用")
+
+    def test_200_empty_candidates_continues(self):
+        """200 但 candidates=[] → 繼續嘗試下一個模型"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"candidates": []}
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}):
+            with patch("requests.post", return_value=mock_resp):
+                result = _default_gemini_call("prompt")
+        assert result.startswith("⚠️ AI 服務暫時無法使用")
+
+
+# ═══════════════════════════════════════════════════════════════
+# TestLockSystemStateOnly — 規則引擎直寫（不呼叫 AI）
+# ═══════════════════════════════════════════════════════════════
+
+class TestLockSystemStateOnly:
+
+    def test_writes_state_without_ai(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        locker = _locker(tmp_path=path)
+        locker.lock_system_state_only({
+            "market_regime": "多頭",
+            "systemic_risk_level": "安全",
+            "exposure_limit_pct": 80,
+        })
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        assert saved["market_regime"] == "多頭"
+        assert saved["exposure_limit_pct"] == 80
+
+    def test_exposure_clamped_above_100(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        locker = _locker(tmp_path=path)
+        locker.lock_system_state_only({"exposure_limit_pct": 150})
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        assert saved["exposure_limit_pct"] == 100
+
+    def test_exposure_clamped_below_0(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        locker = _locker(tmp_path=path)
+        locker.lock_system_state_only({"exposure_limit_pct": -20})
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        assert saved["exposure_limit_pct"] == 0
+
+    def test_summary_contains_exposure(self, tmp_path):
+        path = str(tmp_path / "state.json")
+        locker = _locker(tmp_path=path)
+        locker.lock_system_state_only({"exposure_limit_pct": 60})
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        assert "60" in saved["analysis_summary"]
+        assert "timestamp" in saved
+
+
+# ═══════════════════════════════════════════════════════════════
+# TestCalculateSystemStateBias240 — BIAS240 雙重共振 & _f() 邊界
+# ═══════════════════════════════════════════════════════════════
+
+class TestCalculateSystemStateBias240:
+
+    def test_high_bias240_with_high_vix_penalises(self):
+        """BIAS240>15 且 VIX>=22 → score -15, 標記「均線過熱」"""
+        result = calculate_system_state({
+            "VIX_Index": 25.0,
+            "ISM_PMI_or_OECD_CLI": 52.0,
+            "BIAS240_pct": 18.0,
+        })
+        assert "均線過熱" in result["Macro_Phase"]
+
+    def test_high_bias240_with_pmi_below_50_penalises(self):
+        """BIAS240>15 且 PMI<50 → 觸發雙重共振懲罰"""
+        result = calculate_system_state({
+            "VIX_Index": 18.0,
+            "ISM_PMI_or_OECD_CLI": 48.0,
+            "BIAS240_pct": 20.0,
+        })
+        assert "均線過熱" in result["Macro_Phase"]
+
+    def test_high_bias240_without_resonance_no_penalty(self):
+        """BIAS240>15 但 VIX<22 且 PMI>=50 → 不觸發雙重共振（不加「均線過熱」）"""
+        result = calculate_system_state({
+            "VIX_Index": 16.0,
+            "ISM_PMI_or_OECD_CLI": 53.0,
+            "BIAS240_pct": 18.0,
+        })
+        assert "均線過熱" not in result["Macro_Phase"]
+
+    def test_low_bias240_adds_score(self):
+        """BIAS240 < -10 → score +10（偏空後超賣反彈空間）"""
+        baseline = calculate_system_state({"VIX_Index": 20.0, "BIAS240_pct": 0.0})
+        boosted  = calculate_system_state({"VIX_Index": 20.0, "BIAS240_pct": -12.0})
+        assert boosted["exposure_limit_pct"] >= baseline["exposure_limit_pct"]
+
+    def test_non_numeric_value_uses_default(self):
+        """_f() 收到非數值字串 → 回傳預設值，不拋出例外"""
+        result = calculate_system_state({
+            "VIX_Index": "not_a_number",
+            "ISM_PMI_or_OECD_CLI": "bad",
+        })
+        assert isinstance(result["exposure_limit_pct"], int)
+
+    def test_negative_m1b_m2_spread_labels_tightening(self):
+        """M1B YoY < M2 YoY（資金緊縮）→ Macro_Phase 含「資金緊縮」"""
+        result = calculate_system_state({
+            "VIX_Index": 18.0,
+            "M1B_YoY_pct": 1.0,
+            "M2_YoY_pct": 5.0,   # spread = -4 < 0
+        })
+        assert "資金緊縮" in result["Macro_Phase"]

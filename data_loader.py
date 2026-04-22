@@ -1537,7 +1537,9 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
                              "應收帳款，淨額", "貿易應收款",
                              "應收款項", "應收款項合計", "應收帳款及其他應收款",
-                             "ReceivablesNet", "NetReceivables"])
+                             "ReceivablesNet", "NetReceivables",
+                             "合約資產", "工程應收款", "應收帳款及合約資產",
+                             "應收票據及應收帳款"])
     ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
                              "NoteAndAccountsPayable", "應付帳款及票據應付款",
                              "應付票據及帳款", "貿易應付款"])
@@ -1556,7 +1558,7 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     fncf   = _v(_cf, _lat, ["CashFlowsFromFinancingActivities",
                              "籌資活動之淨現金流入（流出）", "來自籌資活動之現金流量"])
     capex  = abs(_v(_cf, _lat, ["AcquisitionOfPropertyPlantAndEquipment",
-                                 "取得不動產、廠房及設備", "資本支出"]))
+                                 "取得不動產、廠房及設備", "購置不動產、廠房及設備", "資本支出"]))
     div_paid = abs(_v(_cf, _lat, ["CashDividendsPaid", "發放現金股利", "現金股利"]))
 
     rev    = _v(_is, _lat, ["Revenue", "營業收入合計", "營業收入", "NetRevenue"])
@@ -1750,4 +1752,5 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "現金股利(千)":      round(div_paid),
         "固定資產(千)":      round(ppe),
         "長期投資(千)":      round(lt_inv),
+        "is_finance":        is_finance,
     }

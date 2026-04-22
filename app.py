@@ -1123,6 +1123,43 @@ with st.sidebar:
         st.success('🟢 系統正常運作中')
 
     st.markdown('---')
+    st.markdown('### 🔌 連線狀態')
+    _fm_tok  = str(st.secrets.get('FINMIND_TOKEN',  ''))
+    _gm_key  = str(st.secrets.get('GEMINI_API_KEY', ''))
+    _px_host = str(st.secrets.get('PROXY_HOST',     ''))
+    _sb_c1, _sb_c2, _sb_c3 = st.columns(3)
+    with _sb_c1:
+        if _fm_tok: st.success('FinMind ✅')
+        else:        st.error('FinMind ❌')
+    with _sb_c2:
+        if _gm_key: st.success('Gemini ✅')
+        else:        st.error('Gemini ❌')
+    with _sb_c3:
+        if _px_host: st.success('Proxy ✅')
+        else:         st.warning('Proxy —')
+    if _px_host:
+        _px_port = str(st.secrets.get('PROXY_PORT', ''))
+        st.caption(f'🔒 {_px_host}:{_px_port}')
+    if st.button('🔍 測試連線', key='sb_conn_test', use_container_width=True):
+        import requests as _rq_sb
+        _test_targets = [
+            ('FinMind', 'https://api.finmindtrade.com/api/v4/info'),
+            ('TWSE',    'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?type=MS'),
+            ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d'),
+        ]
+        _conn_res = []
+        for _tn, _tu in _test_targets:
+            try:
+                _tr = _rq_sb.get(_tu, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                _conn_res.append((_tn, _tr.status_code, _tr.status_code < 400))
+            except Exception as _te:
+                _conn_res.append((_tn, type(_te).__name__, False))
+        st.session_state['_sb_conn_results'] = _conn_res
+    for _rn, _rc, _rok in st.session_state.get('_sb_conn_results', []):
+        if _rok: st.success(f'✅ {_rn} 可達！HTTP {_rc}')
+        else:    st.error(f'❌ {_rn} 失敗：{_rc}')
+
+    st.markdown('---')
     st.caption('⚠️ 僅供學術研究，非投資建議，盈虧自負')
 
 # v3.0 RENDER FUNCTIONS (§9.3)
