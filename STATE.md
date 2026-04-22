@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.6 | main `6e197ef`
+- **版本**: v10.7 | main `769f945`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.7，main `769f945`）
+
+### `financial_health_engine.py` N/A 連鎖誤判修復（commit `769f945`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **OPM 護城河誤判** | `_derive_basic_from_fin_data` + `_no_ai_operating` | DSO=0(N/A) 時：`advantage=False`、雷達得 -999（最低）、`OPM_Strategy="N/A (DSO缺失)"` |
+| **負債比 0% 亮綠燈** | `_derive_basic_from_fin_data` | `debt_pct` 改用 `None` 預設；缺漏 → `⚪` 灰燈；雷達「財務結構」同給 -999 |
+| **OCF 單位錯誤** | `_derive_basic_from_fin_data` | `÷1e6` → `÷1e5`，顯示由 `XB` 改為 `X億` |
 
 ## ✅ 最新異動（v10.6，main `6e197ef`）
 
