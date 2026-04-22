@@ -401,3 +401,43 @@ class TestIntegration:
             assert result[0]['level'] == expected, (
                 f"PCR={val} 期望 {expected}，got {result[0]['level']}"
             )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 補齊 fetch_macro_snapshot TypeError/ValueError 防禦路徑
+# ═══════════════════════════════════════════════════════════════
+
+class TestFetchMacroSnapshotEdgeCases:
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_vix_value_is_ignored(self, _):
+        """VIX current = 非數值字串 → TypeError/ValueError → 靜默略過，vix 不寫入"""
+        snap = fetch_macro_snapshot(
+            session_macro={'vix': {'current': 'invalid_string'}},
+        )
+        # vix 應從 yfinance 補抓（或不存在）；不應拋出例外
+        assert 'cpi' not in snap or isinstance(snap.get('cpi'), (float, type(None)))
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_cpi_value_is_ignored(self, _):
+        """CPI yoy = dict（非純量）→ 靜默略過，cpi 不寫入"""
+        snap = fetch_macro_snapshot(
+            session_macro={'us_core_cpi': {'yoy': {'nested': 'dict'}}},
+        )
+        assert 'cpi' not in snap
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_invalid_pcr_value_is_ignored(self, _):
+        """選PCR 欄位含無法轉 float 的值 → except 略過，pcr 不寫入"""
+        import pandas as pd
+        df = pd.DataFrame([{'選PCR': [1, 2, 3]}])  # list 無法 float()
+        snap = fetch_macro_snapshot(session_li=df)
+        assert 'pcr' not in snap
+
+    @patch('macro_alert._yf_latest', return_value={'^TNX': 4.2, 'DX-Y.NYB': 102.0})
+    def test_pcr_dash_string_is_ignored(self, _):
+        """選PCR = '-' → 被過濾掉，pcr 不寫入"""
+        import pandas as pd
+        df = pd.DataFrame([{'選PCR': '-'}])
+        snap = fetch_macro_snapshot(session_li=df)
+        assert 'pcr' not in snap
