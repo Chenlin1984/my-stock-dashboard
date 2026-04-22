@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.1 | main `e22f613` | branch `051800d`
+- **版本**: v10.2 | main `e22f613` | branch `968f2bb`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,16 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.2，branch `claude/analyze-test-coverage-070Kf`）
+
+### Sidebar 連線狀態面板（commit `968f2bb`）
+| 項目 | 說明 |
+|------|------|
+| **靜態徽章** | FinMind/Gemini/Proxy 三欄，根據 Secrets 是否設定顯示 ✅/❌/— |
+| **Proxy 提示** | `PROXY_HOST` 有值時顯示 `🔒 host:port` |
+| **測試連線按鈕** | 點擊對 FinMind / TWSE / Yahoo Finance 發送 HTTP 探測，結果存入 `session_state['_sb_conn_results']` |
+| **位置** | `app.py:1125`，Defense Mode 狀態下方，警語上方 |
 
 ## ✅ 最新異動（v10.1，branch `claude/analyze-test-coverage-070Kf`）
 
