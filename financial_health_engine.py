@@ -546,7 +546,7 @@ def _no_ai_solvency(fd: dict) -> dict:
         verdict, cv = "Pass", "No"
     elif cash_pct > 25:
         verdict, cv = "Exception_Pass (條件A：現金充足)", "Yes"
-    elif ar_days < 15:
+    elif 0 < ar_days <= 15:
         verdict, cv = "Exception_Pass (條件B：天天收現)", "Yes"
     else:
         verdict, cv = "Fail", "Yes"
@@ -569,20 +569,14 @@ def _no_ai_advanced_diagnostic(fd: dict) -> dict:
     inv = fd.get("存貨(千)", 0) or 0
     inv_p = fd.get("存貨前期(千)", 0) or 0
     if ni <= 0:
-        # NI ≤ 0 時改以 OCF/Revenue 顯示現金流健康度
-        _rev_adv = fd.get("營業收入(千)", 0) or 0
-        if ocf > 0:
-            _ocf_rate = round(ocf / _rev_adv * 100, 1) if _rev_adv > 0 else 0
-            eq_val = f"{_ocf_rate:.1f}% (OCF/Rev)" if _ocf_rate > 0 else "OCF 為正"
-            eq_st = "Acceptable"
-        else:
-            eq_val, eq_st = "OCF負+虧損", "Fail"
+        eq_val, eq_st = "N/A (本業虧損，不適用此指標)", "N/A"
     else:
         eq_pct = round(ocf / ni * 100, 1)
         eq_val, eq_st = f"{eq_pct:.1f}%", "Pass" if eq_pct >= 100 else "Fail"
     roe = round(ni / eq * 100, 1) if eq > 0 else 0
     dupont = ("槓桿膨脹警報" if roe > 15 and debt > 65 else
-              ("健康成長" if roe > 15 else "ROE 偏低，成長動能不足"))
+              ("健康成長" if roe > 15 else
+               ("ROE 偏低，成長動能不足" if roe > 0 else "⚠️ ROE 為負，本業虧損")))
     if ar_chg is not None and rev_chg is not None and inv_p > 0:
         inv_chg = round((inv - inv_p) / abs(inv_p) * 100, 1)
         dh = "Triggered (危險)" if (ar_chg > (rev_chg or 0) and inv_chg > (rev_chg or 0)) else "Clear (安全)"
