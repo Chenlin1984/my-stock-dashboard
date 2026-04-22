@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.2 | main `e22f613` | branch `968f2bb`
+- **版本**: v10.3 | main `7dee8f9`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -22,7 +22,34 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.2，branch `claude/analyze-test-coverage-070Kf`）
+## ✅ 最新異動（v10.3，main）
+
+### `leading_indicators.py` Bug 修復 + 測試（commits `30ea5da` → `7dee8f9`）
+| 項目 | 說明 |
+|------|------|
+| **Bug 1 修復** | `build_dataset` 韭菜指數：`taifex_mtx_data()` 回傳 tuple，改用 `_mtx[0] if isinstance(_mtx, tuple) else _mtx` 解包 |
+| **Bug 2 修復** | `render_leading_table` PCR 顏色閾值：`0.8/1.2`（小數比率）→ `80/120`（整數百分比） |
+| **新增測試** | `tests/test_leading_indicators.py`：47 個測試，8 個 class，全通過 |
+| **測試涵蓋** | `roc_to_ymd` / `ymd formatters` / `to_num` / `first_num` / `months_in_range` / `extract_date` / `find_data_table` / `expand_table_elem` + Bug 2 regression（PCR 邊界值 80/120） |
+
+### Sidebar 連線狀態面板修正（commit `7438fe0`）
+| 項目 | 說明 |
+|------|------|
+| **FinMind 端點** | `/api/v4/info`（404）→ `/api/v4/data?dataset=TaiwanStockInfo&stock_id=2330` |
+| **TWSE 端點** | `twse.com.tw/rwd`（SSLError）→ `openapi.twse.com.tw/v1/opendata/t187ap03_L` |
+
+### 總測試數
+| 模組 | 測試數 |
+|------|------|
+| `scoring_engine.py` | 168+ |
+| `macro_state_locker.py` | 18+ |
+| `macro_alert.py` | 10+ |
+| `financial_health_engine.py` | 17 |
+| `risk_control.py` | 既有 |
+| `leading_indicators.py` | **47（新增）** |
+| **合計** | **≥ 473** |
+
+## ✅ 最新異動（v10.2，main `5c94cd4`）
 
 ### Sidebar 連線狀態面板（commit `968f2bb`）
 | 項目 | 說明 |
