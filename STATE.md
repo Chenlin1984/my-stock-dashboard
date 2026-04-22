@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.4 | main `213f57a`
+- **版本**: v10.5 | main `5f98874`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,14 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.5，main `5f98874`）
+
+### 移除執行期暫存檔（commit `5f98874`）
+| 項目 | 說明 |
+|------|------|
+| **`macro_state.json`** | `git rm --cached` 移出追蹤；`.gitignore` 補上規則，往後不再進 repo |
+| **原因** | 該檔由 `macro_state_locker.py` 執行時寫入，屬執行期狀態，非原始碼 |
 
 ## ✅ 最新異動（v10.4，main `213f57a`）
 
