@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.5 | main `5f98874`
+- **版本**: v10.6 | main `6e197ef`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.6，main `6e197ef`）
+
+### `financial_health_engine.py` 3 大邏輯 Bug 修復（commit `6e197ef`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **Bug 1：ROE 負值顯示綠色** | `_no_ai_advanced_diagnostic` dupont 判斷 | 新增 `roe <= 0` 分支 → `"⚠️ ROE 為負，本業虧損"` |
+| **Bug 2：天天收現防呆漏洞** | `_no_ai_solvency` 條件B | `ar_days < 15` → `0 < ar_days <= 15`，DSO 為 N/A (0) 時不觸發 |
+| **Bug 3：盈餘含金量公式錯誤** | `_no_ai_advanced_diagnostic` 盈餘含金量 | NI≤0 → `"N/A (本業虧損，不適用此指標)"`；NI>0 → 標準 OCF/NI |
 
 ## ✅ 最新異動（v10.5，main `5f98874`）
 
