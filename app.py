@@ -1142,15 +1142,17 @@ with st.sidebar:
         st.caption(f'🔒 {_px_host}:{_px_port}')
     if st.button('🔍 測試連線', key='sb_conn_test', use_container_width=True):
         import requests as _rq_sb
+        import urllib3 as _ul3; _ul3.disable_warnings(_ul3.exceptions.InsecureRequestWarning)
         _test_targets = [
-            ('FinMind', 'https://api.finmindtrade.com/api/v4/info'),
-            ('TWSE',    'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?type=MS'),
-            ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d'),
+            ('FinMind', 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&stock_id=2330&date=2024-01-01', False),
+            ('TWSE',    'https://openapi.twse.com.tw/v1/opendata/t187ap03_L', False),
+            ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d', False),
         ]
         _conn_res = []
-        for _tn, _tu in _test_targets:
+        for _tn, _tu, _skip_ssl in _test_targets:
             try:
-                _tr = _rq_sb.get(_tu, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                _tr = _rq_sb.get(_tu, timeout=6, verify=not _skip_ssl,
+                                  headers={'User-Agent': 'Mozilla/5.0'})
                 _conn_res.append((_tn, _tr.status_code, _tr.status_code < 400))
             except Exception as _te:
                 _conn_res.append((_tn, type(_te).__name__, False))
