@@ -1752,5 +1752,5 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "現金股利(千)":      round(div_paid),
         "固定資產(千)":      round(ppe),
         "長期投資(千)":      round(lt_inv),
-        "is_finance":        is_finance,
+        "is_finance":        stock_id.startswith(('28', '58')),
     }
