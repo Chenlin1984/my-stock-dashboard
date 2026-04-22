@@ -450,10 +450,28 @@ def _no_ai_profitability(fd: dict) -> dict:
 
 
 def _no_ai_financial_structure(fd: dict) -> dict:
-    debt = fd.get("負債比率(%)", 0) or 0
-    eq = fd.get("股東權益(千)", 0) or 0
+    debt   = fd.get("負債比率(%)", 0) or 0
+    eq     = fd.get("股東權益(千)", 0) or 0
     lt_liab = fd.get("非流動負債(千)", 0) or 0
-    ppe = fd.get("固定資產(千)", 0) or 0
+    ppe    = fd.get("固定資產(千)", 0) or 0
+
+    # ── 負債比率兜底：當上游 debt_ratio=0 時，從原始欄位自行重算 ──────
+    if debt == 0:
+        _tl = fd.get("總負債(千)", 0) or 0
+        _ta = fd.get("總資產(千)", 0) or 0
+        _cl = fd.get("流動負債(千)", 0) or 0
+        _ca = fd.get("流動資產(千)", 0) or 0
+        _eff_liab = _tl if _tl > 0 else _cl          # 優先總負債，否則流動負債
+        if _ta > 0:
+            _eff_assets = _ta
+        elif eq > 0 and _eff_liab > 0:
+            _eff_assets = eq + _eff_liab              # IFRS: 資產 = 負債 + 權益
+        else:
+            _eff_assets = _ca + (fd.get("固定資產(千)", 0) or 0)
+        if _eff_liab > 0 and _eff_assets > 0:
+            debt = round(_eff_liab / _eff_assets * 100, 1)
+            if lt_liab == 0 and _tl > _cl > 0:
+                lt_liab = _tl - _cl
     if ppe > 0:
         if eq == 0 and lt_liab == 0:
             lt_st, lt_val = "N/A", "N/A (股東權益資料不足)"

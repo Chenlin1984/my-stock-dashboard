@@ -1662,6 +1662,42 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         except Exception as _e_yf:
             print(f"[fetch_fin] {stock_id} yfinance備援異常: {_e_yf}")
 
+    # ── Goodinfo 備援：當 AR 仍為 0 時，爬取季度資產負債表 ──────────────
+    if ar == 0:
+        try:
+            import requests as _rq_gi_bs, pandas as _pd_gi_bs
+            _gi_hdr = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                       'Referer': 'https://goodinfo.tw/tw/index.asp',
+                       'Accept': 'text/html,application/xhtml+xml'}
+            _gi_bs_url = (f"https://goodinfo.tw/tw/StockFinDetail.asp"
+                          f"?RPT_CAT=BS_M_QUAR&STOCK_ID={stock_id}")
+            _gi_bs_r = _rq_gi_bs.get(_gi_bs_url, headers=_gi_hdr, timeout=20)
+            _gi_bs_r.encoding = 'utf-8'
+            if _gi_bs_r.status_code == 200 and len(_gi_bs_r.text) > 500:
+                _gi_bs_tables = _pd_gi_bs.read_html(_gi_bs_r.text, encoding='utf-8')
+                for _gi_tb in _gi_bs_tables:
+                    _gi_cols = [str(c) for c in _gi_tb.columns]
+                    if not any(re.search(r'Q[1-4]|\d{3}Q|\d{4}Q', c) for c in _gi_cols):
+                        continue
+                    for _, _gi_row in _gi_tb.iterrows():
+                        _gi_lbl = str(_gi_row.iloc[0])
+                        if any(k in _gi_lbl for k in ['應收帳款', '應收票據', '合約資產', '應收款項']):
+                            for _ci in range(1, min(3, len(_gi_cols))):
+                                try:
+                                    _gi_v = float(str(_gi_row.iloc[_ci]).replace(',', ''))
+                                    if _gi_v > 0:
+                                        ar = _gi_v * 1000  # Goodinfo 百萬元 → 千元
+                                        print(f"[fetch_fin] {stock_id} Goodinfo AR備援: {ar:.0f}千")
+                                        break
+                                except Exception:
+                                    pass
+                        if ar > 0:
+                            break
+                    if ar > 0:
+                        break
+        except Exception as _e_gi_bs:
+            print(f"[fetch_fin] {stock_id} Goodinfo BS備援: {_e_gi_bs}")
+
     _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab), ("equity", equity)] if v == 0]
     if _zero_fields:
         _avail = list((_bs.get(_lat) or {}).keys())[:30]
