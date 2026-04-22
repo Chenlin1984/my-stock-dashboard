@@ -1145,7 +1145,7 @@ with st.sidebar:
         import urllib3 as _ul3; _ul3.disable_warnings(_ul3.exceptions.InsecureRequestWarning)
         _test_targets = [
             ('FinMind', 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&stock_id=2330&date=2024-01-01', False),
-            ('TWSE',    'https://openapi.twse.com.tw/v1/opendata/t187ap03_L', False),
+            ('TWSE',    'https://openapi.twse.com.tw/v1/opendata/t187ap03_L', True),
             ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d', False),
         ]
         _conn_res = []
