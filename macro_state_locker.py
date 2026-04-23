@@ -17,6 +17,8 @@ import re
 import time
 from typing import Callable
 
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
+
 
 # ── 預設 Fail-safe 狀態 ─────────────────────────────────────
 _DEFAULT_STATE: dict = {
@@ -89,6 +91,7 @@ def _default_gemini_call(prompt: str) -> str:
                 f"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent",
                 params={"key": _key},
                 json={
+                    "systemInstruction": {"parts": [{"text": _PERSONA}]},
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600},
                 },

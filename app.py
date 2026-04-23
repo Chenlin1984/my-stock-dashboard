@@ -45,6 +45,7 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
 from financial_health_engine import analyze_financial_health, no_ai_overall_verdict
 from data_loader import fetch_financial_statements
 from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
@@ -104,7 +105,8 @@ def gemini_call(prompt, max_tokens=2048):
             _r = requests.post(
                 f'https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent',
                 params={'key': _key},
-                json={'contents': [{'parts': [{'text': prompt}]}],
+                json={'systemInstruction': {'parts': [{'text': _PERSONA}]},
+                      'contents': [{'parts': [{'text': prompt}]}],
                       'generationConfig': {'temperature': 0.3,
                                            'maxOutputTokens': max_tokens}},
                 timeout=120

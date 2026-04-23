@@ -5,6 +5,8 @@ import time
 import re
 import pandas as pd
 
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
+
 def fetch_news_summary(api_key, stock_id, stock_name):
     """使用 gemini-2.5-flash + Google Search Grounding 抓取最新新聞摘要"""
     try:
@@ -12,6 +14,7 @@ def fetch_news_summary(api_key, stock_id, stock_name):
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         headers = {"Content-Type": "application/json"}
         payload = {
+            "systemInstruction": {"parts": [{"text": _PERSONA}]},
             "contents": [{
                 "parts": [{
                     "text": (
@@ -400,6 +403,7 @@ def analyze_stock_trend(api_key, stock_id, stock_name, df, fundamental_summary=N
 
         headers = {"Content-Type": "application/json"}
         payload = {
+            "systemInstruction": {"parts": [{"text": _PERSONA}]},
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.4,
@@ -590,6 +594,7 @@ def analyze_leading_indicators(api_key, df_leading):
         prompt = "\n".join(lines)
 
         payload = {
+            "systemInstruction": {"parts": [{"text": _PERSONA}]},
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4096},
             "safetySettings": [

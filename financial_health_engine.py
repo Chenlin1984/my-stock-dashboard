@@ -13,6 +13,8 @@ import time
 
 import requests
 
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
+
 
 # ── Survival Module Prompt（存活能力：3大生死指標）──────────
 _SURVIVAL_PROMPT = """\
@@ -261,6 +263,7 @@ def _gemini_call(prompt: str, api_key: str) -> str:
                 f"https://generativelanguage.googleapis.com/v1beta/models/{_m}:generateContent",
                 params={"key": api_key},
                 json={
+                    "systemInstruction": {"parts": [{"text": _PERSONA}]},
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200},
                 },
