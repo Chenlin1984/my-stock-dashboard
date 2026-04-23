@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.18 | branch `claude/analyze-test-coverage-070Kf` `93d811f`
+- **版本**: v10.19 | branch `claude/analyze-test-coverage-070Kf` `3d2049a`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.19，commit `3d2049a`）
+
+### MA120 誤判根因修復（app.py + market_strategy.py）
+| 項目 | 說明 |
+|------|------|
+| **根本原因** | `app.py:1987` 的 `fetch_single('^TWII', period='90d')` 只回傳 ~64 交易日，不足 MA120 所需 120 筆；舊程式碼用 `current_price` 填補導致 `index_close == ma120` 判定跌破 |
+| **資料長度修正** | `_job_tw()` 改為 `period='9mo'`（≈195 交易日），確保 `rolling(120)` 有效運算 |
+| **新鮮度守門** | `get_market_assessment` 加入 7 天有效期檢查：末筆資料超過 7 天 → `return None` + 警告 log，防止陳舊資料產生誤判 |
 
 ## ✅ 最新異動（v10.18，commit `93d811f`）
 
