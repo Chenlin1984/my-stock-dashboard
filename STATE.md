@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.11 | main `d546216`
+- **版本**: v10.13 | main `23b76a2`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,25 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.13，main `23b76a2`）
+
+### 財報計算年化 + OCF 單位 + AR 別名修復（commit `23b76a2`）
+| 項目 | 修復內容 |
+|------|---------|
+| **ROE 年化** | `_no_ai_profitability` + `_no_ai_advanced_diagnostic`：`(NI × 4) / equity` |
+| **DIO 年化** | `_no_ai_operating`：分母 `cogs × 4`，天數統一 360 |
+| **DSO/DPO 年化** | `data_loader`：分母 `rev/cogs × 4`，365天→360天 |
+| **OCF 單位防呆** | 三段式自動偵測：>1e9 → 元（÷1e8）；>1e6 → 百萬（÷100）；其他 → 千元（÷1e5） |
+| **AR 別名** | L2 _vsum 補入 `應收帳款及票據`、`應收帳款及票據淨額` |
+
+### 新增 fetch_goodinfo_metrics()（commit `44cd2af`）
+| 項目 | 說明 |
+|------|------|
+| **模組** | `tw_stock_data_fetcher.py` §12.6 |
+| **URL** | `BS_M_QUAR`（資產總額/負債總額/應收帳款及票據）+ `IS_M_QUAR`（營業收入） |
+| **格式** | `@st.cache_data(ttl=3天)`；proxies 參數相容 Streamlit Secrets |
+| **計算** | `debt_ratio = 負債/資產×100`；`DSO = 360/(rev×4/ar)` |
 
 ## ✅ 最新異動（v10.11，main `d546216`）
 
