@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.17 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.18 | branch `claude/analyze-test-coverage-070Kf` `93d811f`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.18，commit `93d811f`）
+
+### MA120 趨勢濾網全面升級（market_strategy.py）
+| 項目 | 說明 |
+|------|------|
+| **歷史長度修正** | `period='300d'` → `'9mo'`（≈195 交易日），確保 `rolling(120)` 有足夠有效 bars |
+| **NaN 防呆** | MA120 為 NaN 時直接 `return None`，不再以 `current_price` 填補（消除「index_close == ma120」誤判跌破）|
+| **三日確認法則** | 向量化比對最近 3 日收盤 vs MA120：`ma120_above_3d` / `ma120_below_3d` |
+| **均線斜率** | 今日 MA120 vs 5 日前 MA120：`ma120_rising` / `ma120_falling` |
+| **狀態機重構** | 🟢 晴天 = above_3d + rising；🔴 雨天 = below_3d + falling；🟡 多雲 = 所有過渡狀態（取代原分數門檻）|
+| **Label 更新** | `'🟢 多頭'` → `'🟢 多頭（晴天）'`；`'🟡 中性'` → `'🟡 震盪（多雲）'`；`'🔴 空頭'` → `'🔴 空頭防禦（雨天）'` |
 
 ## ✅ 最新異動（v10.17）
 
