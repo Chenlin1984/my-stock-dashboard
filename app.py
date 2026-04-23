@@ -6779,20 +6779,23 @@ padding:12px 16px;margin:8px 0;">
                         f'border-radius:10px;padding:10px 16px;margin-bottom:10px;">'
                         f'<span style="font-size:14px;font-weight:900;color:{_sv2_bc};">'
                         f'{_sv2_icon} {_sv2_v}</span></div>', unsafe_allow_html=True)
-                    # 保命符：嚴格限定 Final_Solvency_Verdict 含「條件B：天天收現」才算啟動
-                    _is_dso_exception = "條件B：天天收現" in _sv2_v
-                    # 兩比率卡片（保命符啟動時流動比率放寬至 >150%）
+                    # 保命符：依 Final_Solvency_Verdict 區分例外類型
+                    _is_dso_exception  = "條件B：天天收現" in _sv2_v
+                    _is_cash_exception = "條件A：現金充足" in _sv2_v
+                    _is_any_exception  = _is_dso_exception or _is_cash_exception
+                    # 流動比率門檻：條件B→150%；條件A→100%；無例外→300%
+                    _cr_thresh = 150 if _is_dso_exception else (100 if _is_cash_exception else 300)
+                    _cr_label  = (f'流動比率（保命符放寬 >{_cr_thresh}%）'
+                                  if _is_any_exception else '流動比率（MJ嚴格 >300%）')
                     _sv2c = st.columns(2)
                     for _col, (_key, _label, _thresh) in zip(_sv2c, [
-                        ('Current_Ratio',
-                         '流動比率（保命符放寬 >150%）' if _is_dso_exception else '流動比率（MJ嚴格 >300%）',
-                         150 if _is_dso_exception else 300),
+                        ('Current_Ratio', _cr_label, _cr_thresh),
                         ('Quick_Ratio', '速動比率（MJ嚴格 >150%）', 150),
                     ]):
                         _si = _solv2.get(_key, {})
                         _si_s = _si.get('Status', '')
                         # 保命符啟動時，重新以放寬閾值判定流動比率顏色與標籤
-                        if _key == 'Current_Ratio' and _is_dso_exception:
+                        if _key == 'Current_Ratio' and _is_any_exception:
                             try:
                                 _cr_num = float(_si.get('Value', '0').replace('%', '').strip())
                                 if _cr_num > _thresh:
@@ -6811,9 +6814,11 @@ padding:12px 16px;margin:8px 0;">
                                 f'<div style="font-size:24px;font-weight:900;color:{_si_c};">{_si.get("Value","N/A")}</div>'
                                 f'<div style="font-size:11px;color:{_si_c};">{_si_s}</div>'
                                 f'</div>', unsafe_allow_html=True)
-                    # Banner：只有 DSO ≤ 15 的天天收現例外才顯示
+                    # Banner：依例外類型顯示不同提示
                     if _is_dso_exception:
                         st.info('🔍 已啟動收現行業交叉驗證保命符（DSO ≤ 15天，流動比率門檻放寬至 >150%）')
+                    elif _is_cash_exception:
+                        st.info('💰 已啟動現金充足交叉驗證保命符（現金佔總資產 >25%，流動比率門檻放寬至 >100%）')
                     if _solv2.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv2["Final_Insight"]}')
 
@@ -7857,21 +7862,42 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                         f'border-radius:8px;padding:6px 12px;margin-bottom:6px;">'
                         f'<span style="font-size:12px;font-weight:700;color:{_sv_f_bc};">'
                         f'{_sv_f_icon} {_sv_f_v}</span></div>', unsafe_allow_html=True)
+                    _is_dso_exc_f  = "條件B：天天收現" in _sv_f_v
+                    _is_cash_exc_f = "條件A：現金充足" in _sv_f_v
+                    _is_any_exc_f  = _is_dso_exc_f or _is_cash_exc_f
+                    _cr_thresh_f   = 150 if _is_dso_exc_f else (100 if _is_cash_exc_f else 300)
+                    _cr_label_f    = (f'流動比率（保命符放寬 >{_cr_thresh_f}%）'
+                                      if _is_any_exc_f else '流動比率 >300%')
                     _svf2c = st.columns(2)
                     for _col_s, (_key_s, _label_s) in zip(_svf2c, [
-                        ('Current_Ratio', '流動比率 >300%'),
+                        ('Current_Ratio', _cr_label_f),
                         ('Quick_Ratio',   '速動比率 >150%'),
                     ]):
                         _si_f = _solv_f.get(_key_s, {})
-                        _si_f_c = '#3fb950' if 'Pass' in _si_f.get('Status', '') else '#f85149'
+                        _si_f_s = _si_f.get('Status', '')
+                        if _key_s == 'Current_Ratio' and _is_any_exc_f:
+                            try:
+                                _cr_f_num = float(_si_f.get('Value', '0').replace('%', '').strip())
+                                if _cr_f_num > _cr_thresh_f:
+                                    _si_f_c, _si_f_s = '#3fb950', f'Pass（保命符 >{_cr_thresh_f}%）'
+                                else:
+                                    _si_f_c = '#f85149'
+                            except (ValueError, AttributeError):
+                                _si_f_c = '#3fb950' if 'Pass' in _si_f_s else '#f85149'
+                        else:
+                            _si_f_c = '#3fb950' if 'Pass' in _si_f_s else '#f85149'
                         with _col_s:
                             st.markdown(
                                 f'<div style="background:{_si_f_c}18;border:1px solid {_si_f_c}55;'
                                 f'border-radius:8px;padding:8px;text-align:center;">'
                                 f'<div style="font-size:10px;color:#8b949e;">{_label_s}</div>'
                                 f'<div style="font-size:18px;font-weight:900;color:{_si_f_c};">{_si_f.get("Value","N/A")}</div>'
-                                f'<div style="font-size:10px;color:{_si_f_c};">{_si_f.get("Status","")}</div>'
+                                f'<div style="font-size:10px;color:{_si_f_c};">{_si_f_s}</div>'
                                 f'</div>', unsafe_allow_html=True)
+                    if _is_dso_exc_f:
+                        st.info('🔍 收現行業保命符（DSO ≤ 15天，流動比率門檻 >150%）')
+                    elif _is_cash_exc_f:
+                        st.info('💰 現金充足保命符（現金佔總資產 >25%，流動比率門檻 >100%）')
                     if _solv_f.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv_f["Final_Insight"]}')
 
