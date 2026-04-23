@@ -13,6 +13,8 @@ import time
 
 import requests
 
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
+
 
 # ── Survival Module Prompt（存活能力：3大生死指標）──────────
 _SURVIVAL_PROMPT = """\
@@ -261,6 +263,7 @@ def _gemini_call(prompt: str, api_key: str) -> str:
                 f"https://generativelanguage.googleapis.com/v1beta/models/{_m}:generateContent",
                 params={"key": api_key},
                 json={
+                    "systemInstruction": {"parts": [{"text": _PERSONA}]},
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200},
                 },
@@ -304,17 +307,15 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         cash_status, cash_icon = "Fail", "🔴"
 
     ocf_k = fin_data.get("OCF(千)", 0) or 0
-    # 單位防呆：FinMind → 千元（÷1e5 → 億）；Goodinfo 備援 → 百萬元（÷100 → 億）
-    # 千元正常上限：世界最大公司年度 OCF ≈ 5,000 億 → 500,000,000 千 < 1e9
-    # 若 ocf_k > 1e9，判定為元（NTD）：÷1e8；若 > 1e6，判定為百萬：÷100
+    # 單位防呆：FinMind/MOPS 均回傳千元（OCF(千) key 已標示）
+    # 若 |ocf_k| > 1e9，判定為元（NTD）：÷1e8；否則視為千元：÷1e5
+    # 台積電單季 OCF ≈ 3~5千億 → 千元欄位約 3e8，不超過 1e9，走千元路徑
     try:
         _abs = abs(ocf_k)
         if _abs > 1e9:
             ocf_yi = round(ocf_k / 1e8, 2)   # 元 → 億
-        elif _abs > 1e6:
-            ocf_yi = round(ocf_k / 100, 2)    # 百萬 → 億
         else:
-            ocf_yi = round(ocf_k / 1e5, 2)    # 千元 → 億（標準 FinMind 路徑）
+            ocf_yi = round(ocf_k / 1e5, 2)    # 千元 → 億（標準路徑）
     except Exception:
         ocf_yi = 0
     ocf_icon = "🟢" if ocf_k > 0 else "🔴"
@@ -458,7 +459,7 @@ def _no_ai_operating(fd: dict) -> dict:
     dso_str = f"{ar:.1f} 天" if ar > 0 else "N/A (資料不足)"
     cycle_str = f"{round(ar + dio, 1):.1f} 天" if ar > 0 else f"N/A (DSO缺失，DIO={dio:.1f}天)"
     gap_str   = f"{round(ar + dio - ap, 1):.1f} 天" if ar > 0 else "N/A (DSO缺失)"
-    at = round(rev / assets, 2) if assets > 0 else 0
+    at = round((rev * 4) / assets, 2) if assets > 0 else 0  # 年化：單季 rev × 4
     if ar <= 0:
         opm = "N/A (DSO缺失，無法判定)"
     else:
