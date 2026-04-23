@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.13 | main `23b76a2`
+- **版本**: v10.14 | branch `claude/analyze-test-coverage-070Kf` `96f4ebb`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.14，branch `96f4ebb`）
+
+### OCF 單位爆炸 + 翻桌率年化 + 條件A保命符（commit `96f4ebb`）
+| 項目 | 修復內容 |
+|------|---------|
+| **OCF 單位** | 移除 >1e6 百萬中間層（台積電千元欄位 ~3e8 誤觸）→ 兩段式：>1e9 元÷1e8；否則千元÷1e5 |
+| **資產翻桌率年化** | `financial_health_engine._no_ai_operating`：分子改為 `rev×4` |
+| **條件A保命符** | Tab2/Tab3 均新增 `_is_cash_exception`；現金充足時流動比率門檻放寬至 >100%；顯示 💰 Banner |
 
 ## ✅ 最新異動（v10.13，main `23b76a2`）
 
