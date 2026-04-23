@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.16 | branch `claude/analyze-test-coverage-070Kf` `f688401`
+- **版本**: v10.17 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.17）
+
+### MJ 體檢表 uncaught exception 修復（app.py）
+| 項目 | 說明 |
+|------|------|
+| **問題根因** | `fetch_financial_statements` / `analyze_financial_health` 沒有外層 try/except；若任一函式拋出例外，session state 永遠不被寫入，expander 內容崩潰且每次 rerun 重試再崩潰 |
+| **修復** | `app.py:6478` 在 `st.spinner` 內加外層 `try/except Exception as _fh_exc`；捕獲後寫入 `{'error': True, 'ai_insight': f'財報體檢發生例外：{_fh_exc}'}` |
+| **效果** | 即使 FinMind API 或 AI 引擎拋例外，MJ 體檢表 expander 仍會顯示（改為紅色錯誤訊息而非空白崩潰） |
 
 ## ✅ 最新異動（v10.16，branch `f688401`）
 
