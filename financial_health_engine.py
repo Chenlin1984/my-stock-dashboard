@@ -304,11 +304,27 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         cash_status, cash_icon = "Fail", "🔴"
 
     ocf_k = fin_data.get("OCF(千)", 0) or 0
-    ocf_b = round(ocf_k / 1e6, 2)
+    # 單位防呆：FinMind → 千元（÷1e5 → 億）；Goodinfo 備援 → 百萬元（÷100 → 億）
+    # 千元正常上限：世界最大公司年度 OCF ≈ 5,000 億 → 500,000,000 千 < 1e9
+    # 若 ocf_k > 1e9，判定為元（NTD）：÷1e8；若 > 1e6，判定為百萬：÷100
+    try:
+        _abs = abs(ocf_k)
+        if _abs > 1e9:
+            ocf_yi = round(ocf_k / 1e8, 2)   # 元 → 億
+        elif _abs > 1e6:
+            ocf_yi = round(ocf_k / 100, 2)    # 百萬 → 億
+        else:
+            ocf_yi = round(ocf_k / 1e5, 2)    # 千元 → 億（標準 FinMind 路徑）
+    except Exception:
+        ocf_yi = 0
     ocf_icon = "🟢" if ocf_k > 0 else "🔴"
 
-    debt_pct = fin_data.get("負債比率(%)", 0) or 0
-    if debt_pct <= 40:
+    # debt_pct=0 可能是資料缺漏，不可直接判綠燈
+    debt_pct = fin_data.get("負債比率(%)")
+    if not debt_pct:
+        debt_icon = "⚪"
+        debt_pct = 0
+    elif debt_pct <= 40:
         debt_icon = "🟢"
     elif debt_pct <= 60:
         debt_icon = "🟡"
@@ -350,9 +366,9 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
 
     radar = {
         "存活能力": _score(cash_pct, [(25, 80), (10, 60)]),
-        "經營能力": _score(ap_days - ar_days, [(10, 80), (0, 60), (-30, 40)]),
+        "經營能力": _score(ap_days - ar_days if ar_days > 0 else -999, [(10, 80), (0, 60), (-30, 40)]),
         "獲利能力": _score(gm, [(40, 80), (20, 60), (10, 40)]),
-        "財務結構": _score(100 - debt_pct, [(60, 80), (40, 60), (20, 40)]),
+        "財務結構": _score(100 - debt_pct if debt_pct > 0 else -999, [(60, 80), (40, 60), (20, 40)]),
         "償債能力": 60 if ocf_k > 0 else 30,
     }
 
@@ -360,13 +376,13 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         "cash_ratio_status": cash_icon,
         "cash_ratio_value": f"{cash_pct}%",
         "ocf_status": ocf_icon,
-        "ocf_value": f"{ocf_b}B",
+        "ocf_value": f"{ocf_yi}億",
         "debt_ratio_status": debt_icon,
         "debt_ratio_value": f"{debt_pct}%",
         "radar_scores": radar,
         "business_model_dna": dna,
         "opm_data": {"payable_days": ap_days, "receivable_days": ar_days,
-                     "advantage": ap_days > ar_days},
+                     "advantage": ar_days > 0 and ap_days > ar_days},
         "ai_insight": "⚠️ AI 服務暫時不可用，以下為原始財報數據直接計算結果（無 AI 分析）。",
         "red_flags": "None",
     }
@@ -392,17 +408,23 @@ def _no_ai_survival(fd: dict) -> dict:
     inv_p = fd.get("存貨前期(千)", 0) or 0
     a_val = round(ocf / cl * 100, 1) if cl > 0 else None
     a_st = ("Pass" if a_val and a_val > 100 else "Fail") if a_val is not None else "N/A"
-    # B項：現金流量允當比率（標準公式需5年，此處以單季估算）
-    inv_inc = max(inv - inv_p, 0)
-    b_denom = capex + inv_inc + div
-    if b_denom > 0:
-        b_val = round(ocf / b_denom * 100, 1)
-        b_display = f"{b_val:.1f}%(1Q估)"
-        b_st = "Pass" if b_val >= 100 else "Fail"
+    # B項：現金流量允當比率
+    # 優先使用呼叫方預填的 5 年精確值（fetch_5_years_cash_flow 回傳）
+    _b5 = fd.get("b_item_5y") or {}
+    if _b5.get("status") == "ok" and _b5.get("ratio") is not None:
+        b_val     = _b5["ratio"]
+        b_display = _b5["label"]                          # e.g. "127.3%（5年實際）"
+        b_st      = "Pass" if b_val >= 100 else "Fail"
     else:
-        b_val = None
-        b_display = "N/A"
-        b_st = "N/A"
+        # fallback：單季估算
+        inv_inc = max(inv - inv_p, 0)
+        b_denom = capex + inv_inc + div
+        if b_denom > 0:
+            b_val     = round(ocf / b_denom * 100, 1)
+            b_display = f"{b_val:.1f}%(1Q估)"
+            b_st      = "Pass" if b_val >= 100 else "Fail"
+        else:
+            b_val, b_display, b_st = None, "N/A", "N/A"
     c_val = round((ocf - div) / (ppe + lt) * 100, 1) if (ppe + lt) > 0 else None
     c_st = ("Pass" if c_val and c_val > 10 else "Fail") if c_val is not None else "N/A"
     rule_st = "Pass" if (a_st in ("Pass", "N/A") and b_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
@@ -414,7 +436,10 @@ def _no_ai_survival(fd: dict) -> dict:
             "Cash_Flow_Ratio": f"{a_val}%" if a_val is not None else "N/A",
             "Cash_Flow_Adequacy": b_display,
             "Cash_Reinvestment": f"{c_val}%" if c_val is not None else "N/A",
-            "Status": rule_st, "Insight": "原始數據直接計算（B項為單季估算，非標準5年）",
+            "Status": rule_st,
+            "Insight": ("原始數據直接計算（B項5年實際）"
+                        if (_b5.get("status") == "ok")
+                        else "原始數據直接計算（B項單季估算）"),
         },
         "Final_Survival_Verdict": verdict,
     }}
@@ -427,13 +452,17 @@ def _no_ai_operating(fd: dict) -> dict:
     cogs = fd.get("營業成本(千)", 0) or 0
     rev = fd.get("營業收入(千)", 0) or 0
     assets = fd.get("總資產(千)", 0) or 0
-    dio = round(inv / cogs * 360, 1) if cogs > 0 else (round(inv / rev * 360, 1) if rev > 0 else 0)
+    # 年化：單季 cogs/rev × 4，DIO 才能與 DSO/DPO 規模一致
+    dio = round(inv / (cogs * 4) * 360, 1) if cogs > 0 else (round(inv / (rev * 4) * 360, 1) if rev > 0 else 0)
     # ar=0 代表資料查無；完整週期/資金缺口用 N/A 表示
     dso_str = f"{ar:.1f} 天" if ar > 0 else "N/A (資料不足)"
     cycle_str = f"{round(ar + dio, 1):.1f} 天" if ar > 0 else f"N/A (DSO缺失，DIO={dio:.1f}天)"
     gap_str   = f"{round(ar + dio - ap, 1):.1f} 天" if ar > 0 else "N/A (DSO缺失)"
     at = round(rev / assets, 2) if assets > 0 else 0
-    opm = "Yes" if ap > ar else "No"
+    if ar <= 0:
+        opm = "N/A (DSO缺失，無法判定)"
+    else:
+        opm = "Yes" if ap > ar else "No"
     return {"Operating_Module": {
         "DSO": dso_str, "DIO": f"{dio:.1f} 天", "DPO": f"{ap:.1f} 天",
         "Complete_Cycle": cycle_str, "Cash_Gap_Days": gap_str,
@@ -451,7 +480,7 @@ def _no_ai_profitability(fd: dict) -> dict:
     debt = fd.get("負債比率(%)", 0) or 0
     om = round(oi / rev * 100, 1) if rev > 0 else 0
     nm = round(ni / rev * 100, 1) if rev > 0 else 0
-    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    roe = round((ni * 4) / eq * 100, 1) if eq > 0 else 0  # 年化：單季 NI × 4
     mos = round(om, 1)
     return {"Profitability_Module": {
         "Gross_Margin": {"Value": f"{gm:.1f}%", "Status": "Good" if gm >= 40 else "Average"},
@@ -537,7 +566,7 @@ def _no_ai_solvency(fd: dict) -> dict:
         verdict, cv = "Pass", "No"
     elif cash_pct > 25:
         verdict, cv = "Exception_Pass (條件A：現金充足)", "Yes"
-    elif ar_days < 15:
+    elif 0 < ar_days <= 15:
         verdict, cv = "Exception_Pass (條件B：天天收現)", "Yes"
     else:
         verdict, cv = "Fail", "Yes"
@@ -560,13 +589,14 @@ def _no_ai_advanced_diagnostic(fd: dict) -> dict:
     inv = fd.get("存貨(千)", 0) or 0
     inv_p = fd.get("存貨前期(千)", 0) or 0
     if ni <= 0:
-        eq_val, eq_st = "N/A (淨利為負)", "N/A"
+        eq_val, eq_st = "N/A (本業虧損，不適用此指標)", "N/A"
     else:
         eq_pct = round(ocf / ni * 100, 1)
         eq_val, eq_st = f"{eq_pct:.1f}%", "Pass" if eq_pct >= 100 else "Fail"
-    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    roe = round((ni * 4) / eq * 100, 1) if eq > 0 else 0  # 年化：單季 NI × 4
     dupont = ("槓桿膨脹警報" if roe > 15 and debt > 65 else
-              ("健康成長" if roe > 15 else "ROE 偏低，成長動能不足"))
+              ("健康成長" if roe > 15 else
+               ("ROE 偏低，成長動能不足" if roe > 0 else "⚠️ ROE 為負，本業虧損")))
     if ar_chg is not None and rev_chg is not None and inv_p > 0:
         inv_chg = round((inv - inv_p) / abs(inv_p) * 100, 1)
         dh = "Triggered (危險)" if (ar_chg > (rev_chg or 0) and inv_chg > (rev_chg or 0)) else "Clear (安全)"
@@ -610,6 +640,93 @@ _FAIL_SAFE: dict = {
     "red_flags": "None",
     "error": True,
 }
+
+
+def no_ai_overall_verdict(fin_data: dict, fh_result: dict) -> dict:
+    """
+    彙整六大模組，生成 MJ 林明樟老師風格的動態總結論（純計算，無 AI）。
+    """
+    surv = fh_result.get("survival_module", {})
+    prof = fh_result.get("profitability_module", {})
+    fstr = fh_result.get("financial_structure_module", {})
+    solv = fh_result.get("solvency_module", {})
+    adv  = fh_result.get("advanced_diagnostic_module", {})
+
+    def _pts(s):
+        return {"Pass": 2, "Acceptable": 1, "Good": 2, "Strong": 2,
+                "Exception_Pass": 1, "Pass (無短期債務)": 2,
+                "Warning": -1, "Fail": -2, "Fail_Initial": -1, "Thin Profit": -1}.get(str(s), 0)
+
+    checks = [
+        ("氣長",       surv.get("Cash_Ratio", {}).get("Status", "N/A")),
+        ("收現速度",   surv.get("DSO_Speed", {}).get("Status", "N/A")),
+        ("100-100-10", surv.get("Rule_100_100_10", {}).get("Status", "N/A")),
+        ("毛利率",     prof.get("Gross_Margin", {}).get("Status", "N/A")),
+        ("本業獲利",   "Pass" if prof.get("Operating_Margin", {}).get("Core_Business_Profitable") == "Yes" else "Fail"),
+        ("ROE品質",    "Warning" if prof.get("ROE", {}).get("Leverage_Warning", "None") != "None" else "Pass"),
+        ("負債比率",   fstr.get("Debt_Ratio", {}).get("Status", "N/A")),
+        ("以長支長",   fstr.get("Long_Term_Funding_Ratio", {}).get("Status", "N/A")),
+        ("流動比率",   solv.get("Current_Ratio", {}).get("Status", "N/A")),
+        ("盈餘含金量", adv.get("Earnings_Quality", {}).get("Status", "N/A")),
+        ("雙高危機",   "Fail" if "Triggered" in str(adv.get("Double_High_Warning", ""))
+                      else "Pass" if "Clear" in str(adv.get("Double_High_Warning", "")) else "N/A"),
+    ]
+    valid      = [(n, s) for n, s in checks if s != "N/A"]
+    total_pts  = sum(_pts(s) for _, s in valid)
+    max_pts    = len(valid) * 2
+    score_pct  = round(total_pts / max_pts * 100) if max_pts > 0 else 50
+    pass_items = [n for n, s in valid if _pts(s) >= 2]
+    fail_items = [n for n, s in valid if _pts(s) < 0]
+    dna        = adv.get("Business_DNA", "")
+    is_cashcow = "A+" in str(dna)
+    is_dying   = "瀕死" in str(dna)
+    ocf        = fin_data.get("OCF(千)", 0) or 0
+    eq_ok      = adv.get("Earnings_Quality", {}).get("Status", "") == "Pass"
+
+    if is_dying or len(fail_items) >= 4:
+        grade, gc = "F", "#f85149"
+        headline  = "🔴 高危企業！多項生死指標亮紅燈"
+        comment   = (f"財務健康嚴重失衡，共 **{len(fail_items)}** 項指標觸警："
+                     f"{'、'.join(fail_items[:4])}{'…' if len(fail_items) > 4 else ''}。"
+                     f"請確認是否為財報資料異常，或確實存在財務困境。")
+    elif len(fail_items) >= 2:
+        grade, gc = "C", "#d29922"
+        headline  = "🟡 有明顯改善空間，需謹慎評估"
+        comment   = (f"關鍵警示：**{'、'.join(fail_items)}**。"
+                     f"{'盈餘含金量高，現金流尚佳。' if eq_ok else ''}"
+                     f"建議與同業比較，判斷是結構性問題還是短期壓力。")
+    elif len(fail_items) == 1:
+        grade, gc = "B+", "#d29922"
+        headline  = "🟡 大致穩健，單點需留意"
+        comment   = (f"整體財務健康，但「**{fail_items[0]}**」尚需改善。"
+                     f"{'其餘 ' + str(len(pass_items)) + ' 項指標達標。' if pass_items else ''}"
+                     f"若下季持續改善，可列入重點追蹤。")
+    elif is_cashcow:
+        grade, gc = "A+", "#3fb950"
+        headline  = "🟢 印鈔機！A+ 型企業，MJ 最愛標的"
+        comment   = (f"企業 DNA = A+ 穩健印鈔機，OCF 為{'正' if ocf > 0 else '負'}。"
+                     f"{'共 ' + str(len(pass_items)) + ' 項達標：' + '、'.join(pass_items[:5]) + '。' if pass_items else ''}"
+                     f"現金流真實可信，財務體質堅實，符合 MJ 老師「找到好生意」的核心標準。")
+    elif score_pct >= 70:
+        grade, gc = "A", "#3fb950"
+        headline  = "🟢 優質企業！財務體質健康"
+        comment   = (f"多項指標通過 MJ 嚴格標準：**{'、'.join(pass_items[:5])}**{'等' if len(pass_items) > 5 else ''}。"
+                     f"{'盈餘含金量高，現金流真實可信。' if eq_ok else ''}"
+                     f"整體財務結構穩健，具備中長期投資價值。")
+    else:
+        grade, gc = "B", "#58a6ff"
+        headline  = "🔵 財務穩定，中規中矩"
+        comment   = (f"財務表現尚可，無明顯紅旗。"
+                     f"{'已達標：' + '、'.join(pass_items[:4]) + '。' if pass_items else ''}"
+                     f"建議持續追蹤下一季財報，確認趨勢是否持續改善。")
+
+    return {
+        "grade": grade, "grade_color": gc,
+        "headline": headline, "comment": comment,
+        "score_pct": score_pct,
+        "pass_count": len(pass_items), "fail_count": len(fail_items),
+        "pass_items": pass_items, "fail_items": fail_items, "dna": dna,
+    }
 
 
 # ── Survival Module 入口 ────────────────────────────────────

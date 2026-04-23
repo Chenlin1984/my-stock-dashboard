@@ -717,7 +717,8 @@ def build_dataset(start, end, token, log):
             inst_data[d] = twse_institutional_day(d)
             lt_data[d]   = taifex_large_trader(d)
             opt_data[d]  = taifex_calls_puts_day(d)
-            mtx_data[d]  = taifex_mtx_data(d)        # 韭菜指數
+            _mtx = taifex_mtx_data(d)  # 回傳 (leek, oi) tuple 或 None
+            mtx_data[d] = _mtx[0] if isinstance(_mtx, tuple) else _mtx
             time.sleep(0.3)
             prog.progress((i+1)/len(all_dates),
                           text=f"逐日查詢 {i+1}/{len(all_dates)} （{ymd_display(d)}）")
@@ -1102,8 +1103,8 @@ def render_leading_table(df):
             if n > 0: return "color:#58a6ff;"
             if n < 0: return "color:#f85149;"
         if col == "選PCR":
-            if n < 0.8: return "color:#58a6ff;"   # 偏多（Call 多）→ 藍
-            if n > 1.2: return "color:#f85149;"   # 偏空（Put 多）→ 紅
+            if n < 80:  return "color:#58a6ff;"   # 偏多（Call 多）→ 藍
+            if n > 120: return "color:#f85149;"   # 偏空（Put 多）→ 紅
         if col == "未平倉口數":
             if n > 0: return "color:#58a6ff;"
             if n < 0: return "color:#f85149;"

@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.2 | main `e22f613` | branch `968f2bb`
+- **版本**: v10.13 | main `23b76a2`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -22,7 +22,121 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.2，branch `claude/analyze-test-coverage-070Kf`）
+## ✅ 最新異動（v10.13，main `23b76a2`）
+
+### 財報計算年化 + OCF 單位 + AR 別名修復（commit `23b76a2`）
+| 項目 | 修復內容 |
+|------|---------|
+| **ROE 年化** | `_no_ai_profitability` + `_no_ai_advanced_diagnostic`：`(NI × 4) / equity` |
+| **DIO 年化** | `_no_ai_operating`：分母 `cogs × 4`，天數統一 360 |
+| **DSO/DPO 年化** | `data_loader`：分母 `rev/cogs × 4`，365天→360天 |
+| **OCF 單位防呆** | 三段式自動偵測：>1e9 → 元（÷1e8）；>1e6 → 百萬（÷100）；其他 → 千元（÷1e5） |
+| **AR 別名** | L2 _vsum 補入 `應收帳款及票據`、`應收帳款及票據淨額` |
+
+### 新增 fetch_goodinfo_metrics()（commit `44cd2af`）
+| 項目 | 說明 |
+|------|------|
+| **模組** | `tw_stock_data_fetcher.py` §12.6 |
+| **URL** | `BS_M_QUAR`（資產總額/負債總額/應收帳款及票據）+ `IS_M_QUAR`（營業收入） |
+| **格式** | `@st.cache_data(ttl=3天)`；proxies 參數相容 Streamlit Secrets |
+| **計算** | `debt_ratio = 負債/資產×100`；`DSO = 360/(rev×4/ar)` |
+
+## ✅ 最新異動（v10.11，main `d546216`）
+
+### 財報 N/A 與 OPM 護城河誤渲染修復（3 commits `ef7a9bf` → `d546216`）
+| commit | 項目 | 內容 |
+|--------|------|------|
+| `ef7a9bf` | **短期償債能力保命符邏輯脫鉤** | Banner 改讀 `Final_Solvency_Verdict` 字串精確比對「條件B：天天收現」；流動比率保命符啟動時閾值 300%→150%，顏色/標籤連動 |
+| `9810cd4` | **ARCHITECTURE.md v6.5 + STATE.md** | 更新版本日期；STATE.md 補記 v10.8 |
+| `d546216` | **AR/負債 N/A + OPM 護城河誤觸** | AR 兩段式加總（L1拆開+L2合計行）；補全 FIELD_ALIASES（資產總額/負債總額）；OPM 雙重驗證（CCC 必須是實質負數） |
+
+### 財報判定 3 大 UI Bug 修復（commit `d4cc9ee`）
+| Bug | 修復 |
+|-----|------|
+| ROE 負值誤判真實獲利 | 解析數值，`ROE<=0` → ❌ 本業虧損 |
+| OPM N/A 誤觸護城河 | 移除 `_p_days>_r_days` 旁路 |
+| N/A 誤標「特許行業」 | 按 Value 字串區分 🏦/⚪ |
+
+## ✅ 最新異動（v10.8，main `d4cc9ee`）
+
+### `app.py` UI 層 3 個狀態判定 Bug 修復（commit `d4cc9ee`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **ROE 負值誤判真實獲利** | Tab2/Tab3 ROE 卡片 | 新增數值解析，`ROE <= 0` → `❌ 本業虧損`（紅燈） |
+| **OPM 護城河被 DSO=0 誤觸** | Tab2 OPM 商業話語權 | 移除 `_p_days > _r_days` 旁路；`_r_days==0` → info 缺漏提示 |
+| **N/A 誤標「特許行業」** | Tab2/Tab3 負債比率卡片 | `else "特許行業"` → 按 Value 字串區分「🏦 特許行業 / ⚪ 資料缺漏」 |
+
+### `ARCHITECTURE.md` 技術規格書完成（v6.5）
+| 章節 | 說明 |
+|------|------|
+| §1 目錄結構 | 專案根目錄樹、各層職責、程式碼規模（1.4） |
+| §2 分層架構 | L0–L5 六層設計、跨層依賴矩陣、環境變數 |
+| §3 資料流向 | Session State 架構、個股/ETF/市場三大流程、資料新鮮度 |
+| §4 核心函式 I/O | 8 模組 30+ 函式輸入/輸出/副作用表格（L1–L5 + app.py） |
+
+## ✅ 最新異動（v10.7，main `769f945`）
+
+### `financial_health_engine.py` N/A 連鎖誤判修復（commit `769f945`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **OPM 護城河誤判** | `_derive_basic_from_fin_data` + `_no_ai_operating` | DSO=0(N/A) 時：`advantage=False`、雷達得 -999（最低）、`OPM_Strategy="N/A (DSO缺失)"` |
+| **負債比 0% 亮綠燈** | `_derive_basic_from_fin_data` | `debt_pct` 改用 `None` 預設；缺漏 → `⚪` 灰燈；雷達「財務結構」同給 -999 |
+| **OCF 單位錯誤** | `_derive_basic_from_fin_data` | `÷1e6` → `÷1e5`，顯示由 `XB` 改為 `X億` |
+
+## ✅ 最新異動（v10.6，main `6e197ef`）
+
+### `financial_health_engine.py` 3 大邏輯 Bug 修復（commit `6e197ef`）
+| Bug | 位置 | 修復內容 |
+|-----|------|---------|
+| **Bug 1：ROE 負值顯示綠色** | `_no_ai_advanced_diagnostic` dupont 判斷 | 新增 `roe <= 0` 分支 → `"⚠️ ROE 為負，本業虧損"` |
+| **Bug 2：天天收現防呆漏洞** | `_no_ai_solvency` 條件B | `ar_days < 15` → `0 < ar_days <= 15`，DSO 為 N/A (0) 時不觸發 |
+| **Bug 3：盈餘含金量公式錯誤** | `_no_ai_advanced_diagnostic` 盈餘含金量 | NI≤0 → `"N/A (本業虧損，不適用此指標)"`；NI>0 → 標準 OCF/NI |
+
+## ✅ 最新異動（v10.5，main `5f98874`）
+
+### 移除執行期暫存檔（commit `5f98874`）
+| 項目 | 說明 |
+|------|------|
+| **`macro_state.json`** | `git rm --cached` 移出追蹤；`.gitignore` 補上規則，往後不再進 repo |
+| **原因** | 該檔由 `macro_state_locker.py` 執行時寫入，屬執行期狀態，非原始碼 |
+
+## ✅ 最新異動（v10.4，main `213f57a`）
+
+### `data_loader.py` NameError 修復
+| 項目 | 說明 |
+|------|------|
+| **錯誤** | `fetch_financial_statements` line 1755 回傳 `is_finance` 但函式內從未定義 |
+| **根因** | `_is_financial_stock()` 是 `StockDataLoader` 的巢狀函式，外部不可呼叫 |
+| **修法** | 改用 `stock_id.startswith(('28','58'))` 保底邏輯，與原函式 fallback 一致 |
+
+## ✅ 最新異動（v10.3，main）
+
+### `leading_indicators.py` Bug 修復 + 測試（commits `30ea5da` → `7dee8f9`）
+| 項目 | 說明 |
+|------|------|
+| **Bug 1 修復** | `build_dataset` 韭菜指數：`taifex_mtx_data()` 回傳 tuple，改用 `_mtx[0] if isinstance(_mtx, tuple) else _mtx` 解包 |
+| **Bug 2 修復** | `render_leading_table` PCR 顏色閾值：`0.8/1.2`（小數比率）→ `80/120`（整數百分比） |
+| **新增測試** | `tests/test_leading_indicators.py`：47 個測試，8 個 class，全通過 |
+| **測試涵蓋** | `roc_to_ymd` / `ymd formatters` / `to_num` / `first_num` / `months_in_range` / `extract_date` / `find_data_table` / `expand_table_elem` + Bug 2 regression（PCR 邊界值 80/120） |
+
+### Sidebar 連線狀態面板修正（commit `7438fe0`）
+| 項目 | 說明 |
+|------|------|
+| **FinMind 端點** | `/api/v4/info`（404）→ `/api/v4/data?dataset=TaiwanStockInfo&stock_id=2330` |
+| **TWSE 端點** | `twse.com.tw/rwd`（SSLError）→ `openapi.twse.com.tw/v1/opendata/t187ap03_L` |
+
+### 總測試數
+| 模組 | 測試數 |
+|------|------|
+| `scoring_engine.py` | 168+ |
+| `macro_state_locker.py` | 18+ |
+| `macro_alert.py` | 10+ |
+| `financial_health_engine.py` | 17 |
+| `risk_control.py` | 既有 |
+| `leading_indicators.py` | **47（新增）** |
+| **合計** | **≥ 473** |
+
+## ✅ 最新異動（v10.2，main `5c94cd4`）
 
 ### Sidebar 連線狀態面板（commit `968f2bb`）
 | 項目 | 說明 |
@@ -108,6 +222,7 @@ L5: 引擎層重算（直接從 fin_data 已有欄位推導）← 最終防線
 - TWSE IP 封鎖 → 全部走 FinMind/openapi 備援
 - FinMind 免費帳號：每小時 600 次請求限制
 - NDC 景氣燈號：主站封鎖 → OECD CLI 代理
+- 收現速度(DSO)：特定產業（建設/REITs/金融業）AR 欄位名稱特殊，Goodinfo 備援中
 - `macro_alert.py` lines 338-421：Streamlit 渲染函式（`render_alerts()`），需 mock `st.*`，屬整合測試範疇，未納入單元測試
 
 ## 🔑 環境變數（Streamlit Secrets）

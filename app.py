@@ -45,7 +45,7 @@ from etf_dashboard import (
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
-from financial_health_engine import analyze_financial_health
+from financial_health_engine import analyze_financial_health, no_ai_overall_verdict
 from data_loader import fetch_financial_statements
 from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
 from financial_debug_helper import (
@@ -1142,15 +1142,17 @@ with st.sidebar:
         st.caption(f'🔒 {_px_host}:{_px_port}')
     if st.button('🔍 測試連線', key='sb_conn_test', use_container_width=True):
         import requests as _rq_sb
+        import urllib3 as _ul3; _ul3.disable_warnings(_ul3.exceptions.InsecureRequestWarning)
         _test_targets = [
-            ('FinMind', 'https://api.finmindtrade.com/api/v4/info'),
-            ('TWSE',    'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?type=MS'),
-            ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d'),
+            ('FinMind', 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&stock_id=2330&date=2024-01-01', False),
+            ('TWSE',    'https://openapi.twse.com.tw/v1/opendata/t187ap03_L', True),
+            ('Yahoo',   'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=1d&interval=1d', False),
         ]
         _conn_res = []
-        for _tn, _tu in _test_targets:
+        for _tn, _tu, _skip_ssl in _test_targets:
             try:
-                _tr = _rq_sb.get(_tu, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                _tr = _rq_sb.get(_tu, timeout=6, verify=not _skip_ssl,
+                                  headers={'User-Agent': 'Mozilla/5.0'})
                 _conn_res.append((_tn, _tr.status_code, _tr.status_code < 400))
             except Exception as _te:
                 _conn_res.append((_tn, type(_te).__name__, False))
@@ -6475,6 +6477,12 @@ padding:12px 16px;margin:8px 0;">
                     if _fin_raw.get('error'):
                         st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
                     else:
+                        # B項：預填 5 年現金流量允當比率（精確版）
+                        try:
+                            from tw_stock_data_fetcher import fetch_5_years_cash_flow
+                            _fin_raw['b_item_5y'] = fetch_5_years_cash_flow(sid2, FINMIND_TOKEN)
+                        except Exception:
+                            pass  # fallback 到 1Q 估算
                         _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
                         st.session_state[_fh_key2] = _fh_out
             _fh = st.session_state.get(_fh_key2)
@@ -6555,11 +6563,13 @@ padding:12px 16px;margin:8px 0;">
                     _p_days = _opm.get('payable_days', 0)
                     _r_days = _opm.get('receivable_days', 0)
                     _adv = _opm.get('advantage', False)
-                    if _adv or _p_days > _r_days:
+                    if _adv:
                         st.success(
                             f'👑 具備快收慢付優勢\n\n'
                             f'應付帳款 **{_p_days}天** > 應收帳款 **{_r_days}天**'
                         )
+                    elif _r_days == 0:
+                        st.info('DSO (應收帳款天數) 資料缺漏，無法判定 OPM 護城河')
                     else:
                         st.warning(
                             f'⚠️ 營運資金壓力較大\n\n'
@@ -6611,8 +6621,15 @@ padding:12px 16px;margin:8px 0;">
                 if _oper2:
                     st.markdown('#### ⚙️ 經營能力診斷（周轉效率 + 資金壓力）')
                     _oc1, _oc2, _oc3, _oc4 = st.columns(4)
-                    _opm_yes = _oper2.get('OPM_Strategy', 'No') == 'Yes'
-                    _ccc_color = '#3fb950' if _opm_yes else '#d29922'
+                    _ccc_str = str(_oper2.get('Cash_Gap_Days', 'N/A'))
+                    try:
+                        _ccc_num = float(_ccc_str.split()[0].replace('天', '').strip())
+                        _ccc_is_num = True
+                    except (ValueError, AttributeError):
+                        _ccc_num, _ccc_is_num = 0.0, False
+                    # OPM 護城河：引擎判定 Yes 且 CCC 為實質負數，兩者同時成立才顯示
+                    _opm_yes = (_oper2.get('OPM_Strategy', 'No') == 'Yes') and _ccc_is_num and (_ccc_num < 0)
+                    _ccc_color = '#3fb950' if _opm_yes else ('#8b949e' if not _ccc_is_num else '#d29922')
                     with _oc1:
                         st.metric('DSO 應收天數', _oper2.get('DSO', 'N/A'))
                     with _oc2:
@@ -6633,7 +6650,7 @@ padding:12px 16px;margin:8px 0;">
                             f'<div style="background:#161b22;border-radius:8px;padding:10px;">'
                             f'<div style="font-size:11px;color:#8b949e;">缺錢天數 (CCC)</div>'
                             f'<div style="font-size:18px;font-weight:900;color:{_ccc_color};">{_oper2.get("Cash_Gap_Days","N/A")}</div>'
-                            f'<div style="font-size:11px;color:{_ccc_color};">{"✅ OPM護城河：拿別人的錢做生意" if _opm_yes else "⚠️ 需自備營運資金"}</div>'
+                            f'<div style="font-size:11px;color:{_ccc_color};">{"✅ OPM護城河：拿別人的錢做生意" if _opm_yes else ("⚪ CCC 資料不足" if not _ccc_is_num else "⚠️ 需自備營運資金")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _oper2.get('Verdict'):
                         st.caption(f'💡 {_oper2["Verdict"]}')
@@ -6694,14 +6711,19 @@ padding:12px 16px;margin:8px 0;">
                     # 5 ROE
                     _roe2 = _prof2.get('ROE', {})
                     _roe2_warn = _roe2.get('Leverage_Warning', 'None') != 'None'
-                    _roe2_c = '#d29922' if _roe2_warn else '#3fb950'
+                    try:
+                        _roe2_num = float(_roe2.get('Value', '0').replace('%', '').strip())
+                    except (ValueError, AttributeError):
+                        _roe2_num = None
+                    _roe2_positive = _roe2_num is not None and _roe2_num > 0
+                    _roe2_c = '#d29922' if _roe2_warn else ('#3fb950' if _roe2_positive else '#f85149')
                     with _p5c[4]:
                         st.markdown(
                             f'<div style="background:{_roe2_c}18;border:1px solid {_roe2_c}55;'
                             f'border-radius:8px;padding:10px;text-align:center;">'
                             f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
                             f'<div style="font-size:17px;font-weight:900;color:{_roe2_c};">{_roe2.get("Value","N/A")}</div>'
-                            f'<div style="font-size:10px;color:{_roe2_c};">{"⚠️ 高槓桿驅動" if _roe2_warn else "✅ 真實獲利"}</div>'
+                            f'<div style="font-size:10px;color:{_roe2_c};">{"⚠️ 高槓桿驅動" if _roe2_warn else ("✅ 真實獲利" if _roe2_positive else "❌ 本業虧損")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _prof2.get('Final_Insight'):
                         st.caption(f'🎯 {_prof2["Final_Insight"]}')
@@ -6722,7 +6744,7 @@ padding:12px 16px;margin:8px 0;">
                             f'<div style="font-size:11px;color:#8b949e;">負債佔資產比率</div>'
                             f'<div style="font-size:26px;font-weight:900;color:{_dr2_c};">{_dr2.get("Value","N/A")}</div>'
                             f'<div style="font-size:11px;color:{_dr2_c};">'
-                            f'{"✅ 穩健（<60%）" if _dr2_s=="Pass" else ("⚠️ 偏高（60-70%）" if _dr2_s=="Warning" else ("🔴 高危（>70%）" if _dr2_s=="Fail" else "特許行業"))}'
+                            f'{"✅ 穩健（<60%）" if _dr2_s=="Pass" else ("⚠️ 偏高（60-70%）" if _dr2_s=="Warning" else ("🔴 高危（>70%）" if _dr2_s=="Fail" else ("🏦 特許行業" if "金融" in _dr2.get("Value","") else "⚪ 資料缺漏")))}'
                             f'</div></div>', unsafe_allow_html=True)
                     # 2 以長支長比率
                     _ltf2 = _fstr2.get('Long_Term_Funding_Ratio', {})
@@ -6757,15 +6779,30 @@ padding:12px 16px;margin:8px 0;">
                         f'border-radius:10px;padding:10px 16px;margin-bottom:10px;">'
                         f'<span style="font-size:14px;font-weight:900;color:{_sv2_bc};">'
                         f'{_sv2_icon} {_sv2_v}</span></div>', unsafe_allow_html=True)
-                    # 兩比率卡片
+                    # 保命符：嚴格限定 Final_Solvency_Verdict 含「條件B：天天收現」才算啟動
+                    _is_dso_exception = "條件B：天天收現" in _sv2_v
+                    # 兩比率卡片（保命符啟動時流動比率放寬至 >150%）
                     _sv2c = st.columns(2)
                     for _col, (_key, _label, _thresh) in zip(_sv2c, [
-                        ('Current_Ratio', '流動比率（MJ嚴格 >300%）', 300),
-                        ('Quick_Ratio',   '速動比率（MJ嚴格 >150%）', 150),
+                        ('Current_Ratio',
+                         '流動比率（保命符放寬 >150%）' if _is_dso_exception else '流動比率（MJ嚴格 >300%）',
+                         150 if _is_dso_exception else 300),
+                        ('Quick_Ratio', '速動比率（MJ嚴格 >150%）', 150),
                     ]):
                         _si = _solv2.get(_key, {})
                         _si_s = _si.get('Status', '')
-                        _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
+                        # 保命符啟動時，重新以放寬閾值判定流動比率顏色與標籤
+                        if _key == 'Current_Ratio' and _is_dso_exception:
+                            try:
+                                _cr_num = float(_si.get('Value', '0').replace('%', '').strip())
+                                if _cr_num > _thresh:
+                                    _si_c, _si_s = '#3fb950', f'Pass（保命符 >{_thresh}%）'
+                                else:
+                                    _si_c = '#f85149'
+                            except (ValueError, AttributeError):
+                                _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
+                        else:
+                            _si_c = '#3fb950' if 'Pass' in _si_s else '#f85149'
                         with _col:
                             st.markdown(
                                 f'<div style="background:{_si_c}18;border:1px solid {_si_c}55;'
@@ -6774,8 +6811,9 @@ padding:12px 16px;margin:8px 0;">
                                 f'<div style="font-size:24px;font-weight:900;color:{_si_c};">{_si.get("Value","N/A")}</div>'
                                 f'<div style="font-size:11px;color:{_si_c};">{_si_s}</div>'
                                 f'</div>', unsafe_allow_html=True)
-                    if _solv2.get('Cross_Validation_Applied') == 'Yes':
-                        st.info('🔍 已啟動收現行業交叉驗證保命符')
+                    # Banner：只有 DSO ≤ 15 的天天收現例外才顯示
+                    if _is_dso_exception:
+                        st.info('🔍 已啟動收現行業交叉驗證保命符（DSO ≤ 15天，流動比率門檻放寬至 >150%）')
                     if _solv2.get('Final_Insight'):
                         st.caption(f'🛡️ {_solv2["Final_Insight"]}')
 
@@ -6832,6 +6870,30 @@ padding:12px 16px;margin:8px 0;">
                     if _adv2.get('Final_Verdict'):
                         st.caption(f'🔬 {_adv2["Final_Verdict"]}')
 
+                # ── 老師動態總結論 ─────────────────────────────────
+                _ov = no_ai_overall_verdict(
+                    fin_data=st.session_state.get('t2_fin_data', {}),
+                    fh_result=_fh,
+                )
+                _ovc = _ov.get("grade_color", "#58a6ff")
+                st.markdown('<hr style="border-color:#30363d;margin:14px 0 10px;">', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="background:{_ovc}12;border:2px solid {_ovc};border-radius:12px;padding:16px 20px;">'
+                    f'<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;">'
+                    f'<span style="font-size:36px;font-weight:900;color:{_ovc};font-family:monospace;">'
+                    f'{_ov.get("grade","?")}</span>'
+                    f'<div>'
+                    f'<div style="font-size:14px;font-weight:900;color:{_ovc};">{_ov.get("headline","")}</div>'
+                    f'<div style="font-size:10px;color:#8b949e;margin-top:2px;">'
+                    f'MJ 林明樟老師財報體系 · 6大模組綜合評估 · '
+                    f'✅ {_ov.get("pass_count",0)} 項達標　'
+                    f'🔴 {_ov.get("fail_count",0)} 項警示　'
+                    f'企業DNA：{_ov.get("dna","--")}'
+                    f'</div></div></div>'
+                    f'<div style="font-size:12px;color:#c9d1d9;line-height:1.7;">{_ov.get("comment","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
         # ══ 🤖 AI 首席顧問總結 ═══════════════════════════════════
         st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">技術面 · 籌碼 · 基本面 · 財報體檢（MJ體系）· 總經 五維綜合評估</span></div>""", unsafe_allow_html=True)
@@ -7500,7 +7562,14 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             _fh3_new = {}
             _prog3 = st.progress(0, text='財報體檢中（純計算，無 AI 呼叫）...')
             def _fh3_fn(sid):
-                return sid, analyze_financial_health("", sid, fetch_financial_statements(sid, _fk3))
+                _fd3 = fetch_financial_statements(sid, _fk3)
+                if not _fd3.get('error'):
+                    try:
+                        from tw_stock_data_fetcher import fetch_5_years_cash_flow
+                        _fd3['b_item_5y'] = fetch_5_years_cash_flow(sid, _fk3)
+                    except Exception:
+                        pass
+                return sid, analyze_financial_health("", sid, _fd3)
             _done3 = 0
             with ThreadPoolExecutor(max_workers=3) as _ex3:
                 _fts3 = {_ex3.submit(_fh3_fn, s): s for s in stock_list_t3}
@@ -7722,14 +7791,19 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'</div>', unsafe_allow_html=True)
                     _roe_f = _prof_f.get('ROE', {})
                     _roe_f_warn = _roe_f.get('Leverage_Warning', 'None') != 'None'
-                    _roe_f_c = '#d29922' if _roe_f_warn else '#3fb950'
+                    try:
+                        _roe_f_num = float(_roe_f.get('Value', '0').replace('%', '').strip())
+                    except (ValueError, AttributeError):
+                        _roe_f_num = None
+                    _roe_f_positive = _roe_f_num is not None and _roe_f_num > 0
+                    _roe_f_c = '#d29922' if _roe_f_warn else ('#3fb950' if _roe_f_positive else '#f85149')
                     with _p5f[4]:
                         st.markdown(
                             f'<div style="background:{_roe_f_c}18;border:1px solid {_roe_f_c}55;'
                             f'border-radius:8px;padding:8px;text-align:center;">'
                             f'<div style="font-size:10px;color:#8b949e;">ROE</div>'
                             f'<div style="font-size:15px;font-weight:900;color:{_roe_f_c};">{_roe_f.get("Value","N/A")}</div>'
-                            f'<div style="font-size:9px;color:{_roe_f_c};">{"⚠️ 高槓桿" if _roe_f_warn else "✅ 真實獲利"}</div>'
+                            f'<div style="font-size:9px;color:{_roe_f_c};">{"⚠️ 高槓桿" if _roe_f_warn else ("✅ 真實獲利" if _roe_f_positive else "❌ 本業虧損")}</div>'
                             f'</div>', unsafe_allow_html=True)
                     if _prof_f.get('Final_Insight'):
                         st.caption(f'🎯 {_prof_f["Final_Insight"]}')
@@ -7749,7 +7823,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                             f'<div style="font-size:10px;color:#8b949e;">負債佔資產比率</div>'
                             f'<div style="font-size:20px;font-weight:900;color:{_dr_f_c};">{_dr_f.get("Value","N/A")}</div>'
                             f'<div style="font-size:10px;color:{_dr_f_c};">'
-                            f'{"✅ 穩健" if _dr_f_s=="Pass" else ("⚠️ 偏高" if _dr_f_s=="Warning" else ("🔴 高危" if _dr_f_s=="Fail" else "特許行業"))}'
+                            f'{"✅ 穩健" if _dr_f_s=="Pass" else ("⚠️ 偏高" if _dr_f_s=="Warning" else ("🔴 高危" if _dr_f_s=="Fail" else ("🏦 特許行業" if "金融" in _dr_f.get("Value","") else "⚪ 資料缺漏")))}'
                             f'</div></div>', unsafe_allow_html=True)
                     _ltf_f = _fstr_f.get('Long_Term_Funding_Ratio', {})
                     _ltf_f_s = _ltf_f.get('Status', '')

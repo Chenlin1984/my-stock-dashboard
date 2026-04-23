@@ -1459,19 +1459,29 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                 params=_p, headers=_hdrs, timeout=20,
             )
             _j = _r.json()
-            if _j.get("status") != 200:
-                print(f"[fetch_fin/{dataset}] 非200回應: status={_j.get('status')} msg={_j.get('msg','')}")
-            return _j.get("data", []) if _j.get("status") == 200 else []
+            _st = _j.get("status")
+            if _st != 200:
+                print(f"[fetch_fin/{dataset}] 非200回應: status={_st} msg={_j.get('msg','')}")
+            return _j.get("data", []) if _st == 200 else [], _st
         except Exception as _e:
             print(f"[fetch_fin/{dataset}] {_e}")
-            return []
+            return [], None
 
-    _bs_rows = _fm("TaiwanStockBalanceSheet")
-    _cf_rows = _fm("TaiwanStockCashFlowsStatement")
-    _is_rows = _fm("TaiwanStockFinancialStatements")
+    _bs_rows, _bs_st = _fm("TaiwanStockBalanceSheet")
+    _cf_rows, _cf_st = _fm("TaiwanStockCashFlowsStatement")
+    _is_rows, _is_st = _fm("TaiwanStockFinancialStatements")
 
     if not _bs_rows and not _cf_rows:
-        return {"error": f"{stock_id}：FinMind 無財報資料（請確認 FINMIND_TOKEN 已設定）"}
+        # 區分 Token 問題 vs 股票本身無資料
+        _statuses = [s for s in [_bs_st, _cf_st] if s is not None]
+        if not _tok:
+            _err = f"{stock_id}：未設定 FINMIND_TOKEN，無法查詢財報"
+        elif any(s in (401, 403) for s in _statuses):
+            _err = f"{stock_id}：FINMIND_TOKEN 無效或已過期（HTTP {_statuses[0]}）"
+        else:
+            _err = (f"{stock_id}：FinMind 無此股票財報資料"
+                    f"（可能為新掛牌、未上市、或 FinMind 資料源尚未收錄）")
+        return {"error": _err}
 
     def _build(rows):
         m: dict = {}
@@ -1505,6 +1515,21 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                     pass
         return 0.0
 
+    def _vsum(m, d, keys):
+        """加總 keys 中所有非零欄位（用於應收票據+帳款需分開列示的報表）"""
+        slot = m.get(d, {})
+        total = 0.0
+        for k in keys:
+            v = slot.get(k)
+            if v is not None:
+                try:
+                    fv = float(str(v).replace(",", "") or 0)
+                    if fv > 0:
+                        total += fv
+                except Exception:
+                    pass
+        return total
+
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
     liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
@@ -1516,7 +1541,20 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     if liab == 0 and (cur_liab > 0 or _non_cur_liab > 0):
         liab = cur_liab + _non_cur_liab
         print(f"[fetch_fin] {stock_id} 負債合計查無，改用 流動({cur_liab:.0f})+非流動({_non_cur_liab:.0f})={liab:.0f}千")
-    ar     = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
+    # FinMind 不一定提供「資產合計」彙總行，直接用 流動+非流動 相加
+    _non_cur_assets = _v(_bs, _lat, ["NoncurrentAssets", "非流動資產合計",
+                                      "非流動資產總計", "非流動資產"])
+    if assets == 0 and (cur_assets > 0 or _non_cur_assets > 0):
+        assets = cur_assets + _non_cur_assets
+        print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
+    # AR：L1 先加總分開列示的票據+帳款+關係人（避免與合計行重疊）
+    ar = _vsum(_bs, _lat, ["應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項"])
+    # L2 若 L1 = 0，改抓合併列示的合計行（不與 L1 混加，避免重複計算）
+    if ar == 0:
+        ar = _vsum(_bs, _lat, ["應收帳款及票據", "應收帳款及票據淨額",
+                                "應收票據及應收帳款", "應收帳款"])
+    if ar == 0:
+        ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
                              "應收帳款，淨額", "貿易應收款",
@@ -1563,10 +1601,126 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         recalc = max(assets - liab, 0)
         print(f"[fetch_fin] {stock_id} equity={equity:.0f}千 疑似欄位誤配（{equity/assets:.6%}），改用 assets-liab={recalc:.0f}千")
         equity = recalc
-    # Fallback: Assets = Liabilities + Equity (IFRS identity)
+    # Fallback: Assets = Liabilities + Equity（IFRS 恆等式，雙向兜底）
     if liab == 0 and assets > 0 and equity > 0:
         liab = max(assets - equity, 0)
         print(f"[fetch_fin] {stock_id} 負債欄位查無資料，改用 資產-權益 計算: {round(liab/1e3)}千")
+    if assets == 0 and equity > 0 and liab > 0:
+        assets = equity + liab
+        print(f"[fetch_fin] {stock_id} 資產欄位查無資料，改用 權益+負債 計算: {round(assets/1e3)}千")
+
+    # 模糊比對兜底：從 BS 所有欄位取最大值（合計行通常是最大的）
+    _bs_slot = _bs.get(_lat, {})
+    def _fuzzy_bs(_inc, _exc=()):
+        _best = 0.0
+        for _fk, _fvv in _bs_slot.items():
+            _fks = str(_fk)
+            if all(_i in _fks for _i in _inc) and not any(_e in _fks for _e in _exc):
+                try:
+                    _ffv = float(str(_fvv).replace(",", "") or 0)
+                    if _ffv > _best:
+                        _best = _ffv
+                except Exception:
+                    pass
+        return _best
+    if assets == 0:
+        assets = _fuzzy_bs(["資產"], ["負債", "資本", "遞延"])
+        if assets > 0:
+            print(f"[fetch_fin] {stock_id} assets 模糊比對: {assets:.0f}千")
+    if liab == 0:
+        liab = _fuzzy_bs(["負債"], ["資產", "準備", "權益"])
+        if liab > 0:
+            print(f"[fetch_fin] {stock_id} liab 模糊比對: {liab:.0f}千")
+    if ar == 0:
+        ar = _fuzzy_bs(["應收"], ["利息", "稅", "員工", "遞延"])
+        if ar == 0:
+            ar = _fuzzy_bs(["合約資產"])  # IFRS 15 合約資產
+        if ar > 0:
+            print(f"[fetch_fin] {stock_id} ar 模糊比對: {ar:.0f}千")
+
+    # ── yfinance 備援：對仍為零的關鍵欄位嘗試補值 ────────────────────────
+    if ar == 0 or liab == 0 or assets == 0:
+        try:
+            import yfinance as _yf_ffs, pandas as _pd_yf_ffs
+            _yf_bs_df = None
+            for _sfx_yf in (".TW", ".TWO"):
+                _tk_yf = _yf_ffs.Ticker(f"{stock_id}{_sfx_yf}")
+                _qbs_yf = getattr(_tk_yf, "quarterly_balance_sheet", None)
+                if _qbs_yf is not None and not _qbs_yf.empty:
+                    _yf_bs_df = _qbs_yf
+                    break
+            if _yf_bs_df is not None and not _yf_bs_df.empty:
+                _yfc = _yf_bs_df.columns[0]
+                def _yf_v(*_keys_yf):
+                    for _k in _keys_yf:
+                        for _idx in _yf_bs_df.index:
+                            if _k.lower() in str(_idx).lower():
+                                try:
+                                    _v = float(_yf_bs_df.loc[_idx, _yfc])
+                                    if _pd_yf_ffs.notna(_v) and _v != 0:
+                                        return _v
+                                except Exception:
+                                    pass
+                    return 0.0
+                _filled_yf = []
+                if assets == 0:
+                    _va = _yf_v("total assets")
+                    if _va > 0:
+                        assets = _va; _filled_yf.append("assets")
+                if liab == 0:
+                    _vl = _yf_v("total liab", "total liabilities")
+                    if _vl > 0:
+                        liab = _vl; _filled_yf.append("liab")
+                if ar == 0:
+                    _var = _yf_v("net receivables", "accounts receivable", "receivables")
+                    if _var > 0:
+                        ar = _var; _filled_yf.append("ar")
+                if _filled_yf:
+                    print(f"[fetch_fin] {stock_id} yfinance備援補值 {_filled_yf}: "
+                          f"assets={assets:.0f} liab={liab:.0f} ar={ar:.0f} 千")
+                    # 若 yfinance 補了 assets/equity，再試一次 IFRS identity
+                    if liab == 0 and assets > 0 and equity > 0:
+                        liab = max(assets - equity, 0)
+                    if assets == 0 and equity > 0 and liab > 0:
+                        assets = equity + liab
+        except Exception as _e_yf:
+            print(f"[fetch_fin] {stock_id} yfinance備援異常: {_e_yf}")
+
+    # ── Goodinfo 備援：當 AR 仍為 0 時，爬取季度資產負債表 ──────────────
+    if ar == 0:
+        try:
+            import requests as _rq_gi_bs, pandas as _pd_gi_bs
+            _gi_hdr = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                       'Referer': 'https://goodinfo.tw/tw/index.asp',
+                       'Accept': 'text/html,application/xhtml+xml'}
+            _gi_bs_url = (f"https://goodinfo.tw/tw/StockFinDetail.asp"
+                          f"?RPT_CAT=BS_M_QUAR&STOCK_ID={stock_id}")
+            _gi_bs_r = _rq_gi_bs.get(_gi_bs_url, headers=_gi_hdr, timeout=20)
+            _gi_bs_r.encoding = 'utf-8'
+            if _gi_bs_r.status_code == 200 and len(_gi_bs_r.text) > 500:
+                _gi_bs_tables = _pd_gi_bs.read_html(_gi_bs_r.text, encoding='utf-8')
+                for _gi_tb in _gi_bs_tables:
+                    _gi_cols = [str(c) for c in _gi_tb.columns]
+                    if not any(re.search(r'Q[1-4]|\d{3}Q|\d{4}Q', c) for c in _gi_cols):
+                        continue
+                    for _, _gi_row in _gi_tb.iterrows():
+                        _gi_lbl = str(_gi_row.iloc[0])
+                        if any(k in _gi_lbl for k in ['應收帳款', '應收票據', '合約資產', '應收款項']):
+                            for _ci in range(1, min(3, len(_gi_cols))):
+                                try:
+                                    _gi_v = float(str(_gi_row.iloc[_ci]).replace(',', ''))
+                                    if _gi_v > 0:
+                                        ar = _gi_v * 1000  # Goodinfo 百萬元 → 千元
+                                        print(f"[fetch_fin] {stock_id} Goodinfo AR備援: {ar:.0f}千")
+                                        break
+                                except Exception:
+                                    pass
+                        if ar > 0:
+                            break
+                    if ar > 0:
+                        break
+        except Exception as _e_gi_bs:
+            print(f"[fetch_fin] {stock_id} Goodinfo BS備援: {_e_gi_bs}")
 
     _zero_fields = [f for f, v in [("ar", ar), ("ppe", ppe), ("liab", liab), ("equity", equity)] if v == 0]
     if _zero_fields:
@@ -1577,8 +1731,9 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     debt_ratio = round(liab / assets * 100, 1) if assets > 0 else 0
     gp         = rev - cogs
     gm         = round(gp / rev * 100, 1) if rev > 0 else 0
-    ar_days    = round(ar / rev * 365, 1) if rev > 0 and ar > 0 else 0
-    ap_days    = round(ap / cogs * 365, 1) if cogs > 0 and ap > 0 else 0
+    # 年化：單季數字 × 4，以免 DSO/DPO 被低估 4 倍；天數基準統一 360 天
+    ar_days = round(ar / (rev * 4) * 360, 1) if rev > 0 and ar > 0 else 0
+    ap_days = round(ap / (cogs * 4) * 360, 1) if cogs > 0 and ap > 0 else 0
     fcf        = round(ocf - capex)
     ar_chg     = round((ar - ar_p) / abs(ar_p) * 100, 1) if ar_p != 0 else None
     rev_chg    = round((rev - rev_p) / abs(rev_p) * 100, 1) if rev_p != 0 else None
@@ -1620,5 +1775,5 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         "現金股利(千)":      round(div_paid),
         "固定資產(千)":      round(ppe),
         "長期投資(千)":      round(lt_inv),
-        "is_finance":        is_finance,
+        "is_finance":        stock_id.startswith(('28', '58')),
     }

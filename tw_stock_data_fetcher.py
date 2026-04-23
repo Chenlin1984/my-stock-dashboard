@@ -8,6 +8,7 @@ tw_stock_data_fetcher.py — 台股財報抓取模組（Proxy-aware）
 from __future__ import annotations
 
 import random
+import re
 import time
 from typing import Any
 
@@ -47,16 +48,17 @@ FIELD_ALIASES: dict[str, list[str]] = {
     # Balance Sheet
     "現金及約當現金": ["現金及約當現金", "Cash and Cash Equivalents", "現金", "現金及銀行存款"],
     "應收帳款": [
-        "應收帳款淨額", "應收帳款", "AccountsReceivable",
-        "合約資產", "工程應收款", "應收帳款及合約資產", "應收票據及應收帳款",
+        "應收帳款淨額", "應收票據淨額", "應收帳款－關係人淨額",
+        "應收票據及應收帳款", "應收帳款", "AccountsReceivable",
+        "合約資產", "工程應收款", "應收帳款及合約資產",
     ],
     "存貨": ["存貨", "Inventory", "存貨淨額", "商品存貨"],
     "流動資產": ["流動資產", "流動資產合計", "CurrentAssets", "總流動資產"],
     "非流動資產": ["非流動資產", "非流動資產合計", "NonCurrentAssets"],
-    "總資產": ["總資產", "資產合計", "TotalAssets", "資產總計"],
+    "總資產": ["總資產", "資產合計", "資產總計", "資產總額", "TotalAssets"],
     "流動負債": ["流動負債", "流動負債合計", "CurrentLiabilities", "總流動負債"],
     "非流動負債": ["非流動負債", "非流動負債合計", "NonCurrentLiabilities"],
-    "總負債": ["總負債", "負債合計", "TotalLiabilities", "負債總計"],
+    "總負債": ["總負債", "負債合計", "負債總計", "負債總額", "TotalLiabilities"],
     "股東權益": ["股東權益合計", "權益合計", "TotalEquity", "股東權益總額"],
     "保留盈餘": ["保留盈餘", "RetainedEarnings", "累積盈虧", "未分配盈餘"],
     "合約負債": ["合約負債", "ContractLiabilities", "預收款項", "合約負債-流動"],
@@ -477,6 +479,231 @@ def _make_cached_fetcher():
 # §12 Public API
 # ─────────────────────────────────────────────
 fetch_tw_financials = _make_cached_fetcher()
+
+
+# ─────────────────────────────────────────────
+# §12.5  5年期現金流量允當比率（B 項精確版）
+# ─────────────────────────────────────────────
+_CACHE_7D = 86400 * 7
+
+@st.cache_data(ttl=_CACHE_7D, show_spinner=False)
+def fetch_5_years_cash_flow(stock_code: str, token: str = "") -> dict:
+    """
+    抓取 5 年期現金流量允當比率（100/100/10 法則 B 項）
+    資料源：FinMind TaiwanStockCashFlowsStatement 年度報表（12月）
+    Proxy-aware；7 天快取。
+
+    回傳 dict:
+      ratio      : float  5年允當比率(%)；None 表示資料不足
+      label      : str    顯示用文字
+      status     : str    "ok" / "insufficient_data" / "error"
+      years      : int    實際取得年份數
+      ocf_5y     : float  5年 OCF 加總（千）
+      capex_5y   : float  5年資本支出加總（千，絕對值）
+      inv_inc_5y : float  5年存貨增加額加總（千，僅正值）
+      div_5y     : float  5年現金股利加總（千，絕對值）
+      denom_5y   : float  5年分母合計（千）
+    """
+    import datetime
+    import os
+
+    _tok = token or os.environ.get("FINMIND_TOKEN", "")
+    _empty = {
+        "status": "error", "ratio": None, "label": "資料不足",
+        "years": 0, "ocf_5y": 0, "capex_5y": 0,
+        "inv_inc_5y": 0, "div_5y": 0, "denom_5y": 0,
+    }
+
+    try:
+        today  = datetime.date.today()
+        start  = today.replace(year=today.year - 6).strftime("%Y-%m-%d")
+        end    = today.strftime("%Y-%m-%d")
+        params = {
+            "dataset":    "TaiwanStockCashFlowsStatement",
+            "data_id":    stock_code,
+            "start_date": start,
+            "end_date":   end,
+        }
+        if _tok:
+            params["token"] = _tok
+
+        session = build_proxy_session()
+        r = session.get(
+            "https://api.finmindtrade.com/api/v4/data",
+            params=params,
+            headers={"User-Agent": random.choice(_USER_AGENTS)},
+            timeout=(_CONNECT_TIMEOUT, _READ_TIMEOUT),
+        )
+        j = r.json()
+        if j.get("status") != 200 or not j.get("data"):
+            return {**_empty, "label": f"FinMind status={j.get('status')}"}
+
+        df = pd.DataFrame(j["data"])
+        df["date"] = pd.to_datetime(df["date"])
+        # 年度報表 = 每年 12 月（Q4 累計）
+        df = df[df["date"].dt.month == 12].copy()
+        df["year"] = df["date"].dt.year
+        years_avail = sorted(df["year"].unique())[-5:]
+        df = df[df["year"].isin(years_avail)]
+        if len(years_avail) < 3:
+            return {**_empty, "status": "insufficient_data",
+                    "label": f"年份不足（僅{len(years_avail)}年）"}
+
+        # ── 科目別名集合 ───────────────────────────────────────────
+        _OCF   = {"CashFlowFromOperatingActivities", "OperatingActivities",
+                  "來自營業活動之現金流量", "營業活動之淨現金流入",
+                  "營業活動現金流量"}
+        _CAPEX = {"AcquisitionOfPropertyPlantAndEquipment",
+                  "取得不動產、廠房及設備", "購置不動產廠房及設備",
+                  "取得不動產廠房及設備", "資本支出"}
+        _INV   = {"IncreaseDecreaseInInventories", "存貨增加",
+                  "存貨(增加)減少", "存貨(增加)、減少",
+                  "IncreaseInInventories", "存貨之增加"}
+        _DIV   = {"DividendsPaid", "CashDividendsPaid", "支付現金股利",
+                  "發放現金股利", "支付股東現金股利",
+                  "發放現金股利予非控制權益"}
+
+        def _sum(aliases):
+            mask = df["type"].isin(aliases)
+            vals = pd.to_numeric(df.loc[mask, "value"], errors="coerce").dropna()
+            return float(vals.sum()) if not vals.empty else 0.0
+
+        ocf_5y     = _sum(_OCF)
+        capex_5y   = abs(_sum(_CAPEX))          # CF 表通常為負值
+        inv_inc_5y = max(_sum(_INV), 0.0)       # 只計存貨增加（分母意義）
+        div_5y     = abs(_sum(_DIV))
+        denom_5y   = capex_5y + inv_inc_5y + div_5y
+
+        if denom_5y == 0:
+            return {**_empty, "status": "insufficient_data",
+                    "label": "分母為零（CapEx+存貨+股利均缺失）",
+                    "ocf_5y": round(ocf_5y), "years": len(years_avail)}
+
+        ratio = round(ocf_5y / denom_5y * 100, 1)
+        return {
+            "status":     "ok",
+            "ratio":      ratio,
+            "label":      f"{ratio:.1f}%（{len(years_avail)}年實際）",
+            "years":      len(years_avail),
+            "ocf_5y":     round(ocf_5y),
+            "capex_5y":   round(capex_5y),
+            "inv_inc_5y": round(inv_inc_5y),
+            "div_5y":     round(div_5y),
+            "denom_5y":   round(denom_5y),
+        }
+
+    except Exception as _e:
+        return {**_empty, "label": f"例外:{type(_e).__name__}:{_e}"}
+
+
+# ─────────────────────────────────────────────
+# §12.6  Goodinfo MJ 財報指標直抓（資產/負債/應收/DSO）
+# ─────────────────────────────────────────────
+_GI_BS_URL = "https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=BS_M_QUAR&STOCK_ID={sid}"
+_GI_IS_URL = "https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=IS_M_QUAR&STOCK_ID={sid}"
+_GI_QTR = re.compile(r"\d{3,4}Q[1-4]")   # 支援民國 (113Q4) 與西元 (2024Q4)
+
+
+def _gi_latest(html: str, field: str) -> float | None:
+    """
+    從 Goodinfo 季報 HTML 取指定欄位最新一季數值。
+    回傳 Goodinfo 原生單位（通常為百萬元）；ratio 計算時單位可相消。
+    """
+    import io
+    try:
+        tables = pd.read_html(io.StringIO(html), encoding="utf-8")
+    except Exception as exc:
+        print(f"[_gi_latest] read_html failed: {exc}")
+        return None
+
+    for tb in tables:
+        cols = [str(c) for c in tb.columns]
+        qtr_cols = sorted([c for c in cols if _GI_QTR.search(c)], reverse=True)
+        if not qtr_cols:
+            continue
+        for _, row in tb.iterrows():
+            label = str(row.iloc[0])
+            if field not in label:
+                continue
+            for qcol in qtr_cols:
+                raw = str(row.get(qcol, "")).replace(",", "").replace("--", "").strip()
+                if raw in ("", "nan", "N/A", "－"):
+                    continue
+                try:
+                    val = float(raw)
+                    if val != 0.0:
+                        return val
+                except ValueError:
+                    continue
+
+    print(f"[_gi_latest] '{field}' 欄位在表格中未找到")
+    return None
+
+
+@st.cache_data(ttl=CACHE_TTL_SEC, show_spinner=False)
+def fetch_goodinfo_metrics(
+    stock_code: str,
+    proxies: dict | None = None,
+) -> dict:
+    """
+    從 Goodinfo BS_M_QUAR / IS_M_QUAR 直抓最新一季財報數值並計算 MJ 指標。
+
+    Args:
+        stock_code: 股票代號（如 "2330"）
+        proxies:    自訂代理，格式 {"http": "http://host:port", "https": "..."}
+                    傳入 None 時自動讀取 Streamlit Secrets 設定。
+
+    Returns dict:
+        assets (float|None)   : 資產總額（Goodinfo 原生單位，通常百萬元）
+        liab   (float|None)   : 負債總額
+        ar     (float|None)   : 應收帳款及票據
+        revenue (float|None)  : 營業收入（單季）
+        debt_ratio (float|None): 負債 / 資產 × 100（%）
+        dso    (float|None)   : 360 / (營收×4 / 應收帳款)（天）
+        error  (str|None)     : 例外訊息；正常為 None
+    """
+    session = build_proxy_session()
+    if proxies:
+        session.proxies.update(proxies)
+
+    result: dict[str, Any] = {
+        "assets": None, "liab": None, "ar": None, "revenue": None,
+        "debt_ratio": None, "dso": None, "error": None,
+    }
+
+    try:
+        # ── 資產負債表 ─────────────────────────────────────────
+        resp_bs = proxy_get(session, _GI_BS_URL.format(sid=stock_code))
+        if resp_bs and resp_bs.status_code == 200 and len(resp_bs.text) > 500:
+            resp_bs.encoding = "utf-8"
+            result["assets"] = _gi_latest(resp_bs.text, "資產總額")
+            result["liab"]   = _gi_latest(resp_bs.text, "負債總額")
+            result["ar"]     = _gi_latest(resp_bs.text, "應收帳款及票據")
+        else:
+            print(f"[fetch_goodinfo_metrics] {stock_code} BS: HTTP {getattr(resp_bs,'status_code','None')}")
+
+        # ── 損益表 ─────────────────────────────────────────────
+        resp_is = proxy_get(session, _GI_IS_URL.format(sid=stock_code))
+        if resp_is and resp_is.status_code == 200 and len(resp_is.text) > 500:
+            resp_is.encoding = "utf-8"
+            result["revenue"] = _gi_latest(resp_is.text, "營業收入")
+        else:
+            print(f"[fetch_goodinfo_metrics] {stock_code} IS: HTTP {getattr(resp_is,'status_code','None')}")
+
+        # ── MJ 指標計算（units cancel in ratios）──────────────
+        _a, _l, _ar, _rev = result["assets"], result["liab"], result["ar"], result["revenue"]
+
+        if _l is not None and _a and _a > 0:
+            result["debt_ratio"] = round(_l / _a * 100, 1)
+
+        if _rev is not None and _ar and _ar > 0 and _rev > 0:
+            result["dso"] = round(360 / (_rev * 4 / _ar), 1)
+
+    except Exception as exc:
+        result["error"] = str(exc)
+        print(f"[fetch_goodinfo_metrics] {stock_code}: {exc}")
+
+    return result
 
 
 # ─────────────────────────────────────────────
