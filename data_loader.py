@@ -1551,7 +1551,8 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     ar = _vsum(_bs, _lat, ["應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項"])
     # L2 若 L1 = 0，改抓合併列示的合計行（不與 L1 混加，避免重複計算）
     if ar == 0:
-        ar = _vsum(_bs, _lat, ["應收票據及應收帳款", "應收帳款"])
+        ar = _vsum(_bs, _lat, ["應收帳款及票據", "應收帳款及票據淨額",
+                                "應收票據及應收帳款", "應收帳款"])
     if ar == 0:
         ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
@@ -1730,8 +1731,9 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     debt_ratio = round(liab / assets * 100, 1) if assets > 0 else 0
     gp         = rev - cogs
     gm         = round(gp / rev * 100, 1) if rev > 0 else 0
-    ar_days    = round(ar / rev * 365, 1) if rev > 0 and ar > 0 else 0
-    ap_days    = round(ap / cogs * 365, 1) if cogs > 0 and ap > 0 else 0
+    # 年化：單季數字 × 4，以免 DSO/DPO 被低估 4 倍；天數基準統一 360 天
+    ar_days = round(ar / (rev * 4) * 360, 1) if rev > 0 and ar > 0 else 0
+    ap_days = round(ap / (cogs * 4) * 360, 1) if cogs > 0 and ap > 0 else 0
     fcf        = round(ocf - capex)
     ar_chg     = round((ar - ar_p) / abs(ar_p) * 100, 1) if ar_p != 0 else None
     rev_chg    = round((rev - rev_p) / abs(rev_p) * 100, 1) if rev_p != 0 else None

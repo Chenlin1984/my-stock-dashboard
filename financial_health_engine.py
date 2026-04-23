@@ -304,7 +304,19 @@ def _derive_basic_from_fin_data(fin_data: dict) -> dict:
         cash_status, cash_icon = "Fail", "🔴"
 
     ocf_k = fin_data.get("OCF(千)", 0) or 0
-    ocf_yi = round(ocf_k / 1e5, 2)   # 千 → 億（÷100,000）
+    # 單位防呆：FinMind → 千元（÷1e5 → 億）；Goodinfo 備援 → 百萬元（÷100 → 億）
+    # 千元正常上限：世界最大公司年度 OCF ≈ 5,000 億 → 500,000,000 千 < 1e9
+    # 若 ocf_k > 1e9，判定為元（NTD）：÷1e8；若 > 1e6，判定為百萬：÷100
+    try:
+        _abs = abs(ocf_k)
+        if _abs > 1e9:
+            ocf_yi = round(ocf_k / 1e8, 2)   # 元 → 億
+        elif _abs > 1e6:
+            ocf_yi = round(ocf_k / 100, 2)    # 百萬 → 億
+        else:
+            ocf_yi = round(ocf_k / 1e5, 2)    # 千元 → 億（標準 FinMind 路徑）
+    except Exception:
+        ocf_yi = 0
     ocf_icon = "🟢" if ocf_k > 0 else "🔴"
 
     # debt_pct=0 可能是資料缺漏，不可直接判綠燈
@@ -440,7 +452,8 @@ def _no_ai_operating(fd: dict) -> dict:
     cogs = fd.get("營業成本(千)", 0) or 0
     rev = fd.get("營業收入(千)", 0) or 0
     assets = fd.get("總資產(千)", 0) or 0
-    dio = round(inv / cogs * 360, 1) if cogs > 0 else (round(inv / rev * 360, 1) if rev > 0 else 0)
+    # 年化：單季 cogs/rev × 4，DIO 才能與 DSO/DPO 規模一致
+    dio = round(inv / (cogs * 4) * 360, 1) if cogs > 0 else (round(inv / (rev * 4) * 360, 1) if rev > 0 else 0)
     # ar=0 代表資料查無；完整週期/資金缺口用 N/A 表示
     dso_str = f"{ar:.1f} 天" if ar > 0 else "N/A (資料不足)"
     cycle_str = f"{round(ar + dio, 1):.1f} 天" if ar > 0 else f"N/A (DSO缺失，DIO={dio:.1f}天)"
@@ -467,7 +480,7 @@ def _no_ai_profitability(fd: dict) -> dict:
     debt = fd.get("負債比率(%)", 0) or 0
     om = round(oi / rev * 100, 1) if rev > 0 else 0
     nm = round(ni / rev * 100, 1) if rev > 0 else 0
-    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    roe = round((ni * 4) / eq * 100, 1) if eq > 0 else 0  # 年化：單季 NI × 4
     mos = round(om, 1)
     return {"Profitability_Module": {
         "Gross_Margin": {"Value": f"{gm:.1f}%", "Status": "Good" if gm >= 40 else "Average"},
@@ -580,7 +593,7 @@ def _no_ai_advanced_diagnostic(fd: dict) -> dict:
     else:
         eq_pct = round(ocf / ni * 100, 1)
         eq_val, eq_st = f"{eq_pct:.1f}%", "Pass" if eq_pct >= 100 else "Fail"
-    roe = round(ni / eq * 100, 1) if eq > 0 else 0
+    roe = round((ni * 4) / eq * 100, 1) if eq > 0 else 0  # 年化：單季 NI × 4
     dupont = ("槓桿膨脹警報" if roe > 15 and debt > 65 else
               ("健康成長" if roe > 15 else
                ("ROE 偏低，成長動能不足" if roe > 0 else "⚠️ ROE 為負，本業虧損")))
