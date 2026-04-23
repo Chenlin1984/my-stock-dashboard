@@ -8,6 +8,7 @@ tw_stock_data_fetcher.py — 台股財報抓取模組（Proxy-aware）
 from __future__ import annotations
 
 import random
+import re
 import time
 from typing import Any
 
@@ -593,6 +594,116 @@ def fetch_5_years_cash_flow(stock_code: str, token: str = "") -> dict:
 
     except Exception as _e:
         return {**_empty, "label": f"例外:{type(_e).__name__}:{_e}"}
+
+
+# ─────────────────────────────────────────────
+# §12.6  Goodinfo MJ 財報指標直抓（資產/負債/應收/DSO）
+# ─────────────────────────────────────────────
+_GI_BS_URL = "https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=BS_M_QUAR&STOCK_ID={sid}"
+_GI_IS_URL = "https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=IS_M_QUAR&STOCK_ID={sid}"
+_GI_QTR = re.compile(r"\d{3,4}Q[1-4]")   # 支援民國 (113Q4) 與西元 (2024Q4)
+
+
+def _gi_latest(html: str, field: str) -> float | None:
+    """
+    從 Goodinfo 季報 HTML 取指定欄位最新一季數值。
+    回傳 Goodinfo 原生單位（通常為百萬元）；ratio 計算時單位可相消。
+    """
+    import io
+    try:
+        tables = pd.read_html(io.StringIO(html), encoding="utf-8")
+    except Exception as exc:
+        print(f"[_gi_latest] read_html failed: {exc}")
+        return None
+
+    for tb in tables:
+        cols = [str(c) for c in tb.columns]
+        qtr_cols = sorted([c for c in cols if _GI_QTR.search(c)], reverse=True)
+        if not qtr_cols:
+            continue
+        for _, row in tb.iterrows():
+            label = str(row.iloc[0])
+            if field not in label:
+                continue
+            for qcol in qtr_cols:
+                raw = str(row.get(qcol, "")).replace(",", "").replace("--", "").strip()
+                if raw in ("", "nan", "N/A", "－"):
+                    continue
+                try:
+                    val = float(raw)
+                    if val != 0.0:
+                        return val
+                except ValueError:
+                    continue
+
+    print(f"[_gi_latest] '{field}' 欄位在表格中未找到")
+    return None
+
+
+@st.cache_data(ttl=CACHE_TTL_SEC, show_spinner=False)
+def fetch_goodinfo_metrics(
+    stock_code: str,
+    proxies: dict | None = None,
+) -> dict:
+    """
+    從 Goodinfo BS_M_QUAR / IS_M_QUAR 直抓最新一季財報數值並計算 MJ 指標。
+
+    Args:
+        stock_code: 股票代號（如 "2330"）
+        proxies:    自訂代理，格式 {"http": "http://host:port", "https": "..."}
+                    傳入 None 時自動讀取 Streamlit Secrets 設定。
+
+    Returns dict:
+        assets (float|None)   : 資產總額（Goodinfo 原生單位，通常百萬元）
+        liab   (float|None)   : 負債總額
+        ar     (float|None)   : 應收帳款及票據
+        revenue (float|None)  : 營業收入（單季）
+        debt_ratio (float|None): 負債 / 資產 × 100（%）
+        dso    (float|None)   : 360 / (營收×4 / 應收帳款)（天）
+        error  (str|None)     : 例外訊息；正常為 None
+    """
+    session = build_proxy_session()
+    if proxies:
+        session.proxies.update(proxies)
+
+    result: dict[str, Any] = {
+        "assets": None, "liab": None, "ar": None, "revenue": None,
+        "debt_ratio": None, "dso": None, "error": None,
+    }
+
+    try:
+        # ── 資產負債表 ─────────────────────────────────────────
+        resp_bs = proxy_get(session, _GI_BS_URL.format(sid=stock_code))
+        if resp_bs and resp_bs.status_code == 200 and len(resp_bs.text) > 500:
+            resp_bs.encoding = "utf-8"
+            result["assets"] = _gi_latest(resp_bs.text, "資產總額")
+            result["liab"]   = _gi_latest(resp_bs.text, "負債總額")
+            result["ar"]     = _gi_latest(resp_bs.text, "應收帳款及票據")
+        else:
+            print(f"[fetch_goodinfo_metrics] {stock_code} BS: HTTP {getattr(resp_bs,'status_code','None')}")
+
+        # ── 損益表 ─────────────────────────────────────────────
+        resp_is = proxy_get(session, _GI_IS_URL.format(sid=stock_code))
+        if resp_is and resp_is.status_code == 200 and len(resp_is.text) > 500:
+            resp_is.encoding = "utf-8"
+            result["revenue"] = _gi_latest(resp_is.text, "營業收入")
+        else:
+            print(f"[fetch_goodinfo_metrics] {stock_code} IS: HTTP {getattr(resp_is,'status_code','None')}")
+
+        # ── MJ 指標計算（units cancel in ratios）──────────────
+        _a, _l, _ar, _rev = result["assets"], result["liab"], result["ar"], result["revenue"]
+
+        if _l is not None and _a and _a > 0:
+            result["debt_ratio"] = round(_l / _a * 100, 1)
+
+        if _rev is not None and _ar and _ar > 0 and _rev > 0:
+            result["dso"] = round(360 / (_rev * 4 / _ar), 1)
+
+    except Exception as exc:
+        result["error"] = str(exc)
+        print(f"[fetch_goodinfo_metrics] {stock_code}: {exc}")
+
+    return result
 
 
 # ─────────────────────────────────────────────
