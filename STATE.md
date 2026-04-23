@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.15 | branch `claude/analyze-test-coverage-070Kf` `c6011fc`
+- **版本**: v10.16 | branch `claude/analyze-test-coverage-070Kf` `f688401`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.16，branch `f688401`）
+
+### AI 語氣升級：股海老船長 v2（commit `f688401`）
+| 項目 | 說明 |
+|------|------|
+| **角色升級** | 台灣資深投資顧問 → 股海老船長（多次牛熊歷練、一針見血） |
+| **新增守則** | 拒絕券商官腔（禁用震盪整理/逢低承接）、籌碼翻譯蒟蒻、總經翻譯對照 |
+| **輸出格式** | 核心洞察 50 字以內、兄弟帶入感、條列直擊要害 |
 
 ## ✅ 最新異動（v10.15，branch `c6011fc`）
 
