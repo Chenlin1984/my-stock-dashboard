@@ -2022,8 +2022,77 @@ def _check_etf_health(ticker: str) -> dict:
     return result
 
 def render_data_health():
+    import pandas as _pd_dh
     st.markdown('### 🔎 資料健診儀表板')
     st.caption('顯示全系統每項資料的實際數值，確認為真實市場資料（非沙盒/空值）。點擊「更新全部總經數據」後再來此頁驗證。')
+
+    # ════════════════════════════════════════════════════════════════
+    # §0  全域資料健康總表 + 快照（Data Registry Hub）
+    # ════════════════════════════════════════════════════════════════
+    st.markdown('---')
+    st.markdown(
+        '<div style="padding:6px 14px;background:linear-gradient(90deg,#58a6ff18,#0d1117);'
+        'border-left:4px solid #58a6ff;border-radius:0 6px 6px 0;margin-bottom:10px;">'
+        '<span style="font-size:14px;font-weight:900;color:#58a6ff;">📋 全域資料健康總表</span>'
+        '<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
+        '自動掃描 session_state 中所有已載入 DataFrame — 無綁定標的</span></div>',
+        unsafe_allow_html=True
+    )
+    _reg = st.session_state.get('data_registry', {})
+    if not _reg:
+        st.info('尚未載入資料，請先點擊「🔄 更新全部總經數據」，系統將自動掃描所有 DataFrame。')
+    else:
+        _today = _pd_dh.Timestamp.now().normalize()
+
+        def _freshness(date_str):
+            try:
+                _dt = _pd_dh.Timestamp(date_str)
+                _age = (_today - _dt).days
+                if _age <= 5:   return '🟢', f'{_age}天前'
+                elif _age <= 14: return '🟡', f'{_age}天前'
+                else:            return '🔴', f'{_age}天前（⚠️ 過舊）'
+            except Exception:
+                return '⚪', 'N/A'
+
+        _tbl_rows = []
+        for _rn, _rv in sorted(_reg.items()):
+            _icon, _age_str = _freshness(_rv['latest_date'])
+            _tbl_rows.append({
+                '燈號': _icon,
+                '資料名稱': _rn,
+                '最新日期': _rv['latest_date'],
+                '新鮮度': _age_str,
+                '筆數': _rv['rows'],
+                '欄位數': _rv['cols'],
+            })
+
+        _df_tbl = _pd_dh.DataFrame(_tbl_rows)
+        st.dataframe(_df_tbl, use_container_width=True, hide_index=True)
+        _n_stale = sum(1 for r in _tbl_rows if '⚠️' in r['新鮮度'])
+        if _n_stale:
+            st.warning(f'⚠️ 發現 {_n_stale} 筆資料超過 14 天，建議重新載入或檢查 API 排序邏輯。')
+        else:
+            st.success(f'✅ {len(_tbl_rows)} 個資料源全部新鮮（≤ 5天）')
+
+        # ── 快照檢視器 ──────────────────────────────────────────────
+        st.markdown(
+            '<div style="padding:6px 14px;background:linear-gradient(90deg,#3fb95018,#0d1117);'
+            'border-left:4px solid #3fb950;border-radius:0 6px 6px 0;margin:12px 0 8px;">'
+            '<span style="font-size:13px;font-weight:700;color:#3fb950;">🔍 資料抽查快照</span>'
+            '<span style="font-size:11px;color:#8b949e;margin-left:8px;">選擇任一資料源，顯示最近 5 筆原始數據</span></div>',
+            unsafe_allow_html=True
+        )
+        _sel_key = st.selectbox(
+            '選擇資料源（選項由 data_registry 動態生成，不綁定任何固定標的）',
+            options=list(_reg.keys()),
+            key='_dh_snapshot_sel',
+        )
+        if _sel_key and _sel_key in _reg:
+            _snap_df = _reg[_sel_key]['df']
+            st.caption(f'**{_sel_key}** — 最新日期：{_reg[_sel_key]["latest_date"]}  共 {_reg[_sel_key]["rows"]} 筆  {_reg[_sel_key]["cols"]} 欄')
+            st.dataframe(_snap_df.head(5), use_container_width=True)
+
+    st.markdown('---')
 
     _cl    = st.session_state.get('cl_data', {})
     _cl_ts = st.session_state.get('cl_ts', '尚未更新')

@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.20 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.21 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.21）
+
+### 全域資料診斷中心（app.py + etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **Data Registry** | `app.py` 在 `st.rerun()` 前呼叫 `_reg_add()`，掃描 `cl_data.intl/tw/tech`、ADL、先行指標，寫入 `st.session_state['data_registry']` |
+| **自動降冪排序** | `_reg_add()` 對 DatetimeIndex 型 DF 呼叫 `sort_index(ascending=False)`；date 欄型呼叫 `sort_values(dcol, ascending=False)` |
+| **無綁定標的** | Registry 完全動態，不寫死任何股票代號 |
+| **全域健康總表** | `etf_dashboard.render_data_health()` 最前加入「📋 全域資料健康總表」：讀 `data_registry`，顯示名稱/最新日期/新鮮度(🟢≤5天/🟡≤14天/🔴過舊)/筆數/欄數 |
+| **快照檢視器** | `st.selectbox` 選項由 registry 動態生成；選中後顯示該 DF `.head(5)` |
+| **過舊偵測** | 超過 14 天顯示 ⚠️，並在底部顯示警告 banner |
 
 ## ✅ 最新異動（v10.20）
 

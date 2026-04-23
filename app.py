@@ -2837,6 +2837,62 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             except Exception as _me:
                 print(f'[市場評估 ERROR] {_me}')
                 import traceback; traceback.print_exc()
+        # ── 全域資料登錄中心：掃描所有已載入 DF，寫入 data_registry ────
+        try:
+            import pandas as _pd_reg
+            _reg_new: dict = {}
+
+            def _reg_add(_rname: str, _rdf):
+                """將 DataFrame 降冪排序後寫入 registry（不重複分配記憶體）。"""
+                if not isinstance(_rdf, _pd_reg.DataFrame) or _rdf.empty:
+                    return
+                _d = _rdf.copy()
+                # 1. 依 DatetimeIndex 排序
+                if isinstance(_d.index, _pd_reg.DatetimeIndex):
+                    _d = _d.sort_index(ascending=False)
+                    _latest = _d.index[0]
+                else:
+                    # 2. 找日期欄（date / Date / datetime / 日期）
+                    _dcol = next((c for c in _d.columns if str(c).lower() in
+                                  ('date', 'datetime', 'timestamp', '日期', 'quarter', 'period')), None)
+                    if _dcol:
+                        try:
+                            _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], errors='coerce')
+                            _d = _d.sort_values(_dcol, ascending=False)
+                            _latest = _d[_dcol].iloc[0]
+                        except Exception:
+                            _latest = None
+                    else:
+                        _latest = None
+                try:
+                    _ls = _pd_reg.Timestamp(_latest).strftime('%Y-%m-%d') if _latest is not None else 'N/A'
+                except Exception:
+                    _ls = str(_latest)[:10] if _latest else 'N/A'
+                _reg_new[_rname] = {
+                    'latest_date': _ls,
+                    'rows': len(_d),
+                    'cols': len(_d.columns),
+                    'df': _d,
+                }
+
+            _cl_reg = st.session_state.get('cl_data', {})
+            for _rn, _rdf in (_cl_reg.get('intl') or {}).items():
+                _reg_add(_rn, _rdf)
+            for _rn, _rdf in (_cl_reg.get('tw') or {}).items():
+                _reg_add(_rn, _rdf)
+            for _rn, _rdf in (_cl_reg.get('tech') or {}).items():
+                _reg_add(_rn, _rdf)
+            _adl_reg = _cl_reg.get('adl')
+            if isinstance(_adl_reg, _pd_reg.DataFrame):
+                _reg_add('ADL 市場廣度', _adl_reg)
+            _li_reg = st.session_state.get('li_latest')
+            if isinstance(_li_reg, _pd_reg.DataFrame):
+                _reg_add('先行指標', _li_reg)
+            st.session_state['data_registry'] = _reg_new
+            print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源')
+        except Exception as _re:
+            print(f'[DataRegistry] 建立失敗: {_re}')
+
         st.rerun()  # 資料更新完成，重跑腳本讓頂部看板讀取最新 session_state
 
     cd     = st.session_state.get('cl_data', {})
