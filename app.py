@@ -1984,7 +1984,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 return {n: fetch_single(sym) for n, sym in INTL_MAP.items()}
 
             def _job_tw():
-                return {n: fetch_single(sym, period='90d') for n, sym in TW_MAP.items()}
+                # 9mo ≈ 195 交易日，確保 ^TWII 有足夠 bars 計算 MA120（需120筆）
+                return {n: fetch_single(sym, period='9mo') for n, sym in TW_MAP.items()}
 
             def _job_tech():
                 return {n: fetch_single(sym) for n, sym in TECH_MAP.items()}
@@ -6475,18 +6476,21 @@ padding:12px 16px;margin:8px 0;">
             _fh_key2 = f'_fh_{sid2}'
             if _fh_key2 not in st.session_state:
                 with st.spinner('📊 正在從 FinMind 抓取財報數據…'):
-                    _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
-                    if _fin_raw.get('error'):
-                        st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
-                    else:
-                        # B項：預填 5 年現金流量允當比率（精確版）
-                        try:
-                            from tw_stock_data_fetcher import fetch_5_years_cash_flow
-                            _fin_raw['b_item_5y'] = fetch_5_years_cash_flow(sid2, FINMIND_TOKEN)
-                        except Exception:
-                            pass  # fallback 到 1Q 估算
-                        _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
-                        st.session_state[_fh_key2] = _fh_out
+                    try:
+                        _fin_raw = fetch_financial_statements(sid2, FINMIND_TOKEN)
+                        if _fin_raw.get('error'):
+                            st.session_state[_fh_key2] = {'error': True, 'ai_insight': _fin_raw['error']}
+                        else:
+                            # B項：預填 5 年現金流量允當比率（精確版）
+                            try:
+                                from tw_stock_data_fetcher import fetch_5_years_cash_flow
+                                _fin_raw['b_item_5y'] = fetch_5_years_cash_flow(sid2, FINMIND_TOKEN)
+                            except Exception:
+                                pass  # fallback 到 1Q 估算
+                            _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
+                            st.session_state[_fh_key2] = _fh_out
+                    except Exception as _fh_exc:
+                        st.session_state[_fh_key2] = {'error': True, 'ai_insight': f'財報體檢發生例外：{_fh_exc}'}
             _fh = st.session_state.get(_fh_key2)
             if not _fh or _fh.get('error'):
                 st.error(_fh.get('ai_insight', '財報體檢失敗，請確認 FINMIND_TOKEN 已設定。') if _fh else '載入中...')
