@@ -1532,7 +1532,8 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
 
     cash   = _v(_bs, _lat, ["CashAndCashEquivalents", "現金及約當現金", "Cash"])
     assets = _v(_bs, _lat, ["TotalAssets", "資產總計", "資產合計", "資產總額"])
-    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額"])
+    liab   = _v(_bs, _lat, ["TotalLiabilities", "負債總計", "負債合計", "負債總額",
+                             "Liabilities", "負債合計（千元）", "負債總額（千元）"])
     cur_assets = _v(_bs, _lat, ["CurrentAssets", "流動資產合計", "流動資產總計", "流動資產"])
     cur_liab = _v(_bs, _lat, ["CurrentLiabilities", "流動負債合計", "流動負債總計", "流動負債"])
     # FinMind 不一定提供「負債合計」彙總行，直接用 流動+非流動 相加
@@ -1548,11 +1549,19 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         assets = cur_assets + _non_cur_assets
         print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
     # AR：L1 先加總分開列示的票據+帳款+關係人（避免與合計行重疊）
-    ar = _vsum(_bs, _lat, ["應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項"])
+    # 涵蓋：舊格式（淨額/關係人）+ IFRS 括號格式（非關係人）/（關係人）+ 含稅格式
+    ar = _vsum(_bs, _lat, [
+        "應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項",
+        "應收帳款（非關係人）", "應收帳款（關係人）",
+        "應收帳款（非關係人）淨額", "應收帳款（關係人）淨額",
+        "應收票據（非關係人）", "應收票據（關係人）",
+        "應收帳款-非關係人", "應收帳款-關係人",
+    ])
     # L2 若 L1 = 0，改抓合併列示的合計行（不與 L1 混加，避免重複計算）
     if ar == 0:
         ar = _vsum(_bs, _lat, ["應收帳款及票據", "應收帳款及票據淨額",
-                                "應收票據及應收帳款", "應收帳款"])
+                                "應收票據及應收帳款", "應收帳款",
+                                "應收帳款（含稅）", "應收帳款淨額（含稅）"])
     if ar == 0:
         ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
@@ -1561,7 +1570,8 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
                              "應收款項", "應收款項合計", "應收帳款及其他應收款",
                              "ReceivablesNet", "NetReceivables",
                              "合約資產", "工程應收款", "應收帳款及合約資產",
-                             "應收票據及應收帳款"])
+                             "應收票據及應收帳款",
+                             "應收帳款（非關係人）", "應收帳款（關係人）"])
     ap     = _v(_bs, _lat, ["AccountsPayable", "應付帳款",
                              "NoteAndAccountsPayable", "應付帳款及票據應付款",
                              "應付票據及帳款", "貿易應付款"])
@@ -1590,7 +1600,12 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     net_ni = _v(_is, _lat, ["NetIncome", "本期淨利（淨損）", "淨利", "稅後淨利"])
 
     rev_p  = _v(_is, _prv, ["Revenue", "營業收入合計", "營業收入"])
-    ar_p   = _v(_bs, _prv, ["AccountsReceivable", "應收帳款淨額", "應收帳款"])
+    ar_p   = _v(_bs, _prv, [
+        "AccountsReceivable", "應收帳款淨額", "應收帳款",
+        "應收帳款（非關係人）", "應收帳款（關係人）",
+        "應收帳款（非關係人）淨額", "應收帳款及票據", "應收票據及應收帳款",
+        "應收帳款（含稅）",
+    ])
     equity = _v(_bs, _lat, ["TotalEquity", "權益總額", "股東權益合計",
                              "TotalStockholdersEquity", "股東權益總額",
                              "EquityAttributableToOwnersOfParent",
@@ -1632,7 +1647,7 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         if liab > 0:
             print(f"[fetch_fin] {stock_id} liab 模糊比對: {liab:.0f}千")
     if ar == 0:
-        ar = _fuzzy_bs(["應收"], ["利息", "稅", "員工", "遞延"])
+        ar = _fuzzy_bs(["應收"], ["利息", "所得稅", "員工", "遞延", "退稅"])
         if ar == 0:
             ar = _fuzzy_bs(["合約資產"])  # IFRS 15 合約資產
         if ar > 0:
