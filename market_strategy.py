@@ -204,6 +204,14 @@ def get_market_assessment(df_index=None, foreign_net=None,
     if df_index is None or df_index.empty:
         return None
 
+    # ── 資料新鮮度守門：最後一筆若超過 7 個自然日，視為陳舊資料 ─────
+    _last_ts = df_index.index[-1]
+    _last_dt = pd.Timestamp(_last_ts).tz_localize(None) if getattr(_last_ts, 'tzinfo', None) else pd.Timestamp(_last_ts)
+    _days_old = (pd.Timestamp.now() - _last_dt).days
+    if _days_old > 7:
+        print(f'[MarketStrategy] 資料過舊 {_days_old} 天（末筆 {_last_dt.date()}），視為無效')
+        return None
+
     # 欄位標準化（fetch_single 回傳小寫 / yfinance 回傳大寫）
     _df = df_index.copy()
     if 'close' in _df.columns and 'Close' not in _df.columns:

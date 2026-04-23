@@ -1984,7 +1984,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 return {n: fetch_single(sym) for n, sym in INTL_MAP.items()}
 
             def _job_tw():
-                return {n: fetch_single(sym, period='90d') for n, sym in TW_MAP.items()}
+                # 9mo ≈ 195 交易日，確保 ^TWII 有足夠 bars 計算 MA120（需120筆）
+                return {n: fetch_single(sym, period='9mo') for n, sym in TW_MAP.items()}
 
             def _job_tech():
                 return {n: fetch_single(sym) for n, sym in TECH_MAP.items()}
