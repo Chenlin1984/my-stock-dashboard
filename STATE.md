@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.19 | branch `claude/analyze-test-coverage-070Kf` `3d2049a`
+- **版本**: v10.20 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,19 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.20）
+
+### 6770 DSO + 負債比 N/A 修復（data_loader.py）
+| 項目 | 說明 |
+|------|------|
+| **AR L1 vsum 新增** | 括號格式：`應收帳款（非關係人）`、`（關係人）`、`淨額`後綴、`應收票據（非關係人）/（關係人）`、短橫線格式（涵蓋 IFRS 關係人拆分揭露） |
+| **AR L2 vsum 新增** | `應收帳款（含稅）`、`應收帳款淨額（含稅）`（部分公司含稅列示） |
+| **AR L3 v 新增** | `應收帳款（非關係人）`、`應收帳款（關係人）` 加入備援路徑 |
+| **ar_p 前期 AR 擴充** | 由 3 個 alias 擴充至 9 個，補齊括號格式與含稅格式 |
+| **fuzzy 排除修正** | `["稅"]` → `["所得稅", "退稅"]`：舊排除會誤殺 `應收帳款（含稅）` 等欄位 |
+| **liab 新增** | `Liabilities`（英文 type）、`負債合計（千元）`、`負債總額（千元）` |
+| **驗證** | `test_6770_fields.py` 三情境（括號格式/含稅/fuzzy 修復）全部通過 |
 
 ## ✅ 最新異動（v10.19，commit `3d2049a`）
 
