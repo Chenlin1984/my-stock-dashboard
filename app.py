@@ -2842,19 +2842,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             import pandas as _pd_reg
             _reg_new: dict = {}
 
-            def _reg_add(_rname: str, _rdf):
-                """將 DataFrame 降冪排序後寫入 registry（不重複分配記憶體）。"""
+            def _reg_add(_rname: str, _rdf, category: str = '大盤', freq: str = 'daily'):
+                """提取最新時間戳後寫入 registry（不儲存 df 本體，僅保留元資料）。"""
                 if not isinstance(_rdf, _pd_reg.DataFrame) or _rdf.empty:
                     return
-                _d = _rdf.copy()
-                # 1. 依 DatetimeIndex 排序
+                _d = _rdf
                 if isinstance(_d.index, _pd_reg.DatetimeIndex):
-                    _d = _d.sort_index(ascending=False)
-                    _latest = _d.index[0]
+                    _latest = _d.index.max()
                 else:
-                    # 2. 找日期欄：_date(YYYYMMDD) 優先，再找 date/datetime/日期等
-                    _dcol = None
-                    _date_fmt = None
+                    _dcol = None; _date_fmt = None
                     for _c in _d.columns:
                         _cl = str(_c).lower()
                         if _cl == '_date':
@@ -2863,12 +2859,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _dcol = _c; break
                     if _dcol:
                         try:
+                            _s = _d[_dcol]
                             if _date_fmt:
-                                _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], format=_date_fmt, errors='coerce')
+                                _s = _pd_reg.to_datetime(_s, format=_date_fmt, errors='coerce')
                             else:
-                                _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], errors='coerce')
-                            _d = _d.sort_values(_dcol, ascending=False)
-                            _latest = _d[_dcol].iloc[0]
+                                _s = _pd_reg.to_datetime(_s, errors='coerce')
+                            _latest = _s.max()
                         except Exception:
                             _latest = None
                     else:
@@ -2877,33 +2873,39 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _ls = (_pd_reg.Timestamp(_latest).strftime('%Y-%m-%d')
                            if _latest is not None and not _pd_reg.isna(_latest) else 'N/A')
                 except Exception:
-                    _ls = str(_latest)[:10] if _latest else 'N/A'
+                    _ls = 'N/A'
                 _reg_new[_rname] = {
-                    'latest_date': _ls,
-                    'rows': len(_d),
-                    'cols': len(_d.columns),
-                    'df': _d,
+                    'latest_date': _ls, 'rows': len(_d),
+                    'category': category, 'freq': freq,
                 }
 
+            def _reg_missing(_rname: str, category: str = '大盤', freq: str = 'daily'):
+                _reg_new[_rname] = {
+                    'latest_date': 'N/A', 'rows': 0,
+                    'category': category, 'freq': freq, 'missing': True,
+                }
+
+            # ── 大盤/總經：國際、台股、科技指數（日更新）──────────────
             _cl_reg = st.session_state.get('cl_data', {})
             for _rn, _rdf in (_cl_reg.get('intl') or {}).items():
-                _reg_add(_rn, _rdf)
+                _reg_add(_rn, _rdf, category='大盤', freq='daily')
             for _rn, _rdf in (_cl_reg.get('tw') or {}).items():
-                _reg_add(_rn, _rdf)
+                _reg_add(_rn, _rdf, category='大盤', freq='daily')
             for _rn, _rdf in (_cl_reg.get('tech') or {}).items():
-                _reg_add(_rn, _rdf)
+                _reg_add(_rn, _rdf, category='大盤', freq='daily')
             _adl_reg = _cl_reg.get('adl')
             if isinstance(_adl_reg, _pd_reg.DataFrame):
-                _reg_add('ADL 市場廣度', _adl_reg)
-            # ── 先行指標：按資料來源拆成 5 個細項 ──────────────────
+                _reg_add('ADL 市場廣度', _adl_reg, category='大盤', freq='daily')
+
+            # ── 先行指標：按來源拆 5 細項（大盤，日更新）────────────────
             _li_reg = st.session_state.get('li_latest')
             if isinstance(_li_reg, _pd_reg.DataFrame) and not _li_reg.empty:
                 _li_groups = {
-                    '[先行指標] 三大法人現貨':   ['外資', '投信', '自營'],
-                    '[先行指標] 外資期貨留倉':   ['外資大小'],
-                    '[先行指標] 選擇權PCR':      ['選PCR', '外(選)'],
-                    '[先行指標] 成交量（TWSE）': ['成交量'],
-                    '[先行指標] 未平倉/韭菜指數':['前五大留倉', '前十大留倉', '未平倉口數', '韭菜指數'],
+                    '[先行指標] 三大法人現貨':    ['外資', '投信', '自營'],
+                    '[先行指標] 外資期貨留倉':    ['外資大小'],
+                    '[先行指標] 選擇權PCR':       ['選PCR', '外(選)'],
+                    '[先行指標] 成交量（TWSE）':  ['成交量'],
+                    '[先行指標] 未平倉/韭菜指數': ['前五大留倉', '前十大留倉', '未平倉口數', '韭菜指數'],
                 }
                 _li_date_cols = [c for c in ['_date'] if c in _li_reg.columns]
                 for _grp, _cols in _li_groups.items():
@@ -2911,43 +2913,44 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     if not _vcols:
                         continue
                     _sub = _li_reg[_li_date_cols + _vcols].copy()
-                    # 排除整列資料均為 null / "-" 的列（該來源當天無資料）
                     _mask = _sub[_vcols].apply(
                         lambda s: s.notna() & (s.astype(str).str.strip() != '-')
                     ).any(axis=1)
                     _sub = _sub[_mask]
                     if not _sub.empty:
-                        _reg_add(_grp, _sub)
+                        _reg_add(_grp, _sub, category='大盤', freq='daily')
 
-            # ── 個股細項（t2_data：5項全部強制顯示，缺失標 missing=True）
+            # ── 個股細項（5項全部強制顯示，含缺失）──────────────────────
             _t2d_reg = st.session_state.get('t2_data')
             if _t2d_reg:
                 _s2r = _t2d_reg.get('sid', '')
                 _n2r = (_t2d_reg.get('name') or _s2r) or _s2r
                 _pfx = f'[個股] {_s2r} {_n2r}'
+                _lbl_freq = {
+                    '價格走勢': 'daily', '月營收': 'monthly',
+                    '季財報': 'quarterly', '現金流量': 'quarterly', '資產負債': 'quarterly'
+                }
                 for _lbl, _key in [('價格走勢','df'),('月營收','rev'),
                                     ('季財報','qtr'),('現金流量','cl'),('資產負債','cx')]:
                     _sub = _t2d_reg.get(_key)
                     _rname = f'{_pfx} | {_lbl}'
+                    _f = _lbl_freq[_lbl]
                     if isinstance(_sub, _pd_reg.DataFrame) and not _sub.empty:
-                        _reg_add(_rname, _sub)
+                        _reg_add(_rname, _sub, category='個股', freq=_f)
                     else:
-                        # 缺失：強制登錄，讓健康表顯示 ⚫
-                        _reg_new[_rname] = {
-                            'latest_date': 'N/A', 'rows': 0, 'cols': 0,
-                            'df': _pd_reg.DataFrame(), 'missing': True,
-                        }
+                        _reg_missing(_rname, category='個股', freq=_f)
 
-            # ── ETF 細項（etf_single_data：價格走勢）
+            # ── ETF 細項（日更新）────────────────────────────────────────
             _etf1_reg = st.session_state.get('etf_single_data') or {}
             _etf_pdf  = _etf1_reg.get('price_df')
             if isinstance(_etf_pdf, _pd_reg.DataFrame) and not _etf_pdf.empty:
                 _etf_tk = _etf1_reg.get('ticker', 'ETF')
                 _etf_nm = _etf1_reg.get('name', '')
-                _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢', _etf_pdf)
+                _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢',
+                         _etf_pdf, category='ETF', freq='daily')
 
             st.session_state['data_registry'] = _reg_new
-            print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源')
+            print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源，類別標籤已寫入')
         except Exception as _re:
             print(f'[DataRegistry] 建立失敗: {_re}')
 

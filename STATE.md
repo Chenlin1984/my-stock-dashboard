@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.26 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.27 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.27）
+
+### 資料診斷重構：純時間戳 + 三維嚴格分類（app.py + etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **`category` + `freq` 欄位** | `_reg_add(name, df, category, freq)` — 每筆資料在登錄時即標記類別（大盤/個股/ETF）與更新頻率（daily/monthly/quarterly） |
+| **移除 df 儲存** | registry 不再儲存 DataFrame 本體，僅保留 `latest_date` / `rows` / `category` / `freq`，節省記憶體且移除 df.head() 顯示 |
+| **純 freq 判定新鮮度** | `_freshness(date_str, freq)` 依 freq 欄位套用門檻，不再用名稱猜測；日≤3天🟢、月≤45天🟢、季≤90天🟢 |
+| **5 欄標準表** | `資料項目 / 所屬類別 / 更新頻率 / 最新資料時間 / 狀態（🟢最新/🟡略舊/🔴過期/⚫缺失）` |
+| **嚴格過濾** | 依 `category` 欄位分流，大盤/個股/ETF 三 Tab 互不干擾（驗證：三域交叉過濾均為 False） |
+| **移除快照 df.head()** | 刪除實體數值顯示，診斷頁僅呈現時間戳元資料 |
 
 ## ✅ 最新異動（v10.26）
 
