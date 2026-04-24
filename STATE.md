@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.25 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.26 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,19 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.26）
+
+### 資料診斷重構：三域分組 + Tab 切換（etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **三域 Tab** | `st.tabs(['📊 總經 & 市場', '🔬 個股', '🏦 ETF'])` |
+| **總經子分組** | 🇹🇼 台股市場 / 🌐 國際指數 / 💰 固定收益 / 📈 先行指標（5細項） |
+| **個股 Tab** | 強制顯示 5 細項，缺失標 ⚫；顯示股號名稱作為標題 |
+| **ETF Tab** | 只在完成 ETF 診斷後出現資料 |
+| **_render_group()** | 共用渲染 helper，自動計算缺/舊數量並顯示 badge |
+| **全域 Banner** | 跨三域統計 ⚫缺失 / ⚠️過期總數 |
+| **快照摺疊** | 改為 `st.expander` 預設收合，減少頁面長度 |
 
 ## ✅ 最新異動（v10.25）
 
