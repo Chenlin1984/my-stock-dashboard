@@ -3326,32 +3326,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
-    st.markdown('<div style="font-size:10px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">💰 籌碼監控</div>', unsafe_allow_html=True)
-    st.markdown(section_header('三','🏦 大戶在買還是賣？（三大法人 + 融資）','🧮'),unsafe_allow_html=True)
-    s3l,s3r = st.columns([3,2])
-    with s3l:
+
+    # ════════════════════════════════════════════════════════════════════
+    # 三、大戶籌碼全貌：法人聰明錢 × 融資融券 × 先行指標
+    # ════════════════════════════════════════════════════════════════════
+    st.markdown(section_header('三','🧮 大戶籌碼全貌：法人聰明錢 × 融資融券 × 先行指標','🧮'),unsafe_allow_html=True)
+
+    # ── 法人現貨 + 融資融券：雙欄並排 ────────────────────────────────
+    _c3l, _c3r = st.columns([3, 2])
+    with _c3l:
+        st.markdown('<div style="font-size:12px;font-weight:700;color:#c9d1d9;margin-bottom:4px;">🏦 三大法人現貨買賣超</div>', unsafe_allow_html=True)
         if inst:
-            _fk = next((k for k in inst if k in ('外資及陸資', '外資') or ('外資' in k and k == '外資及陸資')), None) or next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
+            _fk = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
             _tk = next((k for k in inst if '投信' in k), None)
             _f_net = inst[_fk]['net'] if _fk else 0
             _t_net = inst[_tk]['net'] if _tk else 0
             _total_net = round(_f_net + _t_net, 2)
             _inst_date_show = st.session_state.get('_last_inst_date', cd.get('inst_date', '')) if _inst_is_cached else cd.get('inst_date', '')
-            _cached_label = '　⚠️ 快取資料' if _inst_is_cached else ''
-            st.caption(f'三大法人現貨  {_inst_date_show}{_cached_label}  '
-                       f'| 外資 {_f_net:+.1f}億  投信 {_t_net:+.1f}億  合計 {_total_net:+.1f}億')
-            st.plotly_chart(bar_chart_institutional(inst),width='stretch',config={'displayModeBar':False})
-            _mkt_ref = st.session_state.get('mkt_info',{})
+            _cached_label = '　⚠️ 快取' if _inst_is_cached else ''
+            st.caption(f'{_inst_date_show}{_cached_label} | 外資 {_f_net:+.1f}億  投信 {_t_net:+.1f}億  合計 {_total_net:+.1f}億')
+            st.plotly_chart(bar_chart_institutional(inst), width='stretch', config={'displayModeBar': False})
             if abs(_f_net) > 5:
-                if _f_net >= 100:
-                    _fc2 = '#3fb950'; _fl2 = f'🟢 外資大買 {_f_net:.1f}億 → 大戶點火'
-                elif _f_net <= -100:
-                    _fc2 = '#f85149'; _fl2 = f'🔴 外資大賣 {abs(_f_net):.1f}億 → 大戶倒貨'
-                elif _f_net > 0:
-                    _fc2 = '#8b949e'; _fl2 = f'⚪ 外資小買 {_f_net:.1f}億（觀望區間）'
-                else:
-                    _fc2 = '#8b949e'; _fl2 = f'⚪ 外資小賣 {abs(_f_net):.1f}億（觀望區間）'
-                st.markdown(f'<span style="color:{_fc2};font-size:12px;font-weight:700;">{_fl2}</span>', unsafe_allow_html=True)
+                _fc = '#3fb950' if _f_net >= 100 else ('#f85149' if _f_net <= -100 else '#8b949e')
+                _fl = (f'🟢 外資大買 {_f_net:.1f}億 → 大戶點火' if _f_net >= 100 else
+                       f'🔴 外資大賣 {abs(_f_net):.1f}億 → 大戶倒貨' if _f_net <= -100 else
+                       f'⚪ 外資{"小買" if _f_net > 0 else "小賣"} {abs(_f_net):.1f}億（觀望區間）')
+                st.markdown(f'<span style="color:{_fc};font-size:12px;font-weight:700;">{_fl}</span>', unsafe_allow_html=True)
         else:
             _now_h = _tw_now().hour
             if _now_h < 15:
@@ -3359,74 +3359,49 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             elif _now_h < 16:
                 st.warning('⏳ 收盤後資料更新中（約15:30~16:00），請稍後重試')
             else:
-                st.warning('⚠️ 三大法人資料取得失敗，無歷史快取可顯示，請點擊「更新全部總經數據」重試')
-    with s3r:
-        st.markdown(margin_card(margin),unsafe_allow_html=True)
+                st.warning('⚠️ 三大法人資料取得失敗，請點擊「更新全部總經數據」重試')
+    with _c3r:
+        st.markdown('<div style="font-size:12px;font-weight:700;color:#c9d1d9;margin-bottom:4px;">💸 散戶信用交易（融資融券）</div>', unsafe_allow_html=True)
+        st.markdown(margin_card(margin), unsafe_allow_html=True)
         if _margin_is_cached:
             st.caption('⚠️ 快取資料（最後已知融資餘額）')
         if margin:
-            mc = '#f85149' if margin >= 3400 else ('#d29922' if margin >= 2800 else '#3fb950')
-            ml = '🔴泡沫尾端' if margin >= 3400 else ('🟡警戒區' if margin >= 2800 else '🟢籌碼乾淨')
-            st.markdown(f'<div style="color:{mc};font-size:13px;font-weight:700;margin-top:6px;">{ml}</div>', unsafe_allow_html=True)
+            _mc = '#f85149' if margin >= 3400 else ('#d29922' if margin >= 2800 else '#3fb950')
+            _ml = '🔴泡沫尾端' if margin >= 3400 else ('🟡警戒區' if margin >= 2800 else '🟢籌碼乾淨')
+            st.markdown(f'<div style="color:{_mc};font-size:13px;font-weight:700;margin-top:6px;">{_ml}</div>', unsafe_allow_html=True)
             _mkt_r = st.session_state.get('mkt_info', {})
             if margin >= 2800 and _mkt_r.get('regime') == 'bull':
                 st.warning('⚠️ 市場偏多但融資水位偏高，注意假突破風險')
             elif margin and margin < 2800 and _mkt_r.get('regime') == 'bull':
                 st.success('✅ 融資乾淨 + 市場偏多 = 健康多頭格局')
-    with st.expander('📖 孫慶龍 · 宏爺 結論', expanded=False):
+    with st.expander('📖 孫慶龍 × 宏爺 籌碼結論', expanded=False):
         if inst:
             _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
             _tk3 = next((k for k in inst if '投信' in k), None)
             _fn3 = inst[_fk3]['net'] if _fk3 else 0
             _tn3 = inst[_tk3]['net'] if _tk3 else 0
-            # 宏爺外資公式
             if _fn3 >= 100:
-                _hye_c = '#3fb950'
-                _hye_ind = f'外資大買超 {_fn3:.1f}億'
-                _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'
-                _hye_act = '趁拉回布局，持股 80~100%'
+                _hye_c = '#3fb950'; _hye_ind = f'外資大買超 {_fn3:.1f}億'; _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'; _hye_act = '趁拉回布局，持股 80~100%'
             elif _fn3 <= -100:
-                _hye_c = '#f85149'
-                _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'
-                _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'
-                _hye_act = '持股降至 0~30%，停損優先'
+                _hye_c = '#f85149'; _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'; _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'; _hye_act = '持股降至 0~30%，停損優先'
             else:
-                _hye_c = '#8b949e'
-                _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'
-                _hye_concl = '資金觀望，區間操作'
-                _hye_act = '持股 50%，高出低進等方向'
+                _hye_c = '#8b949e'; _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'; _hye_concl = '資金觀望，區間操作'; _hye_act = '持股 50%，高出低進等方向'
             st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
             st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
             if _tn3 > 5:
                 st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
         if margin:
-            # 孫慶龍融資公式
             if margin >= 3400:
-                _sql_mc = '#f85149'
-                _sql_mind = f'融資餘額 {margin:.0f}億'
-                _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'
-                _sql_mact = '全面減碼，勿追高，準備逃命'
+                _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
             elif margin >= 2800:
-                _sql_mc = '#d29922'
-                _sql_mind = f'融資餘額 {margin:.0f}億'
-                _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'
-                _sql_mact = '持股降至 50% 以下，避免重倉'
+                _sql_mc = '#d29922'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'; _sql_mact = '持股降至 50% 以下，避免重倉'
             else:
-                _sql_mc = '#3fb950'
-                _sql_mind = f'融資餘額 {margin:.0f}億'
-                _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'
-                _sql_mact = '健康多頭格局，持股 70~100%'
+                _sql_mc = '#3fb950'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'; _sql_mact = '健康多頭格局，持股 70~100%'
             st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
             st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
+    st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
-    st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
-
-    # ════════════════════════════════════════════════════════════════════
-    # 四、核心大戶動向：外資「先行指標」
-    # 移植自 v12：標題 / 副標 / 欄位說明表 / 宏爺判斷方式 expander
-    # 保留 v3_20_7：build_leading_fast 執行緒機制 / 宏爺結論面板
-    # ════════════════════════════════════════════════════════════════════
-    st.markdown(section_header('四','核心大戶動向：外資「先行指標」','🎯'),unsafe_allow_html=True)
+    # ── 宏爺外資期貨（先行指標快速結論）─────────────────────────────────
     _li4 = st.session_state.get('li_latest')
     if _li4 is not None and not _li4.empty:
         _fut4 = (float(_li4.iloc[-1].get('外資大小', 0)) if '外資大小' in _li4.columns else None)
