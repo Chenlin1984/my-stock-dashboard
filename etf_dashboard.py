@@ -2028,15 +2028,15 @@ def render_data_health():
     st.caption('顯示全系統每項資料的實際數值，確認為真實市場資料（非沙盒/空值）。點擊「更新全部總經數據」後再來此頁驗證。')
 
     # ════════════════════════════════════════════════════════════════
-    # §0  全域資料健康診斷（依域分組：總經 / 個股 / ETF）
+    # §0  全域資料新鮮度診斷（動態域分組，無寫死類別）
     # ════════════════════════════════════════════════════════════════
     st.markdown('---')
     st.markdown(
         '<div style="padding:6px 14px;background:linear-gradient(90deg,#58a6ff18,#0d1117);'
         'border-left:4px solid #58a6ff;border-radius:0 6px 6px 0;margin-bottom:10px;">'
-        '<span style="font-size:14px;font-weight:900;color:#58a6ff;">📋 全域資料健康診斷</span>'
+        '<span style="font-size:14px;font-weight:900;color:#58a6ff;">📋 資料新鮮度診斷</span>'
         '<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
-        '依域分組 — 總經 / 個股 / ETF，各指標同類集合顯示</span></div>',
+        '各資料源最新時間戳 × 更新頻率 → 自動判定是否為最新，嚴禁跨域顯示</span></div>',
         unsafe_allow_html=True
     )
     _reg = st.session_state.get('data_registry', {})
@@ -2045,135 +2045,137 @@ def render_data_health():
     else:
         _today = _pd_dh.Timestamp.now().normalize()
 
-        def _freshness(date_str, name=''):
+        # ── 純時間戳新鮮度判定（依 frequency 欄位，不依名稱猜測）────────
+        _FREQ_LBL = {'daily': '📈 日更新', 'monthly': '📅 月更新', 'quarterly': '📊 季更新'}
+        _CAT_ICON = {'大盤': '📊', '個股': '🔬', 'ETF': '🏦'}
+
+        def _freshness(date_str: str, frequency: str = 'daily'):
             try:
-                _dt  = _pd_dh.Timestamp(date_str)
-                _age = (_today - _dt).days
+                _age = (_today - _pd_dh.Timestamp(date_str)).days
             except Exception:
-                return '⚪', 'N/A', '—'
-            if any(k in name for k in ['季財報', '現金流量', '資產負債']):
-                _freq = '📊 季更新'
-                if _age <= 90:    _icon, _lbl = '🟢', f'{_age}天前'
-                elif _age <= 180: _icon, _lbl = '🟡', f'{_age}天前'
-                else:             _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
-            elif '月營收' in name:
-                _freq = '📅 月更新'
-                if _age <= 45:   _icon, _lbl = '🟢', f'{_age}天前'
-                elif _age <= 75: _icon, _lbl = '🟡', f'{_age}天前'
-                else:            _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
-            else:
-                _freq = '📈 日更新'
-                if _age == 0:    _icon, _lbl = '🟢', '今天'
-                elif _age == 1:  _icon, _lbl = '🟢', '昨天'
-                elif _age <= 3:  _icon, _lbl = '🟢', f'{_age}天前'
-                elif _age <= 5:  _icon, _lbl = '🟡', f'{_age}天前'
-                else:            _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
-            return _icon, _lbl, _freq
+                return '⚪', '無法解析'
+            if frequency == 'quarterly':
+                if _age <= 90:    return '🟢', f'{_age}天前'
+                elif _age <= 180: return '🟡', f'{_age}天前'
+                else:             return '🔴', f'{_age}天前 ⚠️'
+            elif frequency == 'monthly':
+                if _age <= 45:    return '🟢', f'{_age}天前'
+                elif _age <= 75:  return '🟡', f'{_age}天前'
+                else:             return '🔴', f'{_age}天前 ⚠️'
+            else:  # daily
+                if _age == 0:     return '🟢', '今天'
+                elif _age == 1:   return '🟢', '昨天'
+                elif _age <= 3:   return '🟢', f'{_age}天前'
+                elif _age <= 5:   return '🟡', f'{_age}天前'
+                else:             return '🔴', f'{_age}天前 ⚠️'
 
-        def _make_row(display_name, rn, rv):
-            if rv.get('missing'):
-                return {'燈號':'⚫', '指標':display_name, '最新日期':'—',
-                        '新鮮度':'缺失（API未回傳）', '頻率':'—', '筆數':0}
-            _icon, _lbl, _freq = _freshness(rv['latest_date'], rn)
-            return {'燈號':_icon, '指標':display_name,
-                    '最新日期':rv['latest_date'], '新鮮度':_lbl,
-                    '頻率':_freq, '筆數':rv['rows']}
+        def _build_table(items):
+            """items = list of (display_name, rv); 回傳標準 5 欄 DataFrame。"""
+            rows = []
+            for _dn, _rv in items:
+                _cat  = _rv.get('category', '大盤')
+                _freq = _rv.get('frequency', 'daily')
+                _cat_lbl  = f'{_CAT_ICON.get(_cat, "📁")} {_cat}'
+                _freq_lbl = _FREQ_LBL.get(_freq, _freq)
+                if _rv.get('missing'):
+                    rows.append({'資料項目': _dn, '所屬類別': _cat_lbl,
+                                 '更新頻率': _freq_lbl, '最新資料時間': '—',
+                                 '狀態': '⚫ 缺失'})
+                else:
+                    _icon, _lbl = _freshness(_rv['last_updated'], _freq)
+                    _status_map = {'🟢': '🟢 最新', '🟡': '🟡 略舊', '🔴': '🔴 過期'}
+                    rows.append({'資料項目': _dn, '所屬類別': _cat_lbl,
+                                 '更新頻率': _freq_lbl,
+                                 '最新資料時間': f'{_rv["last_updated"]}（{_lbl}）',
+                                 '狀態': _status_map.get(_icon, _icon)})
+            return _pd_dh.DataFrame(rows) if rows else _pd_dh.DataFrame()
 
-        def _render_group(title, items):
-            """items = list of (display_name, rn, rv)"""
-            if not items: return
-            _rows = [_make_row(dn, rn, rv) for dn, rn, rv in items]
-            _n_bad = sum(1 for r in _rows if r['燈號'] in ('⚫','🔴'))
-            _badge = f' ⚠️{_n_bad}缺/舊' if _n_bad else ' ✅'
-            st.markdown(f'**{title}{_badge}**')
-            st.dataframe(_pd_dh.DataFrame(_rows), use_container_width=True,
-                         hide_index=True, height=min(38 * len(_rows) + 38, 320))
+        def _disp_name(rn):
+            """Convert registry key to user-friendly display name."""
+            if '[先行指標]' in rn:
+                return rn.replace('[先行指標]', '').strip()
+            if '| ' in rn:
+                return rn.split('| ', 1)[-1]
+            for _pfx in ('[ETF]', '[個股]', '[大盤]'):
+                if rn.startswith(_pfx):
+                    return rn[len(_pfx):].strip()
+            return rn
 
-        # ── 分類 registry 條目 ────────────────────────────────────
-        _tw_mkt, _intl_mkt, _fixed, _li_items = [], [], [], []
-        _stock_items, _etf_items = [], []
-
+        # ── 動態掃描 registry 中實際存在的 category（不寫死）────────────
+        _categories = sorted(set(v.get('category', '未分類') for v in _reg.values()))
         _TW_KW   = ('台股', 'ADL', '新台幣', '匯率')
         _BOND_KW = ('公債', '殖利率', '利率')
 
-        for _rn, _rv in sorted(_reg.items()):
-            if _rn.startswith('[個股]'):
-                _dn = _rn.split('| ', 1)[-1] if '| ' in _rn else _rn
-                _stock_items.append((_dn, _rn, _rv))
-            elif _rn.startswith('[ETF]'):
-                # 取 "ticker | 類型" 部分
-                _dn = _rn[len('[ETF]'):].strip()
-                _etf_items.append((_dn, _rn, _rv))
-            elif _rn.startswith('[先行指標]'):
-                _dn = _rn[len('[先行指標]'):].strip()
-                _li_items.append((_dn, _rn, _rv))
-            elif any(k in _rn for k in _BOND_KW):
-                _fixed.append((_rn, _rn, _rv))
-            elif any(k in _rn for k in _TW_KW):
-                _tw_mkt.append((_rn, _rn, _rv))
-            else:
-                _intl_mkt.append((_rn, _rn, _rv))
+        _tab_labels = []
+        for _cat in _categories:
+            _n = sum(1 for v in _reg.values() if v.get('category', '未分類') == _cat)
+            _icon = _CAT_ICON.get(_cat, '📁')
+            _tab_labels.append(f'{_icon} {_cat}（{_n}項）')
 
-        # ── 三個域：Tab 切換 ─────────────────────────────────────
-        _tab_macro, _tab_stock, _tab_etf = st.tabs([
-            '📊 總經 & 市場',
-            f'🔬 個股{"（" + _stock_items[0][1].split("]")[1].split("|")[0].strip() + "）" if _stock_items else "（未查詢）"}',
-            f'🏦 ETF{"（已載入）" if _etf_items else "（未診斷）"}',
-        ])
+        _tabs = st.tabs(_tab_labels)
+        _all_items: list = []
 
-        with _tab_macro:
-            _render_group('🇹🇼 台股市場', _tw_mkt)
-            _render_group('🌐 國際指數', _intl_mkt)
-            _render_group('💰 固定收益', _fixed)
-            _render_group('📈 先行指標（各來源細項）', _li_items)
-            if not (_tw_mkt or _intl_mkt or _fixed or _li_items):
-                st.info('請先點擊「🔄 更新全部總經數據」載入市場資料。')
+        for _tab, _cat in zip(_tabs, _categories):
+            _cat_items = [(_disp_name(rn), rv) for rn, rv in sorted(_reg.items())
+                          if rv.get('category', '未分類') == _cat]
+            _all_items.extend(_cat_items)
 
-        with _tab_stock:
-            if _stock_items:
-                # 從第一筆取出股號+名稱作為標題
-                _sid_title = _stock_items[0][1]  # full registry key
-                _sid_title = _sid_title.split('[個股]')[-1].split('|')[0].strip()
-                st.markdown(f'**{_sid_title}** 財務資料細項')
-                _render_group('', _stock_items)
-                _n_miss_s = sum(1 for _, _, rv in _stock_items if rv.get('missing'))
-                if _n_miss_s:
-                    st.warning(f'⚫ {_n_miss_s} 項資料缺失 → 對應財報指標（DSO/負債比等）將顯示 N/A')
-            else:
-                st.info('請在「個股分析」Tab 輸入股票代碼並完成載入後，此處自動出現診斷結果。')
+            with _tab:
+                if not _cat_items:
+                    st.info('此類別尚無資料。')
+                    continue
 
-        with _tab_etf:
-            if _etf_items:
-                _render_group('ETF 價格資料', _etf_items)
-            else:
-                st.info('請在「ETF 診斷」Tab 完成診斷後，此處自動出現結果。')
+                if _cat == '大盤':
+                    _raw_keys = {_disp_name(rn): rn for rn in _reg
+                                 if _reg[rn].get('category', '未分類') == '大盤'}
+                    _tw   = [(dn, rv) for dn, rv in _cat_items
+                             if any(k in _raw_keys.get(dn, dn) for k in _TW_KW)]
+                    _bond = [(dn, rv) for dn, rv in _cat_items
+                             if any(k in _raw_keys.get(dn, dn) for k in _BOND_KW)]
+                    _li   = [(dn, rv) for dn, rv in _cat_items
+                             if '[先行指標]' in _raw_keys.get(dn, '')]
+                    _used = set(id(rv) for _, rv in _tw + _bond + _li)
+                    _intl = [(dn, rv) for dn, rv in _cat_items if id(rv) not in _used]
+                    for _title, _grp in [('🇹🇼 台股市場', _tw), ('🌐 國際指數', _intl),
+                                          ('💰 固定收益', _bond), ('📈 先行指標', _li)]:
+                        if not _grp:
+                            continue
+                        _n_bad = sum(
+                            1 for _, v in _grp
+                            if v.get('missing') or
+                            _freshness(v.get('last_updated', ''), v.get('frequency', 'daily'))[0] == '🔴'
+                        )
+                        _badge = f'  ⚠️ {_n_bad}項問題' if _n_bad else '  ✅'
+                        st.markdown(f'**{_title}{_badge}**')
+                        st.dataframe(_build_table(_grp), use_container_width=True, hide_index=True)
+                    if not any([_tw, _intl, _bond, _li]):
+                        st.info('請先點擊「🔄 更新全部總經數據」載入市場資料。')
+                elif _cat == '個股':
+                    _sk = next((k for k in _reg if k.startswith('[個股]')), '')
+                    _sid = _sk.split('[個股]')[-1].split('|')[0].strip() if _sk else ''
+                    if _sid:
+                        st.caption(f'當前已載入個股：**{_sid}**')
+                    st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
+                    _n_miss_s = sum(1 for _, v in _cat_items if v.get('missing'))
+                    if _n_miss_s:
+                        st.warning(f'⚫ {_n_miss_s} 項財報資料缺失 → DSO / 負債比等指標將顯示 N/A')
+                else:
+                    st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
 
         # ── 全域摘要 Banner ──────────────────────────────────────
-        _all_rows = _tw_mkt + _intl_mkt + _fixed + _li_items + _stock_items + _etf_items
-        _n_missing = sum(1 for _, _, rv in _all_rows if rv.get('missing'))
-        _n_stale   = sum(1 for _, rn, rv in _all_rows
-                         if not rv.get('missing') and '⚠️' in _freshness(rv['latest_date'], rn)[1])
-        if _n_missing or _n_stale:
+        _n_miss  = sum(1 for _, v in _all_items if v.get('missing'))
+        _n_stale = sum(
+            1 for _, v in _all_items
+            if not v.get('missing') and
+            _freshness(v.get('last_updated', ''), v.get('frequency', 'daily'))[0] == '🔴'
+        )
+        if _n_miss or _n_stale:
             _msgs = []
-            if _n_missing: _msgs.append(f'⚫ {_n_missing} 筆缺失')
-            if _n_stale:   _msgs.append(f'⚠️ {_n_stale} 筆過期')
+            if _n_miss:  _msgs.append(f'⚫ {_n_miss} 筆缺失')
+            if _n_stale: _msgs.append(f'🔴 {_n_stale} 筆過期')
             st.warning('　'.join(_msgs) + ' — 建議重新載入或確認 API 狀態')
         else:
-            st.success(f'✅ 全部 {len(_all_rows)} 筆資料正常')
-
-        # ── 快照檢視器 ──────────────────────────────────────────
-        with st.expander('🔍 原始資料快照（選擇任一來源查看最近 5 筆）', expanded=False):
-            _snap_opts = [k for k, v in _reg.items() if not v.get('missing')]
-            if _snap_opts:
-                _sel_key = st.selectbox('選擇資料源', options=_snap_opts,
-                                        key='_dh_snapshot_sel')
-                if _sel_key and _sel_key in _reg:
-                    _snap_rv = _reg[_sel_key]
-                    st.caption(f'**{_sel_key}** — {_snap_rv["latest_date"]}  '
-                               f'{_snap_rv["rows"]} 筆  {_snap_rv["cols"]} 欄')
-                    st.dataframe(_snap_rv['df'].head(5), use_container_width=True)
-            else:
-                st.info('無可預覽資料。')
+            st.success(f'✅ 全部 {len(_all_items)} 筆資料均為最新')
 
 
     st.markdown('---')

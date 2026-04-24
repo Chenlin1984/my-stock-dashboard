@@ -1,6 +1,6 @@
 # 台股 AI 戰情室 — 技術規格書
 
-> **版本**：v6.5　|　**最後更新**：2026-04-22　|　**狀態**：完成 ✅
+> **版本**：v6.6　|　**最後更新**：2026-04-24　|　**狀態**：完成 ✅
 >
 > 本文件為系統架構師視角的唯讀規格書，不含任何實作程式碼。
 
@@ -1007,5 +1007,54 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 | 輸出 | `str` — Gemini 回傳文字；失敗時回傳 `'⚠️ ...'` |
 | Fallback 順序 | `gemini-2.5-flash-lite` → `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite` |
 | 副作用 | 失敗時 `print('[AI-LLM/Gemini] ❌ ...')` 寫入 Cloud log |
+
+---
+
+**`_reg_add(_rname, _rdf, category, frequency)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `_rname: str` — registry 鍵名（如 `'[先行指標] PCR'`）；`_rdf: DataFrame` — 資料本體（僅讀取最新時間戳，不儲存）；`category: str` — 類別標籤（如 `'大盤'` / `'個股'` / `'ETF'`，可任意擴充）；`frequency: str` — 更新頻率（`'daily'` / `'monthly'` / `'quarterly'`） |
+| 輸出 | `None` |
+| 副作用 | 寫入 `st.session_state['data_registry'][_rname]`，格式：`{ 'last_updated': str, 'rows': int, 'category': str, 'frequency': str }` |
+| 時間戳邏輯 | 優先搜尋 `_date` 欄（`YYYYMMDD` 格式）→ DatetimeIndex → 其他 date 型欄位；解析失敗時 `last_updated='N/A'` |
+
+---
+
+**`_reg_missing(_rname, category, frequency)`**
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `_rname: str`；`category: str`；`frequency: str` |
+| 輸出 | `None` |
+| 副作用 | 寫入 `st.session_state['data_registry'][_rname]`，格式：`{ 'last_updated': 'N/A', 'rows': 0, 'category': str, 'frequency': str, 'missing': True }` |
+| 用途 | API 未回傳資料時呼叫，確保診斷面板始終顯示 ⚫ 缺失而非隱藏項目 |
+
+---
+
+### 4.6 etf_dashboard.py 診斷核心
+
+---
+
+**`render_data_health()`**（§0 全域資料新鮮度診斷）
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | 無（從 `st.session_state['data_registry']` 讀取） |
+| 輸出 | `None`（全部渲染至 Streamlit UI） |
+| 副作用 | 動態生成 `st.tabs`：掃描 registry 所有 `category` 值 → 每個 category 一個 Tab，無需硬寫類別清單 |
+| 5 欄表格 | `資料項目 / 所屬類別 / 更新頻率 / 最新資料時間 / 狀態（🟢最新/🟡略舊/🔴過期/⚫缺失）` |
+| 大盤子分組 | Tab 內再依關鍵字分為 🇹🇼 台股市場 / 🌐 國際指數 / 💰 固定收益 / 📈 先行指標 |
+| 全域 Banner | 跨所有 Tab 統計 ⚫缺失 + 🔴過期總數，顯示摘要警告或 ✅ 全部最新 |
+
+---
+
+**`_freshness(date_str, frequency)`**（定義於 `render_data_health` 內）
+
+| 項目 | 說明 |
+|------|------|
+| 輸入 | `date_str: str` — ISO 日期字串；`frequency: str` — `'daily'`/`'monthly'`/`'quarterly'` |
+| 輸出 | `tuple[str, str]` — `(icon, label)`，icon ∈ `{'🟢','🟡','🔴','⚪'}` |
+| 閾值 | 日：🟢≤3天 / 🟡≤5天 / 🔴>5天；月：🟢≤45天 / 🟡≤75天 / 🔴>75天；季：🟢≤90天 / 🟡≤180天 / 🔴>180天 |
 
 ---
