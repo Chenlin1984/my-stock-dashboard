@@ -2885,32 +2885,50 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     'category': category, 'frequency': frequency, 'missing': True,
                 }
 
-            # ── 大盤/總經：國際、台股、科技指數（日更新）──────────────
+            # ── 大盤/總經：國際、台股、科技指數（日更新，固定清單確保永遠顯示 20 筆）──
             _cl_reg = st.session_state.get('cl_data', {})
-            for _rn, _rdf in (_cl_reg.get('intl') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
-            for _rn, _rdf in (_cl_reg.get('tw') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
-            for _rn, _rdf in (_cl_reg.get('tech') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
+            _intl_d = _cl_reg.get('intl') or {}
+            for _rn in INTL_MAP:
+                _rdf = _intl_d.get(_rn)
+                if isinstance(_rdf, _pd_reg.DataFrame) and not _rdf.empty:
+                    _reg_add(_rn, _rdf, category='大盤', frequency='daily')
+                else:
+                    _reg_missing(_rn, category='大盤', frequency='daily')
+            _tw_d = _cl_reg.get('tw') or {}
+            for _rn in TW_MAP:
+                _rdf = _tw_d.get(_rn)
+                if isinstance(_rdf, _pd_reg.DataFrame) and not _rdf.empty:
+                    _reg_add(_rn, _rdf, category='大盤', frequency='daily')
+                else:
+                    _reg_missing(_rn, category='大盤', frequency='daily')
+            _tech_d = _cl_reg.get('tech') or {}
+            for _rn in TECH_MAP:
+                _rdf = _tech_d.get(_rn)
+                if isinstance(_rdf, _pd_reg.DataFrame) and not _rdf.empty:
+                    _reg_add(_rn, _rdf, category='大盤', frequency='daily')
+                else:
+                    _reg_missing(_rn, category='大盤', frequency='daily')
             _adl_reg = _cl_reg.get('adl')
-            if isinstance(_adl_reg, _pd_reg.DataFrame):
+            if isinstance(_adl_reg, _pd_reg.DataFrame) and not _adl_reg.empty:
                 _reg_add('ADL 市場廣度', _adl_reg, category='大盤', frequency='daily')
+            else:
+                _reg_missing('ADL 市場廣度', category='大盤', frequency='daily')
 
             # ── 先行指標：按來源拆 5 細項（大盤，日更新）────────────────
             _li_reg = st.session_state.get('li_latest')
+            _li_groups = {
+                '[先行指標] 三大法人現貨':    ['外資', '投信', '自營'],
+                '[先行指標] 外資期貨留倉':    ['外資大小'],
+                '[先行指標] 選擇權PCR':       ['選PCR', '外(選)'],
+                '[先行指標] 成交量（TWSE）':  ['成交量'],
+                '[先行指標] 未平倉/韭菜指數': ['前五大留倉', '前十大留倉', '未平倉口數', '韭菜指數'],
+            }
             if isinstance(_li_reg, _pd_reg.DataFrame) and not _li_reg.empty:
-                _li_groups = {
-                    '[先行指標] 三大法人現貨':    ['外資', '投信', '自營'],
-                    '[先行指標] 外資期貨留倉':    ['外資大小'],
-                    '[先行指標] 選擇權PCR':       ['選PCR', '外(選)'],
-                    '[先行指標] 成交量（TWSE）':  ['成交量'],
-                    '[先行指標] 未平倉/韭菜指數': ['前五大留倉', '前十大留倉', '未平倉口數', '韭菜指數'],
-                }
                 _li_date_cols = [c for c in ['_date'] if c in _li_reg.columns]
                 for _grp, _cols in _li_groups.items():
                     _vcols = [c for c in _cols if c in _li_reg.columns]
                     if not _vcols:
+                        _reg_missing(_grp, category='大盤', frequency='daily')
                         continue
                     _sub = _li_reg[_li_date_cols + _vcols].copy()
                     _mask = _sub[_vcols].apply(
@@ -2919,6 +2937,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _sub = _sub[_mask]
                     if not _sub.empty:
                         _reg_add(_grp, _sub, category='大盤', frequency='daily')
+                    else:
+                        _reg_missing(_grp, category='大盤', frequency='daily')
+            else:
+                for _grp in _li_groups:
+                    _reg_missing(_grp, category='大盤', frequency='daily')
 
             # ── 個股細項（5項全部強制顯示，含缺失）──────────────────────
             _t2d_reg = st.session_state.get('t2_data')
@@ -3211,31 +3234,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
                             width='stretch',config={'displayModeBar':False})
-    with st.expander('📖 宏爺 × 孫慶龍 結論（SOX/DXY/殖利率公式）', expanded=False):
-        _expander_rows = []
-        if _sox_pct is not None and _dxy_val is not None:
-            if _sox_pct >= 1.5 and _dxy_val < 100:
-                _expander_rows.append(('🟢', f'宏爺 — 熱錢狂潮 (SOX {_sox_pct:+.1f}% ≥1.5% ∩ DXY {_dxy_val:.1f} <100)', '重壓電子強勢股'))
-            elif _sox_pct <= -1.5 and _dxy_val >= 103:
-                _expander_rows.append(('🔴', f'宏爺 — 外資提款 (SOX {_sox_pct:+.1f}% ∩ DXY {_dxy_val:.1f} ≥103)', '降倉至 3 成以下'))
-            elif _sox_pct >= 1.0 and _dxy_val >= 100:
-                _expander_rows.append(('🟡', f'宏爺 — 內資控盤 (SOX {_sox_pct:+.1f}% ≥1.0% ∩ DXY {_dxy_val:.1f} ≥100)', '精選中小型題材股'))
-            else:
-                _expander_rows.append(('⚪', f'宏爺 — 走勢分化 (SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f})', '降部位等待確認'))
-        if _tyx_val is not None:
-            if _tyx_val >= 4.8:
-                _expander_rows.append(('🔴', f'孫慶龍 — 系統風險 (10Y {_tyx_val:.2f}% ≥4.8%)', '保留現金，嚴控槓桿'))
-            elif _tyx_val >= 4.5:
-                _expander_rows.append(('🟡', f'孫慶龍 — 估值承壓 (10Y {_tyx_val:.2f}% 4.5~4.8%)', '避開高本夢比個股'))
-            else:
-                _expander_rows.append(('🟢', f'孫慶龍 — 總經安全 (10Y {_tyx_val:.2f}% <4.5%)', '精選低基期價值股'))
-        for _ico, _txt, _act in _expander_rows:
-            st.markdown(
-                f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">'
-                f'{_ico} {_txt} → <span style="color:#8b949e;">{_act}</span></div>',
-                unsafe_allow_html=True
-            )
-
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
     _twii2 = tw_s.get('台股加權指數'); _twd2 = tw_s.get('新台幣匯率')
@@ -3332,31 +3330,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # ════════════════════════════════════════════════════════════════════
     st.markdown(section_header('三','🧮 大戶籌碼全貌：法人聰明錢 × 融資融券 × 先行指標','🧮'),unsafe_allow_html=True)
 
-    with st.expander('📖 孫慶龍 × 宏爺 籌碼結論', expanded=False):
-        if inst:
-            _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
-            _tk3 = next((k for k in inst if '投信' in k), None)
-            _fn3 = inst[_fk3]['net'] if _fk3 else 0
-            _tn3 = inst[_tk3]['net'] if _tk3 else 0
-            if _fn3 >= 100:
-                _hye_c = '#3fb950'; _hye_ind = f'外資大買超 {_fn3:.1f}億'; _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'; _hye_act = '趁拉回布局，持股 80~100%'
-            elif _fn3 <= -100:
-                _hye_c = '#f85149'; _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'; _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'; _hye_act = '持股降至 0~30%，停損優先'
-            else:
-                _hye_c = '#8b949e'; _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'; _hye_concl = '資金觀望，區間操作'; _hye_act = '持股 50%，高出低進等方向'
-            st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
-            if _tn3 > 5:
-                st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
-        if margin:
-            if margin >= 3400:
-                _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
-            elif margin >= 2800:
-                _sql_mc = '#d29922'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'; _sql_mact = '持股降至 50% 以下，避免重倉'
-            else:
-                _sql_mc = '#3fb950'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'; _sql_mact = '健康多頭格局，持股 70~100%'
-            st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
+    if inst:
+        _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
+        _tk3 = next((k for k in inst if '投信' in k), None)
+        _fn3 = inst[_fk3]['net'] if _fk3 else 0
+        _tn3 = inst[_tk3]['net'] if _tk3 else 0
+        if _fn3 >= 100:
+            _hye_c = '#3fb950'; _hye_ind = f'外資大買超 {_fn3:.1f}億'; _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'; _hye_act = '趁拉回布局，持股 80~100%'
+        elif _fn3 <= -100:
+            _hye_c = '#f85149'; _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'; _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'; _hye_act = '持股降至 0~30%，停損優先'
+        else:
+            _hye_c = '#8b949e'; _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'; _hye_concl = '資金觀望，區間操作'; _hye_act = '持股 50%，高出低進等方向'
+        st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
+        st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
+        if _tn3 > 5:
+            st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
+    if margin:
+        if margin >= 3400:
+            _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
+        elif margin >= 2800:
+            _sql_mc = '#d29922'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'; _sql_mact = '持股降至 50% 以下，避免重倉'
+        else:
+            _sql_mc = '#3fb950'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'; _sql_mact = '健康多頭格局，持股 70~100%'
+        st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
+        st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
     # ── 宏爺外資期貨（先行指標快速結論）─────────────────────────────────
@@ -4074,15 +4071,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 if name in tech:
                     st.plotly_chart(sparkline(tech[name],name,clrs[i+4] if i+4<len(clrs) else '#ffd700'),
                                     width='stretch',config={'displayModeBar':False})
-    with st.expander('📖 宏爺 結論', expanded=False):
-        _tsm = tech_s.get('台積電 ADR')
-        _nvda = tech_s.get('輝達 NVDA')
-        _concl_tech = []
-        if _tsm:  _concl_tech.append(f'TSM ADR {_tsm["last"]:.2f} ({_tsm["pct"]:+.1f}%) → {"✅ 台積電強→明日2330有望跟漲" if _tsm["pct"]>1 else ("⚠️ 台積電弱→注意2330壓力" if _tsm["pct"]<-1 else "⚪ 台積電持平")}')
-        if _nvda: _concl_tech.append(f'NVDA {_nvda["last"]:.2f} ({_nvda["pct"]:+.1f}%) → {"✅ AI族群情緒熱" if _nvda["pct"]>2 else ("🔴 AI族群降溫" if _nvda["pct"]<-2 else "⚪ AI族群穩定")}')
-        for _tc2 in _concl_tech:
-            st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_tc2}</div>', unsafe_allow_html=True)
-        # ADR科技股結論已由上方 _concl_tech 列表顯示
+    _tsm = tech_s.get('台積電 ADR')
+    _nvda = tech_s.get('輝達 NVDA')
+    _concl_tech = []
+    if _tsm:  _concl_tech.append(f'TSM ADR {_tsm["last"]:.2f} ({_tsm["pct"]:+.1f}%) → {"✅ 台積電強→明日2330有望跟漲" if _tsm["pct"]>1 else ("⚠️ 台積電弱→注意2330壓力" if _tsm["pct"]<-1 else "⚪ 台積電持平")}')
+    if _nvda: _concl_tech.append(f'NVDA {_nvda["last"]:.2f} ({_nvda["pct"]:+.1f}%) → {"✅ AI族群情緒熱" if _nvda["pct"]>2 else ("🔴 AI族群降溫" if _nvda["pct"]<-2 else "⚪ AI族群穩定")}')
+    for _tc2 in _concl_tech:
+        st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_tc2}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('七','💰 資金環境 × 估值（M1B-M2 + 年線乖離）','💰'),unsafe_allow_html=True)
@@ -4090,6 +4085,34 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # ── M1B-M2 年增率（FinMind）──────────────────────────────
     _m1b_info = st.session_state.get('m1b_m2_info')
     _bias_info = st.session_state.get('bias_info')
+
+    # ── 弘爺 × 孫慶龍 結論（標題下方直接顯示）──────────────────
+    _macro_concl = []
+    if _m1b_info:
+        _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)
+        if _diff2 > 0:
+            _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 弘爺：資金行情啟動，大膽做多！（領先大盤3~6月）')
+        elif _diff2 > -2:
+            _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 弘爺：資金動能趨緩，減碼等待訊號確認')
+        else:
+            _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 弘爺：資金撤離，空手觀望！')
+    if _bias_info:
+        _bv2 = _bias_info.get('bias_240', 0)
+        if _bv2 > 20:
+            _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 孫慶龍：開始分批減碼（乖離>20%啟動停利）')
+        elif _bv2 < -20:
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 孫慶龍：左側交易最佳布局區，大膽加碼！')
+        else:
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 孫慶龍：可持股，按計畫操作')
+    for _mc2 in _macro_concl:
+        _mc3 = _mc2.replace('✅','').replace('⚠️','').replace('🔴','').strip()
+        if '→' in _mc3:
+            _ind7, _res7 = _mc3.split('→', 1)
+            _col7 = '#f85149' if any(k in _mc2 for k in ['🔴','⚠️']) else '#3fb950'
+            _tchr7 = '弘爺' if 'M1B' in _mc2 else '孫慶龍'
+            st.markdown(teacher_conclusion(_tchr7, _ind7.strip(), _res7.strip(), color=_col7), unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
 
     _m_cols = st.columns(3)
     with _m_cols[0]:
@@ -4130,34 +4153,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _bl20, _bc20, '#0d1117'), unsafe_allow_html=True)
         else:
             st.markdown(kpi('月線乖離率(20MA)', '計算中', '', '#484f58', '#0d1117'), unsafe_allow_html=True)
-
-    with st.expander('📖 弘爺 · 孫慶龍 結論', expanded=False):
-        _macro_concl = []
-        if _m1b_info:
-            _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)
-            if _diff2 > 0:
-                _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 弘爺：資金行情啟動，大膽做多！（領先大盤3~6月）')
-            elif _diff2 > -2:
-                _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 弘爺：資金動能趨緩，減碼等待訊號確認')
-            else:
-                _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 弘爺：資金撤離，空手觀望！')
-        if _bias_info:
-            _bv2 = _bias_info.get('bias_240', 0)
-            if _bv2 > 20:
-                _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 孫慶龍：開始分批減碼（乖離>20%啟動停利）')
-            elif _bv2 < -20:
-                _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 孫慶龍：左側交易最佳布局區，大膽加碼！')
-            else:
-                _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 孫慶龍：可持股，按計畫操作')
-        for _mc2 in _macro_concl:
-            _mc3 = _mc2.replace('✅','').replace('⚠️','').replace('🔴','').strip()
-            if '→' in _mc3:
-                _ind7, _res7 = _mc3.split('→', 1)
-                _col7 = '#f85149' if any(k in _mc2 for k in ['🔴','⚠️']) else '#3fb950'
-                _tchr7 = '弘爺' if 'M1B' in _mc2 else '孫慶龍'
-                st.markdown(teacher_conclusion(_tchr7, _ind7.strip(), _res7.strip(), color=_col7), unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
@@ -4300,220 +4295,219 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.success('✅ v4.0 總經否決權：無觸發 — 當前宏觀環境無系統性風險訊號')
 
     # ── Section 八 v4.0 動態結論（宏爺VIX否決權 × 孫慶龍估值/CLI矩陣）────
-    with st.expander('📖 v4.0 宏爺 × 孫慶龍 總經拼圖結論', expanded=True):
-        _bias_info8 = st.session_state.get('bias_info') or {}
-        _b240_8     = float(_bias_info8.get('bias_240', 0))
-        _vix_now8   = float(_m8_vix.get('current', 0)) if _m8_vix else None
-        # CLI：OECD CLI 榮枯線 = 100，取自 _m8_pmi（is_oecd_cli=True 時）
-        _cli_8 = None
-        if _m8_pmi and _m8_pmi.get('is_oecd_cli'):
-            _cli_8 = float(_m8_pmi.get('value', 100))
+    _bias_info8 = st.session_state.get('bias_info') or {}
+    _b240_8     = float(_bias_info8.get('bias_240', 0))
+    _vix_now8   = float(_m8_vix.get('current', 0)) if _m8_vix else None
+    # CLI：OECD CLI 榮枯線 = 100，取自 _m8_pmi（is_oecd_cli=True 時）
+    _cli_8 = None
+    if _m8_pmi and _m8_pmi.get('is_oecd_cli'):
+        _cli_8 = float(_m8_pmi.get('value', 100))
 
-        # VIX 防呆：若值 > 100 代表 API 錯置
-        if _vix_now8 is not None and _vix_now8 > 100:
-            st.error(f'❌ VIX 數值異常（{_vix_now8:.0f}），疑似 API 變數映射錯誤，結論暫不顯示。請重新整理。')
+    # VIX 防呆：若值 > 100 代表 API 錯置
+    if _vix_now8 is not None and _vix_now8 > 100:
+        st.error(f'❌ VIX 數值異常（{_vix_now8:.0f}），疑似 API 變數映射錯誤，結論暫不顯示。請重新整理。')
+    else:
+        # ── 宏爺：VIX 總經否決權 ──────────────────────────────
+        if _vix_now8 is not None:
+            if _vix_now8 >= 30:
+                _hyc8 = '#f85149'
+                _hyi8 = f'VIX {_vix_now8:.1f} ≥ 30'
+                _hyc8t = '🔴 系統性風險爆發，觸發否決權！無視所有技術面多頭訊號，強制清倉，建議持股 0~10%，現金為王。'
+            elif _vix_now8 >= 20:
+                _hyc8 = '#d29922'
+                _hyi8 = f'VIX {_vix_now8:.1f}（20~30 警戒）'
+                _hyc8t = '🟡 波動率飆升，市場情緒轉恐慌。停止加槓桿，汰弱留強，持股上限壓縮在 30% 以下。'
+            else:
+                _hyc8 = '#3fb950'
+                _hyi8 = f'VIX {_vix_now8:.1f} < 20（平靜期）'
+                _hyc8t = '🟢 全球風險情緒穩定，未觸發否決權。回歸個股籌碼面與基本面操作。'
+            st.markdown(teacher_conclusion('弘爺', _hyi8, _hyc8t, color=_hyc8), unsafe_allow_html=True)
         else:
-            # ── 宏爺：VIX 總經否決權 ──────────────────────────────
-            if _vix_now8 is not None:
-                if _vix_now8 >= 30:
-                    _hyc8 = '#f85149'
-                    _hyi8 = f'VIX {_vix_now8:.1f} ≥ 30'
-                    _hyc8t = '🔴 系統性風險爆發，觸發否決權！無視所有技術面多頭訊號，強制清倉，建議持股 0~10%，現金為王。'
-                elif _vix_now8 >= 20:
-                    _hyc8 = '#d29922'
-                    _hyi8 = f'VIX {_vix_now8:.1f}（20~30 警戒）'
-                    _hyc8t = '🟡 波動率飆升，市場情緒轉恐慌。停止加槓桿，汰弱留強，持股上限壓縮在 30% 以下。'
-                else:
-                    _hyc8 = '#3fb950'
-                    _hyi8 = f'VIX {_vix_now8:.1f} < 20（平靜期）'
-                    _hyc8t = '🟢 全球風險情緒穩定，未觸發否決權。回歸個股籌碼面與基本面操作。'
-                st.markdown(teacher_conclusion('弘爺', _hyi8, _hyc8t, color=_hyc8), unsafe_allow_html=True)
+            st.info('VIX 數據載入中，宏爺否決權暫無法判斷')
+
+        # ── 宏爺：M1B-M2 資金動能（三段公式）────────────────────
+        _m1b8_info = st.session_state.get('m1b_m2_info', {})
+        if _m1b8_info and _m1b8_info.get('m1b_yoy') is not None and _m1b8_info.get('m2_yoy') is not None:
+            _m1b8 = float(_m1b8_info.get('m1b_yoy', 0))
+            _m2b8 = float(_m1b8_info.get('m2_yoy', 0))
+            _gap8 = round(_m1b8 - _m2b8, 2)
+            if _gap8 >= 1.0:
+                _m1bc8 = '#3fb950'
+                _m1bi8 = f'M1B-M2 Gap = +{_gap8:.2f}%（黃金交叉·熱錢狂潮）'
+                _m1bt8 = (f'🔥 資金動能強勁（M1B={_m1b8:.1f}% > M2={_m2b8:.1f}%），'
+                          '熱錢湧入股市，積極作多強勢股。')
+            elif _gap8 >= 0:
+                _m1bc8 = '#3fb950'
+                _m1bi8 = f'M1B-M2 Gap = +{_gap8:.2f}%（資金溫和·中性擴張）'
+                _m1bt8 = (f'💧 資金動能溫和（M1B={_m1b8:.1f}% ≥ M2={_m2b8:.1f}%），'
+                          '無失血風險，回歸個股基本面與籌碼面操作。')
             else:
-                st.info('VIX 數據載入中，宏爺否決權暫無法判斷')
+                _m1bc8 = '#d29922'
+                _m1bi8 = f'M1B-M2 Gap = {_gap8:.2f}%（死亡交叉·資金退潮）'
+                _m1bt8 = (f'📉 資金動能趨緩（M1B={_m1b8:.1f}% < M2={_m2b8:.1f}%），'
+                          '資金轉向定存或匯出，減碼等待訊號確認。')
+            st.markdown(teacher_conclusion('宏爺', _m1bi8, _m1bt8, color=_m1bc8), unsafe_allow_html=True)
+        else:
+            st.info('M1B/M2 數據載入後自動顯示宏爺資金動能判斷')
 
-            # ── 宏爺：M1B-M2 資金動能（三段公式）────────────────────
-            _m1b8_info = st.session_state.get('m1b_m2_info', {})
-            if _m1b8_info and _m1b8_info.get('m1b_yoy') is not None and _m1b8_info.get('m2_yoy') is not None:
-                _m1b8 = float(_m1b8_info.get('m1b_yoy', 0))
-                _m2b8 = float(_m1b8_info.get('m2_yoy', 0))
-                _gap8 = round(_m1b8 - _m2b8, 2)
-                if _gap8 >= 1.0:
-                    _m1bc8 = '#3fb950'
-                    _m1bi8 = f'M1B-M2 Gap = +{_gap8:.2f}%（黃金交叉·熱錢狂潮）'
-                    _m1bt8 = (f'🔥 資金動能強勁（M1B={_m1b8:.1f}% > M2={_m2b8:.1f}%），'
-                              '熱錢湧入股市，積極作多強勢股。')
-                elif _gap8 >= 0:
-                    _m1bc8 = '#3fb950'
-                    _m1bi8 = f'M1B-M2 Gap = +{_gap8:.2f}%（資金溫和·中性擴張）'
-                    _m1bt8 = (f'💧 資金動能溫和（M1B={_m1b8:.1f}% ≥ M2={_m2b8:.1f}%），'
-                              '無失血風險，回歸個股基本面與籌碼面操作。')
+        # ── 孫慶龍：BIAS240 × 外銷訂單 二維矩陣（v5.0）──────────────
+        if _bias_info8:
+            _sql_b    = _b240_8
+            _exp_yoy8 = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
+            _exp_dt8  = _m8_exp.get('date', '') if _m8_exp else ''
+            if _exp_yoy8 is not None:
+                _exp_txt8 = f'外銷訂單 YoY={_exp_yoy8:+.1f}%（{_exp_dt8}）'
+                if _sql_b >= 15 and _exp_yoy8 >= 10:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🚀 有基之彈'
+                    _sqc8t = ('🚀 有基之彈（主升段狂熱）：高估值由強勁出口基本面支撐，'
+                              '資金面與基本面完美共振。順勢作多，但需以月線作為嚴格停損，'
+                              '跌破月線即走，切勿因多頭情緒追漲加碼。')
+                elif _sql_b >= 15 and _exp_yoy8 < 0:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚠️ 無基之彈'
+                    _sqc8t = ('⚠️ 無基之彈（史詩級泡沫）：股價嚴重高估且出口動能衰退，'
+                              '純粹資金炒作泡沫，均值回歸壓力極大。'
+                              '全面出清高本夢比個股，啟動長線倉位停利，切勿追高。')
+                elif _sql_b >= 15:  # Export 0~10%
+                    _sqc8  = '#d29922'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚡ 高估技術整理'
+                    _sqc8t = ('⚡ 技術嚴重過熱，出口尚可但未爆發：高位持多需謹慎，'
+                              '嚴設 ATR 動態停損，逢高獲利了結部分倉位，'
+                              '等待出口數據確認是否升為「有基之彈」格局。')
+                elif _sql_b > 0 and _exp_yoy8 > 0:
+                    _sqc8  = '#3fb950'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🟢 趨勢多頭'
+                    _sqc8t = ('🟢 趨勢多頭（基本面支撐）：均線多頭發散且出口擴張，'
+                              '可持股按原計畫操作，回歸個股財報與籌碼面選股，'
+                              '等待更明確的突破訊號加碼。')
+                elif _sql_b <= 0 and _exp_yoy8 > 0:
+                    _sqc8  = '#58a6ff'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 💎 長線黃金坑'
+                    _sqc8t = ('💎 長線黃金坑（超跌買點）：大盤超跌至年線之下，'
+                              '但出口正在成長，實體基本面有撐。'
+                              '大膽重壓具備 EPS 支撐的低基期錯殺股，左側分批建倉。')
+                elif _sql_b <= 0 and _exp_yoy8 <= 0:
+                    _sqc8  = '#8b949e'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 📉 景氣寒冬'
+                    _sqc8t = ('📉 景氣寒冬（空頭格局）：技術面與基本面雙殺，'
+                              '出口衰退且指數跌破年線，景氣收縮中。'
+                              '多看少做，保留高比例現金，等待出口數據翻正再佈局。')
                 else:
-                    _m1bc8 = '#d29922'
-                    _m1bi8 = f'M1B-M2 Gap = {_gap8:.2f}%（死亡交叉·資金退潮）'
-                    _m1bt8 = (f'📉 資金動能趨緩（M1B={_m1b8:.1f}% < M2={_m2b8:.1f}%），'
-                              '資金轉向定存或匯出，減碼等待訊號確認。')
-                st.markdown(teacher_conclusion('宏爺', _m1bi8, _m1bt8, color=_m1bc8), unsafe_allow_html=True)
+                    _sqc8  = '#8b949e'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 🟡 整理觀望'
+                    _sqc8t = '🟡 指數在年線附近整理，等待方向確認後再布局，持股偏保守。'
             else:
-                st.info('M1B/M2 數據載入後自動顯示宏爺資金動能判斷')
-
-            # ── 孫慶龍：BIAS240 × 外銷訂單 二維矩陣（v5.0）──────────────
-            if _bias_info8:
-                _sql_b    = _b240_8
-                _exp_yoy8 = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
-                _exp_dt8  = _m8_exp.get('date', '') if _m8_exp else ''
-                if _exp_yoy8 is not None:
-                    _exp_txt8 = f'外銷訂單 YoY={_exp_yoy8:+.1f}%（{_exp_dt8}）'
-                    if _sql_b >= 15 and _exp_yoy8 >= 10:
-                        _sqc8  = '#f85149'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🚀 有基之彈'
-                        _sqc8t = ('🚀 有基之彈（主升段狂熱）：高估值由強勁出口基本面支撐，'
-                                  '資金面與基本面完美共振。順勢作多，但需以月線作為嚴格停損，'
-                                  '跌破月線即走，切勿因多頭情緒追漲加碼。')
-                    elif _sql_b >= 15 and _exp_yoy8 < 0:
-                        _sqc8  = '#f85149'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚠️ 無基之彈'
-                        _sqc8t = ('⚠️ 無基之彈（史詩級泡沫）：股價嚴重高估且出口動能衰退，'
-                                  '純粹資金炒作泡沫，均值回歸壓力極大。'
-                                  '全面出清高本夢比個股，啟動長線倉位停利，切勿追高。')
-                    elif _sql_b >= 15:  # Export 0~10%
-                        _sqc8  = '#d29922'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → ⚡ 高估技術整理'
-                        _sqc8t = ('⚡ 技術嚴重過熱，出口尚可但未爆發：高位持多需謹慎，'
-                                  '嚴設 ATR 動態停損，逢高獲利了結部分倉位，'
-                                  '等待出口數據確認是否升為「有基之彈」格局。')
-                    elif _sql_b > 0 and _exp_yoy8 > 0:
-                        _sqc8  = '#3fb950'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_exp_txt8} → 🟢 趨勢多頭'
-                        _sqc8t = ('🟢 趨勢多頭（基本面支撐）：均線多頭發散且出口擴張，'
-                                  '可持股按原計畫操作，回歸個股財報與籌碼面選股，'
-                                  '等待更明確的突破訊號加碼。')
-                    elif _sql_b <= 0 and _exp_yoy8 > 0:
-                        _sqc8  = '#58a6ff'
-                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 💎 長線黃金坑'
-                        _sqc8t = ('💎 長線黃金坑（超跌買點）：大盤超跌至年線之下，'
-                                  '但出口正在成長，實體基本面有撐。'
-                                  '大膽重壓具備 EPS 支撐的低基期錯殺股，左側分批建倉。')
-                    elif _sql_b <= 0 and _exp_yoy8 <= 0:
-                        _sqc8  = '#8b949e'
-                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 📉 景氣寒冬'
-                        _sqc8t = ('📉 景氣寒冬（空頭格局）：技術面與基本面雙殺，'
-                                  '出口衰退且指數跌破年線，景氣收縮中。'
-                                  '多看少做，保留高比例現金，等待出口數據翻正再佈局。')
-                    else:
-                        _sqc8  = '#8b949e'
-                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_exp_txt8} → 🟡 整理觀望'
-                        _sqc8t = '🟡 指數在年線附近整理，等待方向確認後再布局，持股偏保守。'
+                # Export 無資料 → 降級用 CLI
+                _cli_txt8 = (f'CLI={_cli_8:.1f}（{"擴張" if _cli_8 >= 100 else "收縮"}）'
+                             if _cli_8 is not None else 'CLI未知')
+                if _sql_b >= 15 and _cli_8 is not None and _cli_8 >= 100:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·有基之彈）'
+                    _sqc8t = '🔥 技術嚴重過熱且 CLI 擴張，可順勢持多，嚴設月線停損。'
+                elif _sql_b >= 15:
+                    _sqc8  = '#f85149'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·無基之彈）'
+                    _sqc8t = '⚠️ 史詩級過熱，外銷訂單無資料，謹慎追高，嚴防崩盤。'
+                elif _sql_b >= 0:
+                    _sqc8  = '#3fb950'
+                    _sqi8  = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭） {_cli_txt8}'
+                    _sqc8t = '🟢 均線多頭，可持股操作，等待外銷訂單資料補充判斷。'
+                elif _cli_8 is not None and _cli_8 > 100:
+                    _sqc8  = '#58a6ff'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_cli_txt8}（CLI備援·黃金坑）'
+                    _sqc8t = '💎 CLI 擴張中大盤超跌，分批建倉低基期優質股。'
                 else:
-                    # Export 無資料 → 降級用 CLI
-                    _cli_txt8 = (f'CLI={_cli_8:.1f}（{"擴張" if _cli_8 >= 100 else "收縮"}）'
-                                 if _cli_8 is not None else 'CLI未知')
-                    if _sql_b >= 15 and _cli_8 is not None and _cli_8 >= 100:
-                        _sqc8  = '#f85149'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·有基之彈）'
-                        _sqc8t = '🔥 技術嚴重過熱且 CLI 擴張，可順勢持多，嚴設月線停損。'
-                    elif _sql_b >= 15:
-                        _sqc8  = '#f85149'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}% × {_cli_txt8}（CLI備援·無基之彈）'
-                        _sqc8t = '⚠️ 史詩級過熱，外銷訂單無資料，謹慎追高，嚴防崩盤。'
-                    elif _sql_b >= 0:
-                        _sqc8  = '#3fb950'
-                        _sqi8  = f'年線乖離 +{_sql_b:.1f}%（趨勢多頭） {_cli_txt8}'
-                        _sqc8t = '🟢 均線多頭，可持股操作，等待外銷訂單資料補充判斷。'
-                    elif _cli_8 is not None and _cli_8 > 100:
-                        _sqc8  = '#58a6ff'
-                        _sqi8  = f'年線乖離 {_sql_b:.1f}% × {_cli_txt8}（CLI備援·黃金坑）'
-                        _sqc8t = '💎 CLI 擴張中大盤超跌，分批建倉低基期優質股。'
-                    else:
-                        _sqc8  = '#8b949e'
-                        _sqi8  = f'年線乖離 {_sql_b:.1f}%（整理·觀望） {_cli_txt8}'
-                        _sqc8t = '🟡 外銷訂單待取得，景氣尚未明確擴張，持股保守等待訊號。'
-                st.markdown(teacher_conclusion('孫慶龍', _sqi8, _sqc8t, color=_sqc8), unsafe_allow_html=True)
+                    _sqc8  = '#8b949e'
+                    _sqi8  = f'年線乖離 {_sql_b:.1f}%（整理·觀望） {_cli_txt8}'
+                    _sqc8t = '🟡 外銷訂單待取得，景氣尚未明確擴張，持股保守等待訊號。'
+            st.markdown(teacher_conclusion('孫慶龍', _sqi8, _sqc8t, color=_sqc8), unsafe_allow_html=True)
 
-            # ── ⚔️ 攻擊火力分級（三環公式 SSS/A/B）────────────────────
-            with st.expander('⚔️ 攻擊發動判定 — 三環公式 + 火力分級', expanded=True):
-                # 取得需要的變數
-                _li8      = st.session_state.get('li_latest')
-                _fut8     = None
-                if _li8 is not None and hasattr(_li8, 'empty') and not _li8.empty and '外資大小' in _li8.columns:
-                    try: _fut8 = float(_li8.iloc[-1].get('外資大小', 0))
-                    except: pass
-                _cl8d     = st.session_state.get('cl_data', {})
-                _inst8    = _cl8d.get('inst', {})
-                _fk8      = next((k for k in _inst8 if '外資' in k), None)
-                _fnet8    = _inst8.get(_fk8, {}).get('net', None) if _fk8 else None
-                _twii8    = tw_s.get('台股加權指數', {})
-                _twd8     = tw_s.get('新台幣匯率', {})
-                _sox8     = intl_s.get('費城半導體 SOX', {})
-                _nvda8    = tech_s.get('輝達 NVDA', {})
-                _exp_c    = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
-                _gap8c    = None
-                if (_m1b8_info and _m1b8_info.get('m1b_yoy') is not None and
-                        _m1b8_info.get('m2_yoy') is not None):
-                    try:
-                        _gap8c = round(float(_m1b8_info['m1b_yoy']) -
-                                       float(_m1b8_info['m2_yoy']), 2)
-                    except: pass
+        # ── ⚔️ 攻擊火力分級（三環公式 SSS/A/B）────────────────────
+        with st.expander('⚔️ 攻擊發動判定 — 三環公式 + 火力分級', expanded=True):
+            # 取得需要的變數
+            _li8      = st.session_state.get('li_latest')
+            _fut8     = None
+            if _li8 is not None and hasattr(_li8, 'empty') and not _li8.empty and '外資大小' in _li8.columns:
+                try: _fut8 = float(_li8.iloc[-1].get('外資大小', 0))
+                except: pass
+            _cl8d     = st.session_state.get('cl_data', {})
+            _inst8    = _cl8d.get('inst', {})
+            _fk8      = next((k for k in _inst8 if '外資' in k), None)
+            _fnet8    = _inst8.get(_fk8, {}).get('net', None) if _fk8 else None
+            _twii8    = tw_s.get('台股加權指數', {})
+            _twd8     = tw_s.get('新台幣匯率', {})
+            _sox8     = intl_s.get('費城半導體 SOX', {})
+            _nvda8    = tech_s.get('輝達 NVDA', {})
+            _exp_c    = float(_m8_exp.get('yoy', 0)) if _m8_exp else None
+            _gap8c    = None
+            if (_m1b8_info and _m1b8_info.get('m1b_yoy') is not None and
+                    _m1b8_info.get('m2_yoy') is not None):
+                try:
+                    _gap8c = round(float(_m1b8_info['m1b_yoy']) -
+                                   float(_m1b8_info['m2_yoy']), 2)
+                except: pass
 
-                # 三環條件評估
-                _cA = _vix_now8 is not None and _vix_now8 < 20
-                _cB = _fut8 is not None and _fut8 > -15000
-                _cC = _exp_c is not None and _exp_c >= 10
-                _cD = _gap8c is not None and _gap8c >= 1.0
-                _cE = _fnet8 is not None and _fnet8 >= 100
-                _cF = (float(_twii8.get('pct') or 0) > 0 and
-                       float(_twd8.get('pct') or 0) < 0)
-                _cG = (float(_sox8.get('pct') or 0) >= 1.5 or
-                       float(_nvda8.get('pct') or 0) >= 2.0)
+            # 三環條件評估
+            _cA = _vix_now8 is not None and _vix_now8 < 20
+            _cB = _fut8 is not None and _fut8 > -15000
+            _cC = _exp_c is not None and _exp_c >= 10
+            _cD = _gap8c is not None and _gap8c >= 1.0
+            _cE = _fnet8 is not None and _fnet8 >= 100
+            _cF = (float(_twii8.get('pct') or 0) > 0 and
+                   float(_twd8.get('pct') or 0) < 0)
+            _cG = (float(_sox8.get('pct') or 0) >= 1.5 or
+                   float(_nvda8.get('pct') or 0) >= 2.0)
 
-                _ring1_pass = _cA and _cB
-                _ring2_cnt  = int(_cC) + int(_cD)
-                _ring3_cnt  = int(_cE) + int(_cF) + int(_cG)
+            _ring1_pass = _cA and _cB
+            _ring2_cnt  = int(_cC) + int(_cD)
+            _ring3_cnt  = int(_cE) + int(_cF) + int(_cG)
 
-                def _cond_badge(ok, label):
-                    c = '#3fb950' if ok else '#484f58'
-                    return f'<span style="background:{c}22;border:1px solid {c};border-radius:4px;padding:2px 8px;font-size:12px;color:{c};margin:2px;">{label}</span>'
+            def _cond_badge(ok, label):
+                c = '#3fb950' if ok else '#484f58'
+                return f'<span style="background:{c}22;border:1px solid {c};border-radius:4px;padding:2px 8px;font-size:12px;color:{c};margin:2px;">{label}</span>'
 
-                _r1_html = (_cond_badge(_cA, f'A VIX={_vix_now8:.1f}<20' if _vix_now8 else 'A VIX未知') + ' ' +
-                            _cond_badge(_cB, f'B 期貨={_fut8:,.0f}口' if _fut8 is not None else 'B 期貨未知'))
-                _r2_html = (_cond_badge(_cC, f'C 出口={_exp_c:+.1f}%' if _exp_c is not None else 'C 出口未知') + ' ' +
-                            _cond_badge(_cD, f'D M1B-M2={_gap8c:+.2f}%' if _gap8c is not None else 'D M1B-M2未知'))
-                _r3_html = (_cond_badge(_cE, f'E 外資={_fnet8:+.0f}億' if _fnet8 is not None else 'E 外資未知') + ' ' +
-                            _cond_badge(_cF, f'F 股匯雙漲' if _cF else 'F 股匯雙漲') + ' ' +
-                            _cond_badge(_cG, f'G SOX/NVDA點火'))
+            _r1_html = (_cond_badge(_cA, f'A VIX={_vix_now8:.1f}<20' if _vix_now8 else 'A VIX未知') + ' ' +
+                        _cond_badge(_cB, f'B 期貨={_fut8:,.0f}口' if _fut8 is not None else 'B 期貨未知'))
+            _r2_html = (_cond_badge(_cC, f'C 出口={_exp_c:+.1f}%' if _exp_c is not None else 'C 出口未知') + ' ' +
+                        _cond_badge(_cD, f'D M1B-M2={_gap8c:+.2f}%' if _gap8c is not None else 'D M1B-M2未知'))
+            _r3_html = (_cond_badge(_cE, f'E 外資={_fnet8:+.0f}億' if _fnet8 is not None else 'E 外資未知') + ' ' +
+                        _cond_badge(_cF, f'F 股匯雙漲' if _cF else 'F 股匯雙漲') + ' ' +
+                        _cond_badge(_cG, f'G SOX/NVDA點火'))
 
-                if not _ring1_pass:
-                    _atk_color = '#f85149'; _atk_grade = '🚫 禁止攻擊'
-                    _atk_pct = '持股 0~20%'
-                    _atk_txt = ('第一環未通過（VIX過高 或 外資重兵空單）：'
-                                '大環境有鬼，任何技術面突破均為誘多，嚴格停損保留現金。')
-                elif _ring2_cnt >= 2 and _ring3_cnt >= 2:
-                    _atk_color = '#f0e040'; _atk_grade = '🚀 SSS 級全面總攻'
-                    _atk_pct = '持股 80~100%'
-                    _atk_txt = ('三環齊備、資金面與基本面完美共振：天時地利人和。'
-                                '勇敢追擊強勢突破股，重壓半導體主流。')
-                elif _ring2_cnt >= 1 and _ring3_cnt >= 1:
-                    _atk_color = '#f85149'; _atk_grade = '🔥 A 級強勢進攻'
-                    _atk_pct = '持股 60~80%'
-                    _atk_txt = ('標準順風局：第二環（燃料）、第三環（點火）各至少一條通過。'
-                                '順勢佈局，汰弱留強，跌破 10MA 停損。')
-                elif _ring3_cnt >= 1:
-                    _atk_color = '#d29922'; _atk_grade = '🛡️ B 級試探性建倉'
-                    _atk_pct = '持股 30~50%'
-                    _atk_txt = ('大環境無足夠燃料，但短線有點火訊號。'
-                                '屬於「跌深反彈」或「區間震盪」，打帶跑策略，見好就收。')
-                else:
-                    _atk_color = '#8b949e'; _atk_grade = '⏸️ 暫不進攻'
-                    _atk_pct = '持股 30% 以下'
-                    _atk_txt = '三環條件均不足，等待更明確訊號，保守觀望。'
+            if not _ring1_pass:
+                _atk_color = '#f85149'; _atk_grade = '🚫 禁止攻擊'
+                _atk_pct = '持股 0~20%'
+                _atk_txt = ('第一環未通過（VIX過高 或 外資重兵空單）：'
+                            '大環境有鬼，任何技術面突破均為誘多，嚴格停損保留現金。')
+            elif _ring2_cnt >= 2 and _ring3_cnt >= 2:
+                _atk_color = '#f0e040'; _atk_grade = '🚀 SSS 級全面總攻'
+                _atk_pct = '持股 80~100%'
+                _atk_txt = ('三環齊備、資金面與基本面完美共振：天時地利人和。'
+                            '勇敢追擊強勢突破股，重壓半導體主流。')
+            elif _ring2_cnt >= 1 and _ring3_cnt >= 1:
+                _atk_color = '#f85149'; _atk_grade = '🔥 A 級強勢進攻'
+                _atk_pct = '持股 60~80%'
+                _atk_txt = ('標準順風局：第二環（燃料）、第三環（點火）各至少一條通過。'
+                            '順勢佈局，汰弱留強，跌破 10MA 停損。')
+            elif _ring3_cnt >= 1:
+                _atk_color = '#d29922'; _atk_grade = '🛡️ B 級試探性建倉'
+                _atk_pct = '持股 30~50%'
+                _atk_txt = ('大環境無足夠燃料，但短線有點火訊號。'
+                            '屬於「跌深反彈」或「區間震盪」，打帶跑策略，見好就收。')
+            else:
+                _atk_color = '#8b949e'; _atk_grade = '⏸️ 暫不進攻'
+                _atk_pct = '持股 30% 以下'
+                _atk_txt = '三環條件均不足，等待更明確訊號，保守觀望。'
 
-                st.markdown(
-                    f'<div style="background:#0d1117;border:2px solid {_atk_color};border-radius:12px;padding:16px;margin:8px 0;">'
-                    f'<div style="font-size:18px;font-weight:900;color:{_atk_color};">{_atk_grade}</div>'
-                    f'<div style="font-size:14px;color:#c9d1d9;margin:4px 0;">{_atk_pct} — {_atk_txt}</div>'
-                    f'<div style="margin-top:10px;font-size:12px;color:#8b949e;">第一環（解除保險）：{_r1_html}<br>'
-                    f'第二環（確認燃料）：{_r2_html}<br>'
-                    f'第三環（點火訊號）：{_r3_html}</div>'
-                    f'</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="background:#0d1117;border:2px solid {_atk_color};border-radius:12px;padding:16px;margin:8px 0;">'
+                f'<div style="font-size:18px;font-weight:900;color:{_atk_color};">{_atk_grade}</div>'
+                f'<div style="font-size:14px;color:#c9d1d9;margin:4px 0;">{_atk_pct} — {_atk_txt}</div>'
+                f'<div style="margin-top:10px;font-size:12px;color:#8b949e;">第一環（解除保險）：{_r1_html}<br>'
+                f'第二環（確認燃料）：{_r2_html}<br>'
+                f'第三環（點火訊號）：{_r3_html}</div>'
+                f'</div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════
     # SECTION 九: 總經 AI 投資決策分析（五維度綜合研判）
