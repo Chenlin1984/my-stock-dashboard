@@ -891,6 +891,7 @@ def render_etf_single(gemini_fn=None):
         'cur_yield': cur_yield, 'avg_yield': avg_yield,
         'total_ret': total_ret, 'vcp': vcp,
         'premium': prem, 'te': te, 'regime': regime,
+        'price_df': df,
     }
 
     # ── AI ETF 存股決策總結 ───────────────────────────────────
