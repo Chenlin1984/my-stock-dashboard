@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.24 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.26 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,29 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.26）
+
+### 資料診斷重構：三域分組 + Tab 切換（etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **三域 Tab** | `st.tabs(['📊 總經 & 市場', '🔬 個股', '🏦 ETF'])` |
+| **總經子分組** | 🇹🇼 台股市場 / 🌐 國際指數 / 💰 固定收益 / 📈 先行指標（5細項） |
+| **個股 Tab** | 強制顯示 5 細項，缺失標 ⚫；顯示股號名稱作為標題 |
+| **ETF Tab** | 只在完成 ETF 診斷後出現資料 |
+| **_render_group()** | 共用渲染 helper，自動計算缺/舊數量並顯示 badge |
+| **全域 Banner** | 跨三域統計 ⚫缺失 / ⚠️過期總數 |
+| **快照摺疊** | 改為 `st.expander` 預設收合，減少頁面長度 |
+
+## ✅ 最新異動（v10.25）
+
+### 個股缺失資料明確標示（app.py + etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **強制顯示 5 細項** | `t2_data` 的 df/rev/qtr/cl/cx 全部登錄；有資料正常顯示，無資料標 `missing=True` |
+| **⚫ 缺失欄** | `etf_dashboard` 表格：`missing=True` → 燈號 `⚫`、新鮮度「缺失（API未回傳）」，讓合約負債/現金流量缺失一眼可見 |
+| **快照過濾** | 資料抽查快照的選項排除 missing 項目，避免選到空 DataFrame |
+| **Banner 分類** | 缺失數與過期數分開統計顯示（⚫ N筆缺失 / ⚠️ N筆過期） |
 
 ## ✅ 最新異動（v10.24）
 
