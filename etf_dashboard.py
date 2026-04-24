@@ -2079,24 +2079,39 @@ def render_data_health():
 
         _tbl_rows = []
         for _rn, _rv in sorted(_reg.items()):
-            _icon, _age_str, _freq_lbl = _freshness(_rv['latest_date'], _rn)
-            _tbl_rows.append({
-                '燈號': _icon,
-                '資料名稱': _rn,
-                '最新日期': _rv['latest_date'],
-                '新鮮度': _age_str,
-                '更新頻率': _freq_lbl,
-                '筆數': _rv['rows'],
-                '欄位數': _rv['cols'],
-            })
+            if _rv.get('missing'):
+                _tbl_rows.append({
+                    '燈號': '⚫',
+                    '資料名稱': _rn,
+                    '最新日期': '—',
+                    '新鮮度': '缺失（API未回傳）',
+                    '更新頻率': '—',
+                    '筆數': 0,
+                    '欄位數': 0,
+                })
+            else:
+                _icon, _age_str, _freq_lbl = _freshness(_rv['latest_date'], _rn)
+                _tbl_rows.append({
+                    '燈號': _icon,
+                    '資料名稱': _rn,
+                    '最新日期': _rv['latest_date'],
+                    '新鮮度': _age_str,
+                    '更新頻率': _freq_lbl,
+                    '筆數': _rv['rows'],
+                    '欄位數': _rv['cols'],
+                })
 
         _df_tbl = _pd_dh.DataFrame(_tbl_rows)
         st.dataframe(_df_tbl, use_container_width=True, hide_index=True)
-        _n_stale = sum(1 for r in _tbl_rows if '⚠️' in r['新鮮度'])
-        if _n_stale:
-            st.warning(f'⚠️ 發現 {_n_stale} 筆資料已過期（日資料>5天 / 月資料>75天 / 季資料>180天），建議重新載入。')
+        _n_missing = sum(1 for r in _tbl_rows if r['燈號'] == '⚫')
+        _n_stale   = sum(1 for r in _tbl_rows if '⚠️' in r['新鮮度'])
+        if _n_missing or _n_stale:
+            _msgs = []
+            if _n_missing: _msgs.append(f'⚫ {_n_missing} 筆缺失（API未回傳，點快照可確認）')
+            if _n_stale:   _msgs.append(f'⚠️ {_n_stale} 筆過期（日>5天/月>75天/季>180天）')
+            st.warning('　'.join(_msgs))
         else:
-            st.success(f'✅ {len(_tbl_rows)} 個資料源全部符合更新頻率標準')
+            st.success(f'✅ {len(_tbl_rows)} 個資料源全部正常')
 
         # ── 快照檢視器 ──────────────────────────────────────────────
         st.markdown(
@@ -2106,14 +2121,17 @@ def render_data_health():
             '<span style="font-size:11px;color:#8b949e;margin-left:8px;">選擇任一資料源，顯示最近 5 筆原始數據</span></div>',
             unsafe_allow_html=True
         )
+        # 快照只顯示有資料的選項（缺失項目不可預覽）
+        _snap_opts = [k for k, v in _reg.items() if not v.get('missing')]
         _sel_key = st.selectbox(
             '選擇資料源（選項由 data_registry 動態生成，不綁定任何固定標的）',
-            options=list(_reg.keys()),
+            options=_snap_opts,
             key='_dh_snapshot_sel',
         )
         if _sel_key and _sel_key in _reg:
-            _snap_df = _reg[_sel_key]['df']
-            st.caption(f'**{_sel_key}** — 最新日期：{_reg[_sel_key]["latest_date"]}  共 {_reg[_sel_key]["rows"]} 筆  {_reg[_sel_key]["cols"]} 欄')
+            _snap_rv = _reg[_sel_key]
+            _snap_df = _snap_rv['df']
+            st.caption(f'**{_sel_key}** — 最新日期：{_snap_rv["latest_date"]}  共 {_snap_rv["rows"]} 筆  {_snap_rv["cols"]} 欄')
             st.dataframe(_snap_df.head(5), use_container_width=True)
 
     st.markdown('---')

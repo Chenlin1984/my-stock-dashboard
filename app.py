@@ -2919,7 +2919,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     if not _sub.empty:
                         _reg_add(_grp, _sub)
 
-            # ── 個股細項（t2_data：價格走勢/月營收/季財報/現金流/資產負債）
+            # ── 個股細項（t2_data：5項全部強制顯示，缺失標 missing=True）
             _t2d_reg = st.session_state.get('t2_data')
             if _t2d_reg:
                 _s2r = _t2d_reg.get('sid', '')
@@ -2928,8 +2928,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 for _lbl, _key in [('價格走勢','df'),('月營收','rev'),
                                     ('季財報','qtr'),('現金流量','cl'),('資產負債','cx')]:
                     _sub = _t2d_reg.get(_key)
+                    _rname = f'{_pfx} | {_lbl}'
                     if isinstance(_sub, _pd_reg.DataFrame) and not _sub.empty:
-                        _reg_add(f'{_pfx} | {_lbl}', _sub)
+                        _reg_add(_rname, _sub)
+                    else:
+                        # 缺失：強制登錄，讓健康表顯示 ⚫
+                        _reg_new[_rname] = {
+                            'latest_date': 'N/A', 'rows': 0, 'cols': 0,
+                            'df': _pd_reg.DataFrame(), 'missing': True,
+                        }
 
             # ── ETF 細項（etf_single_data：價格走勢）
             _etf1_reg = st.session_state.get('etf_single_data') or {}
