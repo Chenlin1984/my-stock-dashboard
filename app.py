@@ -2842,7 +2842,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             import pandas as _pd_reg
             _reg_new: dict = {}
 
-            def _reg_add(_rname: str, _rdf, category: str = '大盤', freq: str = 'daily'):
+            def _reg_add(_rname: str, _rdf, category: str = '大盤', frequency: str = 'daily'):
                 """提取最新時間戳後寫入 registry（不儲存 df 本體，僅保留元資料）。"""
                 if not isinstance(_rdf, _pd_reg.DataFrame) or _rdf.empty:
                     return
@@ -2875,27 +2875,27 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 except Exception:
                     _ls = 'N/A'
                 _reg_new[_rname] = {
-                    'latest_date': _ls, 'rows': len(_d),
-                    'category': category, 'freq': freq,
+                    'last_updated': _ls, 'rows': len(_d),
+                    'category': category, 'frequency': frequency,
                 }
 
-            def _reg_missing(_rname: str, category: str = '大盤', freq: str = 'daily'):
+            def _reg_missing(_rname: str, category: str = '大盤', frequency: str = 'daily'):
                 _reg_new[_rname] = {
-                    'latest_date': 'N/A', 'rows': 0,
-                    'category': category, 'freq': freq, 'missing': True,
+                    'last_updated': 'N/A', 'rows': 0,
+                    'category': category, 'frequency': frequency, 'missing': True,
                 }
 
             # ── 大盤/總經：國際、台股、科技指數（日更新）──────────────
             _cl_reg = st.session_state.get('cl_data', {})
             for _rn, _rdf in (_cl_reg.get('intl') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', freq='daily')
+                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
             for _rn, _rdf in (_cl_reg.get('tw') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', freq='daily')
+                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
             for _rn, _rdf in (_cl_reg.get('tech') or {}).items():
-                _reg_add(_rn, _rdf, category='大盤', freq='daily')
+                _reg_add(_rn, _rdf, category='大盤', frequency='daily')
             _adl_reg = _cl_reg.get('adl')
             if isinstance(_adl_reg, _pd_reg.DataFrame):
-                _reg_add('ADL 市場廣度', _adl_reg, category='大盤', freq='daily')
+                _reg_add('ADL 市場廣度', _adl_reg, category='大盤', frequency='daily')
 
             # ── 先行指標：按來源拆 5 細項（大盤，日更新）────────────────
             _li_reg = st.session_state.get('li_latest')
@@ -2918,7 +2918,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     ).any(axis=1)
                     _sub = _sub[_mask]
                     if not _sub.empty:
-                        _reg_add(_grp, _sub, category='大盤', freq='daily')
+                        _reg_add(_grp, _sub, category='大盤', frequency='daily')
 
             # ── 個股細項（5項全部強制顯示，含缺失）──────────────────────
             _t2d_reg = st.session_state.get('t2_data')
@@ -2936,9 +2936,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _rname = f'{_pfx} | {_lbl}'
                     _f = _lbl_freq[_lbl]
                     if isinstance(_sub, _pd_reg.DataFrame) and not _sub.empty:
-                        _reg_add(_rname, _sub, category='個股', freq=_f)
+                        _reg_add(_rname, _sub, category='個股', frequency=_f)
                     else:
-                        _reg_missing(_rname, category='個股', freq=_f)
+                        _reg_missing(_rname, category='個股', frequency=_f)
 
             # ── ETF 細項（日更新）────────────────────────────────────────
             _etf1_reg = st.session_state.get('etf_single_data') or {}
@@ -2947,7 +2947,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _etf_tk = _etf1_reg.get('ticker', 'ETF')
                 _etf_nm = _etf1_reg.get('name', '')
                 _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢',
-                         _etf_pdf, category='ETF', freq='daily')
+                         _etf_pdf, category='ETF', frequency='daily')
 
             st.session_state['data_registry'] = _reg_new
             print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源，類別標籤已寫入')
