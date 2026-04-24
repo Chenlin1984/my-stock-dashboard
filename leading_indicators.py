@@ -937,6 +937,39 @@ def build_leading_fast(days=7, token=""):
             if rd: inst_dict[dk] = rd
         print(f"[LI-v8] 三大法人 {len(inst_dict)} 天")
 
+    # ═══ 4.5 融資融券日序列（FinMind TaiwanStockTotalMarginPurchaseShortSale）═
+    margin_dict = {}   # {ymd: {'融資餘額': float, '融券餘額': float}}
+    try:
+        _df_mg = finmind_get("TaiwanStockTotalMarginPurchaseShortSale", "", s_ymd, e_ymd, token)
+        if not _df_mg.empty and 'name' in _df_mg.columns:
+            _df_mg['_ymd'] = _df_mg['date'].astype(str).str.replace('-', '')
+            _df_mg = _df_mg[_df_mg['_ymd'].between(s_ymd, e_ymd)]
+            for _dk, _grp in _df_mg.groupby('_ymd'):
+                _entry = {}
+                for _, _mr in _grp.iterrows():
+                    _nm = str(_mr.get('name', ''))
+                    for _col in ['TodayBalance', 'today_balance', 'balance',
+                                 'MarginPurchaseBalance', 'marginBalance']:
+                        if _col in _mr.index:
+                            _v = float(pd.to_numeric(_mr[_col], errors='coerce') or 0)
+                            if _v <= 0:
+                                break
+                            # 單位自動偵測（元→億）
+                            if _v > 1e12:   _v = round(_v / 1e8, 0)
+                            elif _v > 1e9:  _v = round(_v / 1e8, 0)
+                            elif _v > 1e4:  _v = round(_v / 100, 0)
+                            if 100 < _v < 20000:   # 合理範圍（億元）
+                                if '融資' in _nm or 'MarginPurchase' in _nm:
+                                    _entry['融資餘額'] = _v
+                                elif '融券' in _nm or 'ShortSale' in _nm:
+                                    _entry['融券餘額'] = _v
+                            break
+                if _entry:
+                    margin_dict[_dk] = _entry
+        print(f"[LI-v8] 融資融券序列 {len(margin_dict)} 天")
+    except Exception as _mge:
+        print(f"[LI-v8] 融資融券略過: {_mge}")
+
     # ═══ 5. 成交量（選用）══════════════════════════════════════
     vol_dict = {}
     try:
@@ -961,7 +994,7 @@ def build_leading_fast(days=7, token=""):
     print(f"[LI-v8] 成交量（最終）{len(vol_dict)} 天")
 
     # ═══ 6. 確定日期範圍 ════════════════════════════════════════
-    known = set(fut_net) | set(pcr_dict) | set(inst_dict) | set(opt_dict)
+    known = set(fut_net) | set(pcr_dict) | set(inst_dict) | set(opt_dict) | set(margin_dict)
     known = {d for d in known if s_ymd <= d <= e_ymd}
     if not known:
         import datetime as _dt2
@@ -1061,6 +1094,8 @@ def build_leading_fast(days=7, token=""):
             "外(選)":     opt_dict.get(d),
             "未平倉口數": taifex_mtx_oi.get(d) or _lt.get("未平倉"),
             "韭菜指數":   taifex_leek.get(d) if taifex_leek.get(d) is not None else _leek,
+            "融資餘額":   margin_dict.get(d, {}).get('融資餘額'),
+            "融券餘額":   margin_dict.get(d, {}).get('融券餘額'),
         })
     if not rows:
         print("[LI-v8] ⚠️ 無資料")
@@ -1074,21 +1109,23 @@ def build_leading_fast(days=7, token=""):
 
 
 def render_leading_table(df):
-    """渲染先行指標 HTML 表格"""
+    """渲染先行指標 HTML 表格（含融資融券日序列）"""
     BRACKET = {"外資大小","前五大留倉","前十大留倉","外(選)"}
     SPOT    = {"外資","投信","自營"}
-    COLS    = ["外資","投信","自營","外資大小","前五大留倉","前十大留倉","選PCR","外(選)","未平倉口數","韭菜指數"]
+    MARGIN  = {"融資餘額","融券餘額"}
+    COLS    = ["外資","投信","自營","外資大小","融資餘額","融券餘額",
+               "前五大留倉","前十大留倉","選PCR","外(選)","未平倉口數","韭菜指數"]
     def fmt(v, col):
         if v is None or (isinstance(v, float) and pd.isna(v)): return "-"
         if col in BRACKET:
             n = int(v); return f"({abs(n):,})" if n < 0 else f"{n:,}"
         if col in SPOT: return f"{float(v):+.1f}"
+        if col in MARGIN: return f"{float(v):,.0f}億"
         if col == "選PCR": return f"{float(v):.1f}"
         if col == "未平倉口數": return f"{int(v):,}"
         if col == "韭菜指數": return f"{float(v):+.1f}%"
         return str(v)
     def sty(v, col):
-        """回傳 CSS color 字串，給 <span style="..."> 使用"""
         if v is None: return ""
         try:
             if pd.isna(v): return ""
@@ -1102,18 +1139,31 @@ def render_leading_table(df):
         if col in SPOT:
             if n > 0: return "color:#58a6ff;"
             if n < 0: return "color:#f85149;"
+        if col == "融資餘額":
+            if n >= 3400: return "color:#f85149;font-weight:bold;"
+            if n >= 2800: return "color:#d29922;"
+            return "color:#3fb950;"
+        if col == "融券餘額":
+            if n >= 100:  return "color:#f85149;"
+            return "color:#8b949e;"
         if col == "選PCR":
-            if n < 80:  return "color:#58a6ff;"   # 偏多（Call 多）→ 藍
-            if n > 120: return "color:#f85149;"   # 偏空（Put 多）→ 紅
+            if n < 80:  return "color:#58a6ff;"
+            if n > 120: return "color:#f85149;"
         if col == "未平倉口數":
             if n > 0: return "color:#58a6ff;"
             if n < 0: return "color:#f85149;"
         if col == "韭菜指數":
-            if n > 10:  return "color:#58a6ff;font-weight:bold;"   # 散戶大幅看多→藍
-            elif n > 0: return "color:#58a6ff;"                    # 輕微看多→藍
-            elif n < -10: return "color:#f85149;font-weight:bold;" # 散戶大幅看空→紅
-            elif n < 0: return "color:#f85149;"                    # 輕微看空→紅
+            if n > 10:  return "color:#58a6ff;font-weight:bold;"
+            elif n > 0: return "color:#58a6ff;"
+            elif n < -10: return "color:#f85149;font-weight:bold;"
+            elif n < 0: return "color:#f85149;"
         return ""
+    # 判斷是否有融資融券資料（避免顯示全空欄位）
+    _has_margin = any(df[c].notna().any() for c in ["融資餘額","融券餘額"] if c in df.columns)
+    _margin_span = 2 if _has_margin else 0
+    _margin_hdr = ('<th colspan="2" class="li-mg">💸 信用交易</th>\n' if _has_margin else '')
+    _margin_th  = ('<th class="li-hb">融資餘額<br><small>億元</small></th>\n'
+                   '  <th class="li-hb">融券餘額<br><small>億元</small></th>\n' if _has_margin else '')
     h = (
         "<style>\n"
         ".li-tbl{width:100%;border-collapse:collapse;font-size:14px;font-family:Arial,sans-serif;}\n"
@@ -1122,6 +1172,7 @@ def render_leading_table(df):
         ".li-tbl tr:hover td{background:rgba(255,215,0,0.08);}\n"
         ".li-hd{background:#1a3a5c;color:#fff;font-weight:bold;}\n"
         ".li-fa{background:#4a2060;color:#FFD700;font-weight:bold;}\n"
+        ".li-mg{background:#3a2a10;color:#ffa040;font-weight:bold;}\n"
         ".li-li{background:#1a4a2a;color:#90EE90;font-weight:bold;}\n"
         ".li-hb{background:#1a1a2e;color:#ccc;font-weight:bold;}\n"
         ".li-dl{font-weight:bold;text-align:left;padding-left:12px;color:#9CDCFE;}\n"
@@ -1130,6 +1181,7 @@ def render_leading_table(df):
         "<tr>\n"
         "  <th rowspan=\"2\" class=\"li-hd\">日期</th><th rowspan=\"2\" class=\"li-hd\">成交量</th>\n"
         "  <th colspan=\"4\" class=\"li-fa\">🏦 法人買賣</th>\n"
+        f"  {_margin_hdr}"
         "  <th colspan=\"6\" class=\"li-li\">📡 先行指標</th>\n"
         "</tr>\n"
         "<tr>\n"
@@ -1137,6 +1189,7 @@ def render_leading_table(df):
         "  <th class=\"li-hb\">投信<br><small>億元</small></th>\n"
         "  <th class=\"li-hb\">自營<br><small>億元</small></th>\n"
         "  <th class=\"li-hb\">外資大小<br><small>口</small></th>\n"
+        f"  {_margin_th}"
         "  <th class=\"li-hb\">前五大留倉<br><small>口</small></th>\n"
         "  <th class=\"li-hb\">前十大留倉<br><small>口</small></th>\n"
         "  <th class=\"li-hb\">選PCR</th>\n"
@@ -1146,10 +1199,11 @@ def render_leading_table(df):
         "</tr>\n"
         "</thead><tbody>"
     )
+    _render_cols = COLS if _has_margin else [c for c in COLS if c not in MARGIN]
     for _, row in df.iterrows():
         h += "<tr>"
         h += f'<td class="li-dl">{row.get("日期","-")}</td><td><span style="color:#9CDCFE;">{row.get("成交量","-")}</span></td>'
-        for col in COLS:
+        for col in _render_cols:
             v = row.get(col)
             _s = sty(v, col)
             _f = fmt(v, col)
