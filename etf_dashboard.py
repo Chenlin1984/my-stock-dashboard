@@ -891,6 +891,7 @@ def render_etf_single(gemini_fn=None):
         'cur_yield': cur_yield, 'avg_yield': avg_yield,
         'total_ret': total_ret, 'vcp': vcp,
         'premium': prem, 'te': te, 'regime': regime,
+        'price_df': df,
     }
 
     # ── AI ETF 存股決策總結 ───────────────────────────────────
@@ -2044,24 +2045,47 @@ def render_data_health():
     else:
         _today = _pd_dh.Timestamp.now().normalize()
 
-        def _freshness(date_str):
+        def _freshness(date_str, name=''):
+            """依資料更新頻率（日/月/季）套用不同新鮮度門檻。"""
             try:
-                _dt = _pd_dh.Timestamp(date_str)
+                _dt  = _pd_dh.Timestamp(date_str)
                 _age = (_today - _dt).days
-                if _age <= 5:   return '🟢', f'{_age}天前'
-                elif _age <= 14: return '🟡', f'{_age}天前'
-                else:            return '🔴', f'{_age}天前（⚠️ 過舊）'
             except Exception:
-                return '⚪', 'N/A'
+                return '⚪', 'N/A', '—'
+
+            # ── 判斷更新頻率 ──────────────────────────────────────
+            if any(k in name for k in ['季財報', '現金流量', '資產負債']):
+                _freq = '📊 季更新'
+                # 季報：90天內=最新一季 🟢，180天=落後一季 🟡，>180=過舊 🔴
+                if _age <= 90:    _icon, _lbl = '🟢', f'{_age}天前'
+                elif _age <= 180: _icon, _lbl = '🟡', f'{_age}天前'
+                else:             _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
+            elif '月營收' in name:
+                _freq = '📅 月更新'
+                # 月報：45天內=當季最新月 🟢，75天=上上月 🟡，>75=過舊 🔴
+                if _age <= 45:   _icon, _lbl = '🟢', f'{_age}天前'
+                elif _age <= 75: _icon, _lbl = '🟡', f'{_age}天前'
+                else:            _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
+            else:
+                _freq = '📈 日更新'
+                # 日資料：0=今天 🟢，1=昨天 🟢，2-3=週末補償 🟢，4-5=稍舊 🟡，>5=過舊 🔴
+                if _age == 0:    _icon, _lbl = '🟢', '今天'
+                elif _age == 1:  _icon, _lbl = '🟢', '昨天'
+                elif _age <= 3:  _icon, _lbl = '🟢', f'{_age}天前'   # 週末/假日
+                elif _age <= 5:  _icon, _lbl = '🟡', f'{_age}天前'
+                else:            _icon, _lbl = '🔴', f'{_age}天前 ⚠️'
+
+            return _icon, _lbl, _freq
 
         _tbl_rows = []
         for _rn, _rv in sorted(_reg.items()):
-            _icon, _age_str = _freshness(_rv['latest_date'])
+            _icon, _age_str, _freq_lbl = _freshness(_rv['latest_date'], _rn)
             _tbl_rows.append({
                 '燈號': _icon,
                 '資料名稱': _rn,
                 '最新日期': _rv['latest_date'],
                 '新鮮度': _age_str,
+                '更新頻率': _freq_lbl,
                 '筆數': _rv['rows'],
                 '欄位數': _rv['cols'],
             })
@@ -2070,9 +2094,9 @@ def render_data_health():
         st.dataframe(_df_tbl, use_container_width=True, hide_index=True)
         _n_stale = sum(1 for r in _tbl_rows if '⚠️' in r['新鮮度'])
         if _n_stale:
-            st.warning(f'⚠️ 發現 {_n_stale} 筆資料超過 14 天，建議重新載入或檢查 API 排序邏輯。')
+            st.warning(f'⚠️ 發現 {_n_stale} 筆資料已過期（日資料>5天 / 月資料>75天 / 季資料>180天），建議重新載入。')
         else:
-            st.success(f'✅ {len(_tbl_rows)} 個資料源全部新鮮（≤ 5天）')
+            st.success(f'✅ {len(_tbl_rows)} 個資料源全部符合更新頻率標準')
 
         # ── 快照檢視器 ──────────────────────────────────────────────
         st.markdown(

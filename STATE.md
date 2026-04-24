@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.21 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.24 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,40 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.24）
+
+### 先行指標拆細項（app.py）
+| 細項 | 來源欄位 | 資料來源 |
+|------|---------|---------|
+| `[先行指標] 三大法人現貨` | 外資、投信、自營 | FinMind TaiwanStockTotalInstitutionalInvestors |
+| `[先行指標] 外資期貨留倉` | 外資大小 | FinMind TaiwanFuturesInstitutionalInvestors |
+| `[先行指標] 選擇權PCR` | 選PCR、外(選) | FinMind TaiwanOptionInstitutionalInvestors |
+| `[先行指標] 成交量（TWSE）` | 成交量 | TWSE MI_INDEX |
+| `[先行指標] 未平倉/韭菜指數` | 前五大留倉、前十大留倉、未平倉口數、韭菜指數 | TAIFEX（免費版多為 null） |
+- 各細項排除「整列均為 null / '-'」的日期，最新日期反映該來源最後有效資料
+
+## ✅ 最新異動（v10.23）
+
+### Data Registry 頻率感知新鮮度（etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **_freshness(date_str, name)** | 新增 `name` 參數，依資料名稱關鍵字自動判斷更新頻率並套用對應門檻 |
+| **日更新（預設）** | 🟢 0-3天（含週末）、🟡 4-5天、🔴 >5天；0=今天、1=昨天 顯示文字 |
+| **月更新（月營收）** | 🟢 ≤45天、🟡 ≤75天、🔴 >75天 |
+| **季更新（季財報/現金流量/資產負債）** | 🟢 ≤90天（最新一季）、🟡 ≤180天（落後一季）、🔴 >180天 |
+| **新欄位「更新頻率」** | 健康總表新增欄位，顯示 📈日/📅月/📊季 |
+| **警告訊息更新** | Banner 同步說明各頻率的過期標準 |
+
+## ✅ 最新異動（v10.22）
+
+### Data Registry 修復 + 個股/ETF 細項掃描（app.py + etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **先行指標 NaT 修復** | `_reg_add()` 優先搜尋 `_date` 欄（YYYYMMDD 格式），以 `format='%Y%m%d'` 解析；舊的 `日期` 欄（`4月23日`，無年份）不再導致 NaT |
+| **NaN 安全判斷** | `_ls` 賦值加入 `pd.isna()` 防呆，避免 `NaT` 被格式化成錯誤字串 |
+| **個股細項自動登錄** | 掃描 `t2_data` 的 `df/rev/qtr/cl/cx`，以 `[個股] {sid} {name} \| {類型}` 格式寫入 registry |
+| **ETF 細項自動登錄** | `etf_single_data` 新增 `price_df` 欄位；registry 掃描後以 `[ETF] {ticker} {name} \| 價格走勢` 登錄 |
 
 ## ✅ 最新異動（v10.21）
 

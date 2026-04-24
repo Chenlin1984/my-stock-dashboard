@@ -2852,12 +2852,21 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _d = _d.sort_index(ascending=False)
                     _latest = _d.index[0]
                 else:
-                    # 2. 找日期欄（date / Date / datetime / 日期）
-                    _dcol = next((c for c in _d.columns if str(c).lower() in
-                                  ('date', 'datetime', 'timestamp', '日期', 'quarter', 'period')), None)
+                    # 2. 找日期欄：_date(YYYYMMDD) 優先，再找 date/datetime/日期等
+                    _dcol = None
+                    _date_fmt = None
+                    for _c in _d.columns:
+                        _cl = str(_c).lower()
+                        if _cl == '_date':
+                            _dcol = _c; _date_fmt = '%Y%m%d'; break
+                        if _cl in ('date', 'datetime', 'timestamp', '日期', 'quarter', 'period'):
+                            _dcol = _c; break
                     if _dcol:
                         try:
-                            _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], errors='coerce')
+                            if _date_fmt:
+                                _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], format=_date_fmt, errors='coerce')
+                            else:
+                                _d[_dcol] = _pd_reg.to_datetime(_d[_dcol], errors='coerce')
                             _d = _d.sort_values(_dcol, ascending=False)
                             _latest = _d[_dcol].iloc[0]
                         except Exception:
@@ -2865,7 +2874,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     else:
                         _latest = None
                 try:
-                    _ls = _pd_reg.Timestamp(_latest).strftime('%Y-%m-%d') if _latest is not None else 'N/A'
+                    _ls = (_pd_reg.Timestamp(_latest).strftime('%Y-%m-%d')
+                           if _latest is not None and not _pd_reg.isna(_latest) else 'N/A')
                 except Exception:
                     _ls = str(_latest)[:10] if _latest else 'N/A'
                 _reg_new[_rname] = {
@@ -2885,9 +2895,50 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _adl_reg = _cl_reg.get('adl')
             if isinstance(_adl_reg, _pd_reg.DataFrame):
                 _reg_add('ADL 市場廣度', _adl_reg)
+            # ── 先行指標：按資料來源拆成 5 個細項 ──────────────────
             _li_reg = st.session_state.get('li_latest')
-            if isinstance(_li_reg, _pd_reg.DataFrame):
-                _reg_add('先行指標', _li_reg)
+            if isinstance(_li_reg, _pd_reg.DataFrame) and not _li_reg.empty:
+                _li_groups = {
+                    '[先行指標] 三大法人現貨':   ['外資', '投信', '自營'],
+                    '[先行指標] 外資期貨留倉':   ['外資大小'],
+                    '[先行指標] 選擇權PCR':      ['選PCR', '外(選)'],
+                    '[先行指標] 成交量（TWSE）': ['成交量'],
+                    '[先行指標] 未平倉/韭菜指數':['前五大留倉', '前十大留倉', '未平倉口數', '韭菜指數'],
+                }
+                _li_date_cols = [c for c in ['_date'] if c in _li_reg.columns]
+                for _grp, _cols in _li_groups.items():
+                    _vcols = [c for c in _cols if c in _li_reg.columns]
+                    if not _vcols:
+                        continue
+                    _sub = _li_reg[_li_date_cols + _vcols].copy()
+                    # 排除整列資料均為 null / "-" 的列（該來源當天無資料）
+                    _mask = _sub[_vcols].apply(
+                        lambda s: s.notna() & (s.astype(str).str.strip() != '-')
+                    ).any(axis=1)
+                    _sub = _sub[_mask]
+                    if not _sub.empty:
+                        _reg_add(_grp, _sub)
+
+            # ── 個股細項（t2_data：價格走勢/月營收/季財報/現金流/資產負債）
+            _t2d_reg = st.session_state.get('t2_data')
+            if _t2d_reg:
+                _s2r = _t2d_reg.get('sid', '')
+                _n2r = (_t2d_reg.get('name') or _s2r) or _s2r
+                _pfx = f'[個股] {_s2r} {_n2r}'
+                for _lbl, _key in [('價格走勢','df'),('月營收','rev'),
+                                    ('季財報','qtr'),('現金流量','cl'),('資產負債','cx')]:
+                    _sub = _t2d_reg.get(_key)
+                    if isinstance(_sub, _pd_reg.DataFrame) and not _sub.empty:
+                        _reg_add(f'{_pfx} | {_lbl}', _sub)
+
+            # ── ETF 細項（etf_single_data：價格走勢）
+            _etf1_reg = st.session_state.get('etf_single_data') or {}
+            _etf_pdf  = _etf1_reg.get('price_df')
+            if isinstance(_etf_pdf, _pd_reg.DataFrame) and not _etf_pdf.empty:
+                _etf_tk = _etf1_reg.get('ticker', 'ETF')
+                _etf_nm = _etf1_reg.get('name', '')
+                _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢', _etf_pdf)
+
             st.session_state['data_registry'] = _reg_new
             print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源')
         except Exception as _re:
