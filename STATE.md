@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.22 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.23 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.23）
+
+### Data Registry 頻率感知新鮮度（etf_dashboard.py）
+| 項目 | 說明 |
+|------|------|
+| **_freshness(date_str, name)** | 新增 `name` 參數，依資料名稱關鍵字自動判斷更新頻率並套用對應門檻 |
+| **日更新（預設）** | 🟢 0-3天（含週末）、🟡 4-5天、🔴 >5天；0=今天、1=昨天 顯示文字 |
+| **月更新（月營收）** | 🟢 ≤45天、🟡 ≤75天、🔴 >75天 |
+| **季更新（季財報/現金流量/資產負債）** | 🟢 ≤90天（最新一季）、🟡 ≤180天（落後一季）、🔴 >180天 |
+| **新欄位「更新頻率」** | 健康總表新增欄位，顯示 📈日/📅月/📊季 |
+| **警告訊息更新** | Banner 同步說明各頻率的過期標準 |
 
 ## ✅ 最新異動（v10.22）
 
