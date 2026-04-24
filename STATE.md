@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.23 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.24 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.24）
+
+### 先行指標拆細項（app.py）
+| 細項 | 來源欄位 | 資料來源 |
+|------|---------|---------|
+| `[先行指標] 三大法人現貨` | 外資、投信、自營 | FinMind TaiwanStockTotalInstitutionalInvestors |
+| `[先行指標] 外資期貨留倉` | 外資大小 | FinMind TaiwanFuturesInstitutionalInvestors |
+| `[先行指標] 選擇權PCR` | 選PCR、外(選) | FinMind TaiwanOptionInstitutionalInvestors |
+| `[先行指標] 成交量（TWSE）` | 成交量 | TWSE MI_INDEX |
+| `[先行指標] 未平倉/韭菜指數` | 前五大留倉、前十大留倉、未平倉口數、韭菜指數 | TAIFEX（免費版多為 null） |
+- 各細項排除「整列均為 null / '-'」的日期，最新日期反映該來源最後有效資料
 
 ## ✅ 最新異動（v10.23）
 
