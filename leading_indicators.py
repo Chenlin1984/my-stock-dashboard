@@ -592,6 +592,48 @@ def twse_institutional_day(date_ymd):
     except: return {}
 
 # ════════════════════════════════════════════════════════
+# TWSE 融資融券 MI_MARGN（單日）
+# ════════════════════════════════════════════════════════
+def _twse_margin_day(ymd8: str) -> dict:
+    """
+    TWSE MI_MARGN 單日全市場合計 → {'融資餘額': 億元, '融券餘額': 億元}
+    失敗回傳 {}
+    """
+    try:
+        r = _TWSE_S.get(
+            "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+            params={"date": ymd8, "selectType": "MS", "response": "json"},
+            headers={**TWSE_HDR, "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html"},
+            timeout=12)
+        j = r.json()
+        if j.get("stat") != "OK":
+            return {}
+        data   = j.get("data", [])
+        fields = [str(f) for f in j.get("fields", [])]
+        # 動態偵測欄位索引，容錯 fallback
+        fa_col = next((i for i, f in enumerate(fields) if "融資" in f and "餘額" in f and "限" not in f), 6)
+        fv_col = next((i for i, f in enumerate(fields) if "融券" in f and "餘額" in f and "限" not in f), 13)
+        entry  = {}
+        for row in reversed(data):      # 最後一行是全市場合計
+            if len(row) <= max(fa_col, fv_col):
+                continue
+            try:
+                fa_raw = float(str(row[fa_col]).replace(",", "").replace(" ", ""))
+                fv_raw = float(str(row[fv_col]).replace(",", "").replace(" ", ""))
+                # TWSE 單位：千元 → 億元（÷ 100,000）
+                if fa_raw > 1_000_000:    # > 100億千元 → 有效
+                    entry["融資餘額"] = round(fa_raw / 100_000, 0)
+                if fv_raw > 10_000:       # > 1億千元 → 有效
+                    entry["融券餘額"] = round(fv_raw / 100_000, 0)
+                if entry:
+                    return entry
+            except Exception:
+                continue
+    except Exception as _e:
+        print(f"[TWSE_MARGN/{ymd8}] {_e}")
+    return {}
+
+# ════════════════════════════════════════════════════════
 # TAIFEX 選擇權 PCR（批量）
 # ✅ 已穩定，保持不變
 # ════════════════════════════════════════════════════════
@@ -937,36 +979,23 @@ def build_leading_fast(days=7, token=""):
             if rd: inst_dict[dk] = rd
         print(f"[LI-v8] 三大法人 {len(inst_dict)} 天")
 
-    # ═══ 4.5 融資融券日序列（FinMind TaiwanStockTotalMarginPurchaseShortSale）═
+    # ═══ 4.5 融資融券日序列（TWSE MI_MARGN 逐日）══════════════
     margin_dict = {}   # {ymd: {'融資餘額': float, '融券餘額': float}}
     try:
-        _df_mg = finmind_get("TaiwanStockTotalMarginPurchaseShortSale", "", s_ymd, e_ymd, token)
-        if not _df_mg.empty and 'name' in _df_mg.columns:
-            _df_mg['_ymd'] = _df_mg['date'].astype(str).str.replace('-', '')
-            _df_mg = _df_mg[_df_mg['_ymd'].between(s_ymd, e_ymd)]
-            for _dk, _grp in _df_mg.groupby('_ymd'):
-                _entry = {}
-                for _, _mr in _grp.iterrows():
-                    _nm = str(_mr.get('name', ''))
-                    for _col in ['TodayBalance', 'today_balance', 'balance',
-                                 'MarginPurchaseBalance', 'marginBalance']:
-                        if _col in _mr.index:
-                            _v = float(pd.to_numeric(_mr[_col], errors='coerce') or 0)
-                            if _v <= 0:
-                                break
-                            # 單位自動偵測（元→億）
-                            if _v > 1e12:   _v = round(_v / 1e8, 0)
-                            elif _v > 1e9:  _v = round(_v / 1e8, 0)
-                            elif _v > 1e4:  _v = round(_v / 100, 0)
-                            if 100 < _v < 20000:   # 合理範圍（億元）
-                                if '融資' in _nm or 'MarginPurchase' in _nm:
-                                    _entry['融資餘額'] = _v
-                                elif '融券' in _nm or 'ShortSale' in _nm:
-                                    _entry['融券餘額'] = _v
-                            break
-                if _entry:
-                    margin_dict[_dk] = _entry
-        print(f"[LI-v8] 融資融券序列 {len(margin_dict)} 天")
+        import datetime as _dt45
+        _mg_c = _dt45.datetime.strptime(e_ymd, '%Y%m%d').date()
+        _mg_s = _dt45.datetime.strptime(s_ymd, '%Y%m%d').date()
+        _mg_dates = []
+        while _mg_c >= _mg_s and len(_mg_dates) < days + 5:
+            if _mg_c.weekday() < 5:
+                _mg_dates.append(_mg_c.strftime('%Y%m%d'))
+            _mg_c -= _dt45.timedelta(days=1)
+        for _mgd in _mg_dates:
+            _r = _twse_margin_day(_mgd)
+            if _r:
+                margin_dict[_mgd] = _r
+            time.sleep(0.12)   # 避免過快觸發 TWSE 限速
+        print(f"[LI-v8] 融資融券序列 {len(margin_dict)} 天（TWSE MI_MARGN）")
     except Exception as _mge:
         print(f"[LI-v8] 融資融券略過: {_mge}")
 
