@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.27 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.28 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 
 ## 🏗️ 核心模組
@@ -21,6 +21,20 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.28，commit `4c76307`）
+
+### 資料診斷全動態化：無限制類別擴充（app.py + etf_dashboard.py + test_registry.py）
+| 項目 | 說明 |
+|------|------|
+| **欄位重命名** | `app.py` registry：`freq` → `frequency`、`latest_date` → `last_updated`（`_reg_add` / `_reg_missing` 及全部 10+ 呼叫點同步更新） |
+| **動態 Tab 生成** | `etf_dashboard.py §0`：移除硬寫的 `st.tabs(['大盤','個股','ETF'])`；改為掃描 registry 中實際存在的 `category` 值動態生成；新增任意類別不需改 UI 代碼 |
+| **`_disp_name()`** | 統一 registry key → 顯示名稱轉換（去 `[先行指標]` / `[ETF]` / `[個股]` 前綴，`| ` 後取細項名） |
+| **`_freshness()` 參數** | 參數從 `freq` 改為 `frequency`，與 registry 欄位名一致 |
+| **`_build_table()` 欄位** | 讀 `frequency`（非 `freq`）、`last_updated`（非 `latest_date`） |
+| **`_CAT_ICON` 可擴充** | 替換 `_CAT_LBL` 固定字典，未登錄類別自動顯示 `📁 {cat}` |
+| **全域 Banner 修復** | 摘要計算同步使用 `last_updated` / `frequency` 欄位 |
+| **`test_registry.py`（新增）** | 12 個 mock 案例（日/月/季 × 最新/略舊/過期/缺失 + 跨月/跨年邊界），全部通過 ✅ |
 
 ## ✅ 最新異動（v10.27）
 
