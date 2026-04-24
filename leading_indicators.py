@@ -979,25 +979,101 @@ def build_leading_fast(days=7, token=""):
             if rd: inst_dict[dk] = rd
         print(f"[LI-v8] 三大法人 {len(inst_dict)} 天")
 
-    # ═══ 4.5 融資融券日序列（TWSE MI_MARGN 逐日）══════════════
+    # ═══ 4.5 融資融券日序列（FinMind 主 → TWSE 備援）══════════════
     margin_dict = {}   # {ymd: {'融資餘額': float, '融券餘額': float}}
+
+    def _to_yi_mg(v):
+        """智能單位轉換 → 億元，自動偵測千元/萬元/元"""
+        try:
+            v = float(v)
+        except Exception:
+            return None
+        if pd.isna(v) or v <= 0:
+            return None
+        if 100 <= v <= 20000:   return round(v, 0)          # 已是億元
+        if v > 1e9:             return round(v / 1e8, 0)    # 元 → 億元
+        if v > 1e6:             return round(v / 1e5, 0)    # 千元 → 億元
+        if v > 1e4:             return round(v / 1e4, 0)    # 萬元 → 億元
+        return None
+
+    # ── 來源 A：FinMind TaiwanStockTotalMarginPurchaseShortSale ──
     try:
-        import datetime as _dt45
-        _mg_c = _dt45.datetime.strptime(e_ymd, '%Y%m%d').date()
-        _mg_s = _dt45.datetime.strptime(s_ymd, '%Y%m%d').date()
-        _mg_dates = []
-        while _mg_c >= _mg_s and len(_mg_dates) < days + 5:
-            if _mg_c.weekday() < 5:
-                _mg_dates.append(_mg_c.strftime('%Y%m%d'))
-            _mg_c -= _dt45.timedelta(days=1)
-        for _mgd in _mg_dates:
-            _r = _twse_margin_day(_mgd)
-            if _r:
-                margin_dict[_mgd] = _r
-            time.sleep(0.12)   # 避免過快觸發 TWSE 限速
-        print(f"[LI-v8] 融資融券序列 {len(margin_dict)} 天（TWSE MI_MARGN）")
-    except Exception as _mge:
-        print(f"[LI-v8] 融資融券略過: {_mge}")
+        _df_mg = finmind_get("TaiwanStockTotalMarginPurchaseShortSale", "", s_ymd, e_ymd, token)
+        if not _df_mg.empty:
+            _mg_cols = list(_df_mg.columns)
+            print(f"[LI-v8] FM融資融券欄位: {_mg_cols}")
+            if not _df_mg.empty:
+                print(f"[LI-v8] FM融資融券sample:\n{_df_mg.head(4).to_string()}")
+            _df_mg['_ymd'] = _df_mg['date'].astype(str).str.replace('-', '')
+            _df_mg = _df_mg[_df_mg['_ymd'].between(s_ymd, e_ymd)]
+            # 自動找 balance 欄位（任何含 alance / 餘額 / Amount 的欄）
+            _bal_cols = [c for c in _mg_cols if any(k in c for k in
+                         ['alance', '餘額', 'amount', 'Amount'])]
+            print(f"[LI-v8] FM候選balance欄: {_bal_cols}")
+            if 'name' in _mg_cols and _bal_cols:
+                for _bc in _bal_cols:
+                    _tmp = {}
+                    for _dk, _grp in _df_mg.groupby('_ymd'):
+                        _e = {}
+                        for _, _mr in _grp.iterrows():
+                            _nm = str(_mr.get('name', '')).lower()
+                            _v_yi = _to_yi_mg(_mr.get(_bc))
+                            if _v_yi is None:
+                                continue
+                            if '融資' in _nm or 'margin' in _nm or 'purchase' in _nm:
+                                if 100 < _v_yi < 20000:
+                                    _e['融資餘額'] = _v_yi
+                            elif '融券' in _nm or 'short' in _nm:
+                                if 10 < _v_yi < 5000:
+                                    _e['融券餘額'] = _v_yi
+                        if _e:
+                            _tmp[_dk] = _e
+                    if _tmp:
+                        margin_dict = _tmp
+                        print(f"[LI-v8] FM融資融券欄={_bc} 找到 {len(margin_dict)} 天")
+                        break
+                if not margin_dict:
+                    _name_samples = list(_df_mg['name'].unique()[:8]) if 'name' in _df_mg.columns else []
+                    print(f"[LI-v8] FM融資融券所有欄均無法解析，name樣本={_name_samples}")
+            elif 'MarginPurchaseTodayBalance' in _mg_cols:
+                # 寬格式（個股樣式）
+                for _dk, _grp in _df_mg.groupby('_ymd'):
+                    _e = {}
+                    _fa = _to_yi_mg(_grp['MarginPurchaseTodayBalance'].iloc[-1])
+                    if _fa and 100 < _fa < 20000:
+                        _e['融資餘額'] = _fa
+                    if 'ShortSaleTodayBalance' in _grp.columns:
+                        _fv = _to_yi_mg(_grp['ShortSaleTodayBalance'].iloc[-1])
+                        if _fv and 10 < _fv < 5000:
+                            _e['融券餘額'] = _fv
+                    if _e:
+                        margin_dict[_dk] = _e
+                print(f"[LI-v8] FM融資融券（寬格式）{len(margin_dict)} 天")
+        else:
+            print("[LI-v8] FM融資融券回傳空 DataFrame")
+    except Exception as _fm_mge:
+        print(f"[LI-v8] FM融資融券略過: {_fm_mge}")
+
+    # ── 來源 B：TWSE MI_MARGN（若 FinMind 無資料則備援）────────
+    if not margin_dict:
+        print("[LI-v8] 嘗試 TWSE MI_MARGN 備援")
+        try:
+            import datetime as _dt45
+            _mg_c = _dt45.datetime.strptime(e_ymd, '%Y%m%d').date()
+            _mg_s = _dt45.datetime.strptime(s_ymd, '%Y%m%d').date()
+            _mg_dates = []
+            while _mg_c >= _mg_s and len(_mg_dates) < days + 5:
+                if _mg_c.weekday() < 5:
+                    _mg_dates.append(_mg_c.strftime('%Y%m%d'))
+                _mg_c -= _dt45.timedelta(days=1)
+            for _mgd in _mg_dates:
+                _r = _twse_margin_day(_mgd)
+                if _r:
+                    margin_dict[_mgd] = _r
+                time.sleep(0.12)
+            print(f"[LI-v8] TWSE融資融券序列 {len(margin_dict)} 天")
+        except Exception as _tw_mge:
+            print(f"[LI-v8] TWSE融資融券略過: {_tw_mge}")
 
     # ═══ 5. 成交量（選用）══════════════════════════════════════
     vol_dict = {}
