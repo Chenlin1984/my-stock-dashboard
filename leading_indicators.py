@@ -597,40 +597,66 @@ def twse_institutional_day(date_ymd):
 def _twse_margin_day(ymd8: str) -> dict:
     """
     TWSE MI_MARGN 單日全市場合計 → {'融資餘額': 億元, '融券餘額': 億元}
+    邏輯完全對齊 daily_checklist.fetch_margin_balance（已驗證有效）
     失敗回傳 {}
     """
-    try:
-        r = _TWSE_S.get(
-            "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
-            params={"date": ymd8, "selectType": "MS", "response": "json"},
-            headers={**TWSE_HDR, "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html"},
-            timeout=12)
-        j = r.json()
-        if j.get("stat") != "OK":
-            return {}
-        data   = j.get("data", [])
-        fields = [str(f) for f in j.get("fields", [])]
-        # 動態偵測欄位索引，容錯 fallback
-        fa_col = next((i for i, f in enumerate(fields) if "融資" in f and "餘額" in f and "限" not in f), 6)
-        fv_col = next((i for i, f in enumerate(fields) if "融券" in f and "餘額" in f and "限" not in f), 13)
-        entry  = {}
-        for row in reversed(data):      # 最後一行是全市場合計
-            if len(row) <= max(fa_col, fv_col):
+    for _sel in ["MS", "ALL"]:
+        try:
+            r = _TWSE_S.get(
+                "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+                params={"date": ymd8, "selectType": _sel, "response": "json"},
+                headers={**TWSE_HDR, "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html"},
+                timeout=15)
+            j = r.json()
+            if j.get("stat") != "OK":
                 continue
-            try:
-                fa_raw = float(str(row[fa_col]).replace(",", "").replace(" ", ""))
-                fv_raw = float(str(row[fv_col]).replace(",", "").replace(" ", ""))
-                # TWSE 單位：千元 → 億元（÷ 100,000）
-                if fa_raw > 1_000_000:    # > 100億千元 → 有效
-                    entry["融資餘額"] = round(fa_raw / 100_000, 0)
-                if fv_raw > 10_000:       # > 1億千元 → 有效
-                    entry["融券餘額"] = round(fv_raw / 100_000, 0)
-                if entry:
-                    return entry
-            except Exception:
+            data   = j.get("data", [])
+            if not data:
                 continue
-    except Exception as _e:
-        print(f"[TWSE_MARGN/{ymd8}] {_e}")
+            fields = [str(f) for f in j.get("fields", [])]
+            print(f"[TWSE_MARGN/{_sel}/{ymd8}] fields={fields[:10]}")
+            # 對齊 fetch_margin_balance 的欄位偵測
+            fa_col = next((i for i, f in enumerate(fields)
+                           if "融資" in f and "餘額" in f and "限" not in f), None)
+            if fa_col is None:
+                fa_col = 6
+            fv_col = next((i for i, f in enumerate(fields)
+                           if "融券" in f and "餘額" in f and "限" not in f), None)
+            if fv_col is None:
+                fv_col = 13
+            entry = {}
+            for row in reversed(data):
+                if len(row) <= max(fa_col, fv_col):
+                    continue
+                try:
+                    fa_raw = float(str(row[fa_col]).replace(",", "").replace(" ", ""))
+                    # 對齊 fetch_margin_balance 的閾值
+                    if fa_raw > 100_000_000:   # 太大，跳過
+                        continue
+                    if fa_raw > 10_000_000:    # 合理範圍
+                        entry["融資餘額"] = round(fa_raw / 100_000, 0)
+                    elif fa_raw > 1_000_000:   # 備用範圍（萬元單位）
+                        r2 = round(fa_raw / 10_000, 0)
+                        if 500 < r2 < 10000:
+                            entry["融資餘額"] = r2
+                    # 融券餘額（使用同欄位檢測策略）
+                    if len(row) > fv_col:
+                        fv_raw = float(str(row[fv_col]).replace(",", "").replace(" ", ""))
+                        if fv_raw > 100_000_000:
+                            pass  # 跳過
+                        elif fv_raw > 100_000:    # >10億千元
+                            entry["融券餘額"] = round(fv_raw / 100_000, 0)
+                        elif fv_raw > 10_000:
+                            r3 = round(fv_raw / 10_000, 0)
+                            if 1 < r3 < 1000:
+                                entry["融券餘額"] = r3
+                    if entry.get("融資餘額"):
+                        print(f"[TWSE_MARGN/{_sel}/{ymd8}] ✅ 融資={entry.get('融資餘額')}億 融券={entry.get('融券餘額')}億")
+                        return entry
+                except Exception:
+                    continue
+        except Exception as _e:
+            print(f"[TWSE_MARGN/{_sel}/{ymd8}] {_e}")
     return {}
 
 # ════════════════════════════════════════════════════════
