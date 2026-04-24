@@ -3211,31 +3211,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
                             width='stretch',config={'displayModeBar':False})
-    with st.expander('📖 宏爺 × 孫慶龍 結論（SOX/DXY/殖利率公式）', expanded=False):
-        _expander_rows = []
-        if _sox_pct is not None and _dxy_val is not None:
-            if _sox_pct >= 1.5 and _dxy_val < 100:
-                _expander_rows.append(('🟢', f'宏爺 — 熱錢狂潮 (SOX {_sox_pct:+.1f}% ≥1.5% ∩ DXY {_dxy_val:.1f} <100)', '重壓電子強勢股'))
-            elif _sox_pct <= -1.5 and _dxy_val >= 103:
-                _expander_rows.append(('🔴', f'宏爺 — 外資提款 (SOX {_sox_pct:+.1f}% ∩ DXY {_dxy_val:.1f} ≥103)', '降倉至 3 成以下'))
-            elif _sox_pct >= 1.0 and _dxy_val >= 100:
-                _expander_rows.append(('🟡', f'宏爺 — 內資控盤 (SOX {_sox_pct:+.1f}% ≥1.0% ∩ DXY {_dxy_val:.1f} ≥100)', '精選中小型題材股'))
-            else:
-                _expander_rows.append(('⚪', f'宏爺 — 走勢分化 (SOX {_sox_pct:+.1f}% / DXY {_dxy_val:.1f})', '降部位等待確認'))
-        if _tyx_val is not None:
-            if _tyx_val >= 4.8:
-                _expander_rows.append(('🔴', f'孫慶龍 — 系統風險 (10Y {_tyx_val:.2f}% ≥4.8%)', '保留現金，嚴控槓桿'))
-            elif _tyx_val >= 4.5:
-                _expander_rows.append(('🟡', f'孫慶龍 — 估值承壓 (10Y {_tyx_val:.2f}% 4.5~4.8%)', '避開高本夢比個股'))
-            else:
-                _expander_rows.append(('🟢', f'孫慶龍 — 總經安全 (10Y {_tyx_val:.2f}% <4.5%)', '精選低基期價值股'))
-        for _ico, _txt, _act in _expander_rows:
-            st.markdown(
-                f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">'
-                f'{_ico} {_txt} → <span style="color:#8b949e;">{_act}</span></div>',
-                unsafe_allow_html=True
-            )
-
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
     _twii2 = tw_s.get('台股加權指數'); _twd2 = tw_s.get('新台幣匯率')
@@ -3332,31 +3307,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # ════════════════════════════════════════════════════════════════════
     st.markdown(section_header('三','🧮 大戶籌碼全貌：法人聰明錢 × 融資融券 × 先行指標','🧮'),unsafe_allow_html=True)
 
-    with st.expander('📖 孫慶龍 × 宏爺 籌碼結論', expanded=False):
-        if inst:
-            _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
-            _tk3 = next((k for k in inst if '投信' in k), None)
-            _fn3 = inst[_fk3]['net'] if _fk3 else 0
-            _tn3 = inst[_tk3]['net'] if _tk3 else 0
-            if _fn3 >= 100:
-                _hye_c = '#3fb950'; _hye_ind = f'外資大買超 {_fn3:.1f}億'; _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'; _hye_act = '趁拉回布局，持股 80~100%'
-            elif _fn3 <= -100:
-                _hye_c = '#f85149'; _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'; _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'; _hye_act = '持股降至 0~30%，停損優先'
-            else:
-                _hye_c = '#8b949e'; _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'; _hye_concl = '資金觀望，區間操作'; _hye_act = '持股 50%，高出低進等方向'
-            st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
-            if _tn3 > 5:
-                st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
-        if margin:
-            if margin >= 3400:
-                _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
-            elif margin >= 2800:
-                _sql_mc = '#d29922'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'; _sql_mact = '持股降至 50% 以下，避免重倉'
-            else:
-                _sql_mc = '#3fb950'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'; _sql_mact = '健康多頭格局，持股 70~100%'
-            st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
-            st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
+    if inst:
+        _fk3 = next((k for k in inst if '外資' in k and '陸資' in k), None) or next((k for k in inst if '外資' in k), None)
+        _tk3 = next((k for k in inst if '投信' in k), None)
+        _fn3 = inst[_fk3]['net'] if _fk3 else 0
+        _tn3 = inst[_tk3]['net'] if _tk3 else 0
+        if _fn3 >= 100:
+            _hye_c = '#3fb950'; _hye_ind = f'外資大買超 {_fn3:.1f}億'; _hye_concl = '大戶點火，跟著大戶走 → 積極加碼'; _hye_act = '趁拉回布局，持股 80~100%'
+        elif _fn3 <= -100:
+            _hye_c = '#f85149'; _hye_ind = f'外資大賣超 {abs(_fn3):.1f}億'; _hye_concl = '大戶倒貨，嚴格減碼 → 離場為上'; _hye_act = '持股降至 0~30%，停損優先'
+        else:
+            _hye_c = '#8b949e'; _hye_ind = f'外資 {_fn3:+.1f}億（觀望區間）'; _hye_concl = '資金觀望，區間操作'; _hye_act = '持股 50%，高出低進等方向'
+        st.markdown(teacher_conclusion('宏爺', _hye_ind, _hye_concl, color=_hye_c), unsafe_allow_html=True)
+        st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
+        if _tn3 > 5:
+            st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
+    if margin:
+        if margin >= 3400:
+            _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
+        elif margin >= 2800:
+            _sql_mc = '#d29922'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '水位偏高，籌碼凌亂 → 警戒操作'; _sql_mact = '持股降至 50% 以下，避免重倉'
+        else:
+            _sql_mc = '#3fb950'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '籌碼乾淨，安全水位 → 可積極布局'; _sql_mact = '健康多頭格局，持股 70~100%'
+        st.markdown(teacher_conclusion('孫慶龍', _sql_mind, _sql_mconcl, color=_sql_mc), unsafe_allow_html=True)
+        st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_sql_mact}</div>', unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:10px 0;">', unsafe_allow_html=True)
 
     # ── 宏爺外資期貨（先行指標快速結論）─────────────────────────────────
@@ -4074,15 +4048,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 if name in tech:
                     st.plotly_chart(sparkline(tech[name],name,clrs[i+4] if i+4<len(clrs) else '#ffd700'),
                                     width='stretch',config={'displayModeBar':False})
-    with st.expander('📖 宏爺 結論', expanded=False):
-        _tsm = tech_s.get('台積電 ADR')
-        _nvda = tech_s.get('輝達 NVDA')
-        _concl_tech = []
-        if _tsm:  _concl_tech.append(f'TSM ADR {_tsm["last"]:.2f} ({_tsm["pct"]:+.1f}%) → {"✅ 台積電強→明日2330有望跟漲" if _tsm["pct"]>1 else ("⚠️ 台積電弱→注意2330壓力" if _tsm["pct"]<-1 else "⚪ 台積電持平")}')
-        if _nvda: _concl_tech.append(f'NVDA {_nvda["last"]:.2f} ({_nvda["pct"]:+.1f}%) → {"✅ AI族群情緒熱" if _nvda["pct"]>2 else ("🔴 AI族群降溫" if _nvda["pct"]<-2 else "⚪ AI族群穩定")}')
-        for _tc2 in _concl_tech:
-            st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_tc2}</div>', unsafe_allow_html=True)
-        # ADR科技股結論已由上方 _concl_tech 列表顯示
+    _tsm = tech_s.get('台積電 ADR')
+    _nvda = tech_s.get('輝達 NVDA')
+    _concl_tech = []
+    if _tsm:  _concl_tech.append(f'TSM ADR {_tsm["last"]:.2f} ({_tsm["pct"]:+.1f}%) → {"✅ 台積電強→明日2330有望跟漲" if _tsm["pct"]>1 else ("⚠️ 台積電弱→注意2330壓力" if _tsm["pct"]<-1 else "⚪ 台積電持平")}')
+    if _nvda: _concl_tech.append(f'NVDA {_nvda["last"]:.2f} ({_nvda["pct"]:+.1f}%) → {"✅ AI族群情緒熱" if _nvda["pct"]>2 else ("🔴 AI族群降溫" if _nvda["pct"]<-2 else "⚪ AI族群穩定")}')
+    for _tc2 in _concl_tech:
+        st.markdown(f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">• {_tc2}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('七','💰 資金環境 × 估值（M1B-M2 + 年線乖離）','💰'),unsafe_allow_html=True)
@@ -4131,33 +4103,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         else:
             st.markdown(kpi('月線乖離率(20MA)', '計算中', '', '#484f58', '#0d1117'), unsafe_allow_html=True)
 
-    with st.expander('📖 弘爺 · 孫慶龍 結論', expanded=False):
-        _macro_concl = []
-        if _m1b_info:
-            _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)
-            if _diff2 > 0:
-                _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 弘爺：資金行情啟動，大膽做多！（領先大盤3~6月）')
-            elif _diff2 > -2:
-                _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 弘爺：資金動能趨緩，減碼等待訊號確認')
-            else:
-                _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 弘爺：資金撤離，空手觀望！')
-        if _bias_info:
-            _bv2 = _bias_info.get('bias_240', 0)
-            if _bv2 > 20:
-                _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 孫慶龍：開始分批減碼（乖離>20%啟動停利）')
-            elif _bv2 < -20:
-                _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 孫慶龍：左側交易最佳布局區，大膽加碼！')
-            else:
-                _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 孫慶龍：可持股，按計畫操作')
-        for _mc2 in _macro_concl:
-            _mc3 = _mc2.replace('✅','').replace('⚠️','').replace('🔴','').strip()
-            if '→' in _mc3:
-                _ind7, _res7 = _mc3.split('→', 1)
-                _col7 = '#f85149' if any(k in _mc2 for k in ['🔴','⚠️']) else '#3fb950'
-                _tchr7 = '弘爺' if 'M1B' in _mc2 else '孫慶龍'
-                st.markdown(teacher_conclusion(_tchr7, _ind7.strip(), _res7.strip(), color=_col7), unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
+    _macro_concl = []
+    if _m1b_info:
+        _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)
+        if _diff2 > 0:
+            _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 弘爺：資金行情啟動，大膽做多！（領先大盤3~6月）')
+        elif _diff2 > -2:
+            _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 弘爺：資金動能趨緩，減碼等待訊號確認')
+        else:
+            _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 弘爺：資金撤離，空手觀望！')
+    if _bias_info:
+        _bv2 = _bias_info.get('bias_240', 0)
+        if _bv2 > 20:
+            _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 孫慶龍：開始分批減碼（乖離>20%啟動停利）')
+        elif _bv2 < -20:
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 孫慶龍：左側交易最佳布局區，大膽加碼！')
+        else:
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 孫慶龍：可持股，按計畫操作')
+    for _mc2 in _macro_concl:
+        _mc3 = _mc2.replace('✅','').replace('⚠️','').replace('🔴','').strip()
+        if '→' in _mc3:
+            _ind7, _res7 = _mc3.split('→', 1)
+            _col7 = '#f85149' if any(k in _mc2 for k in ['🔴','⚠️']) else '#3fb950'
+            _tchr7 = '弘爺' if 'M1B' in _mc2 else '孫慶龍'
+            st.markdown(teacher_conclusion(_tchr7, _ind7.strip(), _res7.strip(), color=_col7), unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="color:#c9d1d9;font-size:12px;padding:2px 6px;">• {_mc2}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
 
