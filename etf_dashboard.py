@@ -2103,8 +2103,11 @@ def render_data_health():
 
         # ── 動態掃描 registry 中實際存在的 category（不寫死）────────────
         _categories = sorted(set(v.get('category', '未分類') for v in _reg.values()))
-        _TW_KW   = ('台股', 'ADL', '新台幣', '匯率')
-        _BOND_KW = ('公債', '殖利率', '利率')
+        _TW_KW    = ('台股', 'ADL', '新台幣', '匯率')
+        _BOND_KW  = ('公債', '殖利率', '利率')
+        _INST_KW  = ('三大法人', '融資餘額')
+        _MONEY_KW = ('M1B', 'M2', '旌旗', '乖離率')
+        _MACRO_KW = ('VIX', 'CPI', 'PMI', '出口', 'NDC', '景氣先行')
 
         _tab_labels = []
         for _cat in _categories:
@@ -2128,16 +2131,29 @@ def render_data_health():
                 if _cat == '大盤':
                     _raw_keys = {_disp_name(rn): rn for rn in _reg
                                  if _reg[rn].get('category', '未分類') == '大盤'}
-                    _tw   = [(dn, rv) for dn, rv in _cat_items
-                             if any(k in _raw_keys.get(dn, dn) for k in _TW_KW)]
-                    _bond = [(dn, rv) for dn, rv in _cat_items
-                             if any(k in _raw_keys.get(dn, dn) for k in _BOND_KW)]
-                    _li   = [(dn, rv) for dn, rv in _cat_items
-                             if '[先行指標]' in _raw_keys.get(dn, '')]
-                    _used = set(id(rv) for _, rv in _tw + _bond + _li)
-                    _intl = [(dn, rv) for dn, rv in _cat_items if id(rv) not in _used]
-                    for _title, _grp in [('🇹🇼 台股市場', _tw), ('🌐 國際指數', _intl),
-                                          ('💰 固定收益', _bond), ('📈 先行指標', _li)]:
+                    _tw    = [(dn, rv) for dn, rv in _cat_items
+                              if any(k in _raw_keys.get(dn, dn) for k in _TW_KW)]
+                    _bond  = [(dn, rv) for dn, rv in _cat_items
+                              if any(k in _raw_keys.get(dn, dn) for k in _BOND_KW)]
+                    _inst  = [(dn, rv) for dn, rv in _cat_items
+                              if any(k in _raw_keys.get(dn, dn) for k in _INST_KW)]
+                    _money = [(dn, rv) for dn, rv in _cat_items
+                              if any(k in _raw_keys.get(dn, dn) for k in _MONEY_KW)]
+                    _macro = [(dn, rv) for dn, rv in _cat_items
+                              if any(k in _raw_keys.get(dn, dn) for k in _MACRO_KW)]
+                    _li    = [(dn, rv) for dn, rv in _cat_items
+                              if '[先行指標]' in _raw_keys.get(dn, '')]
+                    _used  = set(id(rv) for _, rv in _tw + _bond + _inst + _money + _macro + _li)
+                    _intl  = [(dn, rv) for dn, rv in _cat_items if id(rv) not in _used]
+                    for _title, _grp in [
+                        ('🇹🇼 台股市場',  _tw),
+                        ('🌐 國際指數',    _intl),
+                        ('💰 固定收益',    _bond),
+                        ('💼 法人 / 籌碼', _inst),
+                        ('🏦 資金 / 景氣', _money),
+                        ('🌏 宏觀指標',    _macro),
+                        ('📈 先行指標',    _li),
+                    ]:
                         if not _grp:
                             continue
                         _n_bad = sum(
@@ -2148,7 +2164,7 @@ def render_data_health():
                         _badge = f'  ⚠️ {_n_bad}項問題' if _n_bad else '  ✅'
                         st.markdown(f'**{_title}{_badge}**')
                         st.dataframe(_build_table(_grp), use_container_width=True, hide_index=True)
-                    if not any([_tw, _intl, _bond, _li]):
+                    if not any([_tw, _intl, _bond, _inst, _money, _macro, _li]):
                         st.info('請先點擊「🔄 更新全部總經數據」載入市場資料。')
                 elif _cat == '個股':
                     _sk = next((k for k in _reg if k.startswith('[個股]')), '')
