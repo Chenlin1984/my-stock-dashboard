@@ -2591,6 +2591,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     'ma20': round(sum(_s20)/len(_s20), 1),
                                     'dates': _vdates[-60:],
                                     'values': _vvals[-60:],
+                                    'date': _vdates[-1],
                                 }
                                 print(f'[Macro/VIX] ✅ current={_vvals[-1]}')
                                 break
@@ -2598,27 +2599,28 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             print(f'[Macro/VIX] {_vix_host} ❌ {_vh_e}')
                 except Exception as _e: print(f'[Macro/VIX] ❌ {_e}')
 
-                # 2. US 核心 CPI YoY（FRED CPILFESL）
-                try:
-                    _cr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPILFESL',
-                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
-                    print(f'[Macro/CPI] status={_cr.status_code}')
-                    if _cr.status_code == 200:
-                        _cdf = _pd_mc.read_csv(_io_mc.StringIO(_cr.text))
-                        _cdf.columns = ['date', 'value']
-                        _cdf['value'] = _pd_mc.to_numeric(_cdf['value'], errors='coerce')
-                        _cdf = _cdf.dropna()
-                        if len(_cdf) >= 13:
-                            _cyoy = round((_cdf['value'].iloc[-1]/_cdf['value'].iloc[-13]-1)*100, 2)
-                            _r['us_core_cpi'] = {'yoy': _cyoy, 'date': str(_cdf['date'].iloc[-1])}
-                            print(f'[Macro/CPI] ✅ YoY={_cyoy:.2f}% date={_cdf["date"].iloc[-1]}')
-                except Exception as _e: print(f'[Macro/CPI] ❌ {_e}')
-
-                # 2b. DB.nomics 備援：US Core CPI（IMF IFS）
+                # 2. US 核心 CPI YoY（FRED CPILFESL，主；OECD dbnomics，備援）
+                for _cpi_id, _cpi_src in [('CPILFESL', 'FRED'), ('CPIAUCSL', 'FRED_TOTAL')]:
+                    try:
+                        _cr = _rq_mc.get(f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_cpi_id}',
+                                         headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                        print(f'[Macro/CPI/{_cpi_src}] status={_cr.status_code}')
+                        if _cr.status_code == 200:
+                            _cdf = _pd_mc.read_csv(_io_mc.StringIO(_cr.text))
+                            _cdf.columns = ['date', 'value']
+                            _cdf['value'] = _pd_mc.to_numeric(_cdf['value'], errors='coerce')
+                            _cdf = _cdf.dropna()
+                            if len(_cdf) >= 13:
+                                _cyoy = round((_cdf['value'].iloc[-1]/_cdf['value'].iloc[-13]-1)*100, 2)
+                                _r['us_core_cpi'] = {'yoy': _cyoy, 'date': str(_cdf['date'].iloc[-1]), 'source': _cpi_src}
+                                print(f'[Macro/CPI/{_cpi_src}] ✅ YoY={_cyoy:.2f}% date={_cdf["date"].iloc[-1]}')
+                                break
+                    except Exception as _e:
+                        print(f'[Macro/CPI/{_cpi_src}] ❌ {_e}')
+                # 備援：dbnomics IMF IFS
                 if 'us_core_cpi' not in _r:
                     try:
                         from dbnomics import fetch_series as _dbn_cpi
-                        # IMF IFS US CPI 序列
                         for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:
                             try:
                                 _cpi_dbn = _dbn_cpi(_cs)
@@ -2632,11 +2634,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _ce: print(f'[Macro/CPI/DBN] ❌ {_cs}: {_ce}')
                     except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
 
-                # 3. US ISM PMI（FRED NAPM → DB.nomics OECD CLI 備援）
+                # 3. US PMI（FRED NAPM 已於 2023-12 終止，改用 S&P Global PMI MFPMI01USM657S）
                 try:
-                    _pr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
+                    # 主：FRED S&P Global US Manufacturing PMI（接替 ISM NAPM，每月更新）
+                    _pr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=MFPMI01USM657S',
                                      headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
-                    print(f'[Macro/PMI] status={_pr.status_code}')
+                    print(f'[Macro/PMI/SPGLOBAL] status={_pr.status_code}')
                     if _pr.status_code == 200:
                         _pdf = _pd_mc.read_csv(_io_mc.StringIO(_pr.text))
                         _pdf.columns = ['date', 'value']
@@ -2648,9 +2651,31 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 'date': str(_pdf['date'].iloc[-1]),
                                 'dates': [str(d)[:10] for d in _pdf['date'].iloc[-24:]],
                                 'values': [round(float(v), 1) for v in _pdf['value'].iloc[-24:]],
+                                'label': 'S&P Global Mfg PMI',
                             }
-                            print(f'[Macro/PMI] ✅ PMI={_r["ism_pmi"]["value"]} date={_r["ism_pmi"]["date"]}')
-                except Exception as _e: print(f'[Macro/PMI] ❌ {_e}')
+                            print(f'[Macro/PMI/SPGLOBAL] ✅ PMI={_r["ism_pmi"]["value"]} date={_r["ism_pmi"]["date"]}')
+                except Exception as _e: print(f'[Macro/PMI/SPGLOBAL] ❌ {_e}')
+                # 備援：嘗試舊 ISM NAPM（若 FRED 仍可用）
+                if 'ism_pmi' not in _r:
+                    try:
+                        _pr2 = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
+                                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=12, verify=False)
+                        if _pr2.status_code == 200:
+                            _pdf2 = _pd_mc.read_csv(_io_mc.StringIO(_pr2.text))
+                            _pdf2.columns = ['date', 'value']
+                            _pdf2['value'] = _pd_mc.to_numeric(_pdf2['value'], errors='coerce')
+                            _pdf2 = _pdf2.dropna()
+                            # 僅接受 2024 年以後的資料（NAPM 在 2023-12 終止後不再更新）
+                            _pdf2_recent = _pdf2[_pdf2['date'] >= '2024-01-01']
+                            if len(_pdf2_recent) > 0:
+                                _r['ism_pmi'] = {
+                                    'value': round(float(_pdf2_recent['value'].iloc[-1]), 1),
+                                    'date': str(_pdf2_recent['date'].iloc[-1]),
+                                    'dates': [str(d)[:10] for d in _pdf2_recent['date'].iloc[-24:]],
+                                    'values': [round(float(v), 1) for v in _pdf2_recent['value'].iloc[-24:]],
+                                }
+                                print(f'[Macro/PMI/NAPM] ✅ PMI={_r["ism_pmi"]["value"]}')
+                    except Exception as _e2: print(f'[Macro/PMI/NAPM] ❌ {_e2}')
 
                 # 3b. DB.nomics 備援：OECD CLI（US，與PMI高度相關）
                 if 'ism_pmi' not in _r:
@@ -2711,10 +2736,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                         break
                                 except Exception: pass
                             if _sc_ng is not None:
+                                _raw_ndc_d = str(_lng.get('statistic_ym',
+                                    _lng.get('period', _lng.get('期間', ''))))
+                                # 標準化：YYYYMM → YYYY-MM-01
+                                import re as _re_ndc
+                                _nm = _re_ndc.match(r'^(\d{4})[-/]?(\d{2})$', _raw_ndc_d.strip())
+                                _ndc_date = f'{_nm.group(1)}-{_nm.group(2)}-01' if _nm else _raw_ndc_d[:10]
                                 _r['ndc_signal'] = {
                                     'score': _sc_ng, 'signal': None,
-                                    'date': str(_lng.get('statistic_ym',
-                                               _lng.get('period', _lng.get('期間', '')))),
+                                    'date': _ndc_date,
                                 }
                                 print(f'[Macro/NDC/Gov] ✅ score={_sc_ng}')
                                 _ndc_fetched = True
@@ -2744,32 +2774,65 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     else:
                         print('[Macro/NDC] ⚠️ data.gov.tw 失敗且無CLI代理')
 
-                # 5. 台灣出口 YoY（OECD Stats JSON → DB.nomics IMF/OECD 備援）
-                # TaiwanExportOrders 非有效 FinMind dataset；改用 OECD MEI 台灣出口數據
+                # 5. 台灣出口 YoY（FinMind → 財政部 MOPS → OECD dbnomics 備援）
+                # FinMind TaiwanExportStatistics（月度，最新月份，通常僅滯後 1-2 個月）
                 try:
-                    from dbnomics import fetch_series as _dbn_ex
-                    for _exs in [
-                        'OECD/MEI/TWN.XTEXVA01.CXML.M',   # OECD MEI Taiwan Exports Value
-                        'OECD/MEI/TWN.XTEXVA01.CXML.Q',
-                        'IMF/IFS/M.TW.TXG_FOB_USD',        # IMF IFS Taiwan Goods Exports
-                    ]:
-                        try:
-                            _ex_dbn = _dbn_ex(_exs)
-                            if _ex_dbn is None or len(_ex_dbn) < 14:
-                                continue
-                            _ev = _pd_mc.to_numeric(_ex_dbn['value'], errors='coerce').dropna()
-                            _step = 4 if '.Q' in _exs else 12
-                            if len(_ev) < _step + 1:
-                                continue
-                            _eyoy_d = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
-                            _edate_d = str(_ex_dbn['period'].iloc[-1])[:7]
-                            _r['tw_export'] = {'yoy': _eyoy_d, 'date': _edate_d, 'source': 'OECD'}
-                            print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_eyoy_d:.2f}% date={_edate_d}')
-                            break
-                        except Exception as _ee:
-                            print(f'[Macro/Export/DBN] ❌ {_exs}: {_ee}')
-                except Exception as _e:
-                    print(f'[Macro/Export/DBN] ❌ import dbnomics: {_e}')
+                    import datetime as _dt_ex
+                    _fm_tok_ex = _get_fm_token() or ''
+                    _ex_start = (_dt_ex.date.today() - _dt_ex.timedelta(days=400)).strftime('%Y-%m-%d')
+                    _ex_fm_url = 'https://api.finmindtrade.com/api/v4/data'
+                    _ex_fm_r = _rq_mc.get(_ex_fm_url,
+                                          params={'dataset': 'TaiwanExportStatistics',
+                                                  'start_date': _ex_start,
+                                                  'token': _fm_tok_ex},
+                                          timeout=15, verify=False,
+                                          headers={'User-Agent': 'Mozilla/5.0'})
+                    print(f'[Macro/Export/FinMind] status={_ex_fm_r.status_code}')
+                    if _ex_fm_r.status_code == 200:
+                        _ex_fm_j = _ex_fm_r.json()
+                        _ex_fm_d = _ex_fm_j.get('data', [])
+                        if _ex_fm_d and len(_ex_fm_d) >= 13:
+                            _ex_df = _pd_mc.DataFrame(_ex_fm_d)
+                            _ex_df = _ex_df.sort_values('date').reset_index(drop=True)
+                            # 找出口總額欄位
+                            _ex_val_col = next((c for c in _ex_df.columns
+                                                if '出口' in str(c) or 'export' in str(c).lower()
+                                                or 'total' in str(c).lower()), None)
+                            if _ex_val_col:
+                                _ex_v = _pd_mc.to_numeric(_ex_df[_ex_val_col], errors='coerce').dropna()
+                                if len(_ex_v) >= 13:
+                                    _ex_yoy = round((_ex_v.iloc[-1] / _ex_v.iloc[-13] - 1) * 100, 2)
+                                    _ex_date = str(_ex_df['date'].iloc[-len(_ex_v)])[:7]
+                                    _r['tw_export'] = {'yoy': _ex_yoy, 'date': _ex_date, 'source': 'FinMind'}
+                                    print(f'[Macro/Export/FinMind] ✅ YoY={_ex_yoy:.2f}% date={_ex_date}')
+                except Exception as _ex_e:
+                    print(f'[Macro/Export/FinMind] ❌ {_ex_e}')
+                # 備援：OECD dbnomics（有 6-12 個月發布滯後，僅作補底）
+                if 'tw_export' not in _r:
+                    try:
+                        from dbnomics import fetch_series as _dbn_ex
+                        for _exs in [
+                            'OECD/MEI/TWN.XTEXVA01.CXML.M',
+                            'OECD/MEI/TWN.XTEXVA01.CXML.Q',
+                            'IMF/IFS/M.TW.TXG_FOB_USD',
+                        ]:
+                            try:
+                                _ex_dbn = _dbn_ex(_exs)
+                                if _ex_dbn is None or len(_ex_dbn) < 14:
+                                    continue
+                                _ev = _pd_mc.to_numeric(_ex_dbn['value'], errors='coerce').dropna()
+                                _step = 4 if '.Q' in _exs else 12
+                                if len(_ev) < _step + 1:
+                                    continue
+                                _eyoy_d = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
+                                _edate_d = str(_ex_dbn['period'].iloc[-1])[:7]
+                                _r['tw_export'] = {'yoy': _eyoy_d, 'date': _edate_d, 'source': 'OECD'}
+                                print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_eyoy_d:.2f}% date={_edate_d}')
+                                break
+                            except Exception as _ee:
+                                print(f'[Macro/Export/DBN] ❌ {_exs}: {_ee}')
+                    except Exception as _e:
+                        print(f'[Macro/Export/DBN] ❌ {_e}')
 
                 print(f'[Macro] 完成 keys={list(_r.keys())}')
                 return _r if _r else None
@@ -2935,15 +2998,23 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _reg_missing('融資餘額（台股）', category='大盤', frequency='daily')
 
             # ── 旌旗指數 + 乖離率（日更新）──────────────────────────────
+            # 用 cl_ts 作為代理日期（這些指標沒有獨立時間戳）
+            _cl_ts_proxy = st.session_state.get('cl_ts', '')
+            try:
+                import re as _re_ts_reg
+                _m_ts = _re_ts_reg.search(r'(\d{4}-\d{2}-\d{2})', _cl_ts_proxy)
+                _proxy_date = _m_ts.group(1) if _m_ts else 'N/A'
+            except Exception:
+                _proxy_date = 'N/A'
             _jq_reg3 = st.session_state.get('jingqi_info') or {}
             if _jq_reg3.get('avg') is not None:
-                _reg_new['旌旗指數（上漲佔比）'] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+                _reg_new['旌旗指數（上漲佔比）'] = {'last_updated': _proxy_date, 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
             else:
                 _reg_missing('旌旗指數（上漲佔比）', category='大盤', frequency='daily')
             _bias_reg3 = st.session_state.get('bias_info') or {}
             for _bk, _bn in [('bias_240', 'TWII 年線乖離率'), ('bias_20', 'TWII 月線乖離率')]:
                 if _bias_reg3.get(_bk) is not None:
-                    _reg_new[_bn] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+                    _reg_new[_bn] = {'last_updated': _proxy_date, 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
                 else:
                     _reg_missing(_bn, category='大盤', frequency='daily')
 
@@ -2951,7 +3022,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _m1b_reg3 = st.session_state.get('m1b_m2_info') or {}
             for _mk, _mn in [('m1b_yoy', 'M1B 資金活水年增率'), ('m2_yoy', 'M2 廣義貨幣年增率')]:
                 if _m1b_reg3.get(_mk) is not None:
-                    _reg_new[_mn] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'monthly'}
+                    _reg_new[_mn] = {'last_updated': _proxy_date, 'rows': 1, 'category': '大盤', 'frequency': 'monthly'}
                 else:
                     _reg_missing(_mn, category='大盤', frequency='monthly')
 
@@ -2966,7 +3037,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             ]:
                 _msub = _macro_reg3.get(_mkey)
                 if _msub:
-                    _mdate = str(_msub.get('date') or _msub.get('period') or 'N/A')[:10] if isinstance(_msub, dict) else 'N/A'
+                    if isinstance(_msub, dict):
+                        # vix 的日期在 'dates' list 最後一筆
+                        _raw_d = (_msub.get('date') or _msub.get('period')
+                                  or (_msub.get('dates') or [''])[-1] or _proxy_date)
+                        _mdate = str(_raw_d)[:10]
+                    else:
+                        _mdate = _proxy_date
                     _reg_new[_mname] = {'last_updated': _mdate, 'rows': 1, 'category': '大盤', 'frequency': _mfreq}
                 else:
                     _reg_missing(_mname, category='大盤', frequency=_mfreq)
@@ -3077,6 +3154,102 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.rerun()  # 資料更新完成，重跑腳本讓頂部看板讀取最新 session_state
 
     cd     = st.session_state.get('cl_data', {})
+
+    # ── Registry 常態 Patch：每次頁面渲染都更新個股/ETF 部分（不重發請求）──
+    # 個股(t2_data)、ETF、比較排行 是用戶互動後才載入，需在每次 rerun 補入 registry
+    try:
+        import pandas as _pd_rp
+        _rp = dict(st.session_state.get('data_registry') or {})
+        if _rp:
+            _cl_ts_rp = st.session_state.get('cl_ts', '')
+            try:
+                import re as _re_rp
+                _m_rp = _re_rp.search(r'(\d{4}-\d{2}-\d{2})', _cl_ts_rp)
+                _proxy_rp = _m_rp.group(1) if _m_rp else 'N/A'
+            except Exception:
+                _proxy_rp = 'N/A'
+
+            def _rp_ts(_df):
+                """取 DataFrame 最新日期字串（與 _reg_add 邏輯一致）。"""
+                if not isinstance(_df, _pd_rp.DataFrame) or _df.empty:
+                    return 'N/A'
+                if isinstance(_df.index, _pd_rp.DatetimeIndex):
+                    try: return _pd_rp.Timestamp(_df.index.max()).strftime('%Y-%m-%d')
+                    except: pass
+                for _c in _df.columns:
+                    _cl2 = str(_c).lower()
+                    _fmt2 = '%Y%m%d' if _cl2 == '_date' else None
+                    if _cl2 in ('_date', 'date', 'datetime', 'timestamp', '日期', 'quarter', 'period'):
+                        try:
+                            _lat2 = _pd_rp.to_datetime(_df[_c], format=_fmt2, errors='coerce').max()
+                            if _lat2 is not None and not _pd_rp.isna(_lat2):
+                                return _lat2.strftime('%Y-%m-%d')
+                        except: pass
+                return 'N/A'
+
+            def _rp_entry(_df, cat, freq):
+                if isinstance(_df, _pd_rp.DataFrame) and not _df.empty:
+                    return {'last_updated': _rp_ts(_df), 'rows': len(_df), 'category': cat, 'frequency': freq}
+                return {'last_updated': 'N/A', 'rows': 0, 'category': cat, 'frequency': freq, 'missing': True}
+
+            # 移除所有舊的個股 / ETF 單一 / ETF組合 / ETF回測 / 比較 key
+            for _ok in list(_rp.keys()):
+                if (_ok.startswith('[個股]') or _ok.startswith('[比較]')
+                        or (_ok.startswith('[ETF]') and '|' in _ok)
+                        or '[ETF組合]' in _ok or '[ETF回測]' in _ok):
+                    del _rp[_ok]
+
+            # ── 個股 ──────────────────────────────────────────────────────
+            _t2rp = st.session_state.get('t2_data')
+            if _t2rp:
+                _spfx = f'[個股] {_t2rp.get("sid","")} {(_t2rp.get("name") or _t2rp.get("sid",""))}'
+                for _lbl, _key, _f in [('價格走勢','df','daily'),('月營收','rev','monthly'),
+                                        ('季財報','qtr','quarterly'),('現金流量','cl','quarterly'),
+                                        ('資產負債','cx','quarterly')]:
+                    _rp[f'{_spfx} | {_lbl}'] = _rp_entry(_t2rp.get(_key), '個股', _f)
+            else:
+                _spfx0 = '[個股] — 尚未搜尋'
+                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),
+                                    ('季財報','quarterly'),('現金流量','quarterly'),('資產負債','quarterly')]:
+                    _rp[f'{_spfx0} | {_lbl0}'] = {'last_updated':'N/A','rows':0,'category':'個股','frequency':_f0,'missing':True}
+
+            # ── 比較排行 ──────────────────────────────────────────────────
+            _t3rp = st.session_state.get('t3_data')
+            if _t3rp and _t3rp.get('results'):
+                _rp['[比較] 多股比較排行'] = {'last_updated': _proxy_rp, 'rows': len(_t3rp['results']), 'category': '個股', 'frequency': 'daily'}
+            else:
+                _rp['[比較] 多股比較排行'] = {'last_updated': 'N/A', 'rows': 0, 'category': '個股', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 單一 ──────────────────────────────────────────────────
+            _e1rp = st.session_state.get('etf_single_data') or {}
+            _etkrp = _e1rp.get('ticker', '')
+            _epfxrp = f'[ETF] {_etkrp} {_e1rp.get("name","")}'.strip() if _etkrp else '[ETF] — 尚未搜尋'
+            _rp[f'{_epfxrp} | 價格走勢'] = _rp_entry(_e1rp.get('price_df'), 'ETF', 'daily')
+            if _e1rp.get('cur_yield') is not None:
+                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': _proxy_rp, 'rows': 1, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 組合 ──────────────────────────────────────────────────
+            _e2rp = st.session_state.get('etf_portfolio_data') or {}
+            if _e2rp.get('rows'):
+                _e2n = len(_e2rp['rows'])
+                _rp[f'[ETF組合] 再平衡分析（{_e2n}檔）'] = {'last_updated': _proxy_rp, 'rows': _e2n, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp['[ETF組合] 再平衡分析'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 回測 ──────────────────────────────────────────────────
+            _e3rp = st.session_state.get('etf_backtest_data') or {}
+            if _e3rp.get('cagr') is not None:
+                _e3n = len(_e3rp.get('weights', {}))
+                _rp[f'[ETF回測] 回測績效（{_e3n}檔）'] = {'last_updated': _proxy_rp, 'rows': _e3n, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp['[ETF回測] 回測績效'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            st.session_state['data_registry'] = _rp
+    except Exception as _rpe:
+        print(f'[RegistryPatch] {_rpe}')
+
     intl   = {n:s for n,s in cd.get('intl',{}).items() if s is not None and not s.empty}
     tw     = {n:s for n,s in cd.get('tw',{}).items()   if s is not None and not s.empty}
     tech   = {n:s for n,s in cd.get('tech',{}).items() if s is not None and not s.empty}
