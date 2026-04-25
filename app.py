@@ -3279,8 +3279,30 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     tw1,tw2 = st.columns(2)
     with tw1:
         if '台股加權指數' in tw:
-            st.plotly_chart(sparkline(tw['台股加權指數'],'台股加權指數','#58a6ff'),
-                            width='stretch',config={'displayModeBar':False})
+            _twii_ohlc = tw['台股加權指數']
+            if all(c in _twii_ohlc.columns for c in ['open', 'high', 'low', 'close']):
+                import plotly.graph_objects as _go_kl
+                _ohlc_tail = _twii_ohlc.tail(60)
+                _fig_kl = _go_kl.Figure(data=[_go_kl.Candlestick(
+                    x=_ohlc_tail.index,
+                    open=_ohlc_tail['open'], high=_ohlc_tail['high'],
+                    low=_ohlc_tail['low'],   close=_ohlc_tail['close'],
+                    increasing_line_color='#f85149', increasing_fillcolor='rgba(248,81,73,0.75)',
+                    decreasing_line_color='#3fb950', decreasing_fillcolor='rgba(63,185,80,0.75)',
+                    name='加權指數',
+                )])
+                _fig_kl.update_layout(
+                    title=dict(text='台股加權指數（日K）', font=dict(size=11, color='#8b949e'), x=0),
+                    height=220, margin=dict(l=40, r=15, t=30, b=20),
+                    paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+                    font=dict(color='#8b949e', size=10), showlegend=False,
+                    xaxis=dict(showgrid=False, color='#484f58', rangeslider=dict(visible=False)),
+                    yaxis=dict(showgrid=True, gridcolor='#21262d', color='#484f58'),
+                )
+                st.plotly_chart(_fig_kl, width='stretch', config={'displayModeBar': False})
+            else:
+                st.plotly_chart(sparkline(_twii_ohlc, '台股加權指數', '#58a6ff'),
+                                width='stretch', config={'displayModeBar': False})
     with tw2:
         try:
             otc = _fetch_otc_via_finmind(FINMIND_TOKEN)
@@ -3288,40 +3310,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
                                 width='stretch',config={'displayModeBar':False})
         except Exception: pass
-    with st.expander('📖 宏爺 結論（股匯四象限）', expanded=False):
-        st.caption('💡 台幣 USD/TWD 漲(>0)=台幣貶值，跌(<0)=台幣升值。資金面M1B-M2見Section七。')
-        _twii_e = tw_s.get('台股加權指數')
-        _twd_e  = tw_s.get('新台幣匯率')
-        if _twii_e and _twd_e:
-            _tp_e = _twii_e.get('pct', 0) or 0
-            _fp_e = _twd_e.get('pct', 0) or 0
-            _quadrant_rows = [
-                (f'台股 {_twii_e["last"]:,.0f}pt ({_tp_e:+.1f}%)',
-                 f'台幣 {_twd_e["last"]:.2f} ({_fp_e:+.2f}%)'),
-            ]
-            if _tp_e > 0 and _fp_e < 0:
-                _quadrant_rows.append(('🟢 股匯雙漲（真實多頭）',
-                    '外資真金白銀匯入，順勢大膽作多 → 持股 80~100%'))
-            elif _tp_e > 0 and _fp_e > 0:
-                _quadrant_rows.append(('⚠️ 股漲匯貶（拉高出貨警戒）',
-                    '指數虛漲，疑似外資拉高出貨或純內資自嗨 → 不追高，持股 50%'))
-            elif _tp_e < 0 and _fp_e > 0:
-                _quadrant_rows.append(('🔴 股匯雙殺（外資大舉提款）',
-                    '外資無情撤出，面臨系統性修正 → 嚴格減碼，持股 0~30%'))
-            elif _tp_e < 0 and _fp_e < 0:
-                _quadrant_rows.append(('🟡 股跌匯升（技術性洗盤）',
-                    '外資資金停泊台灣未撤離，尋找錯殺優質股 → 持股 50~70%'))
-            else:
-                _quadrant_rows.append(('⚪ 無明顯方向', '靜待表態，維持現有部位'))
-            for _qt in _quadrant_rows:
-                _label = _qt[0]; _act = _qt[1] if len(_qt) > 1 else ''
-                st.markdown(
-                    f'<div style="color:#c9d1d9;font-size:13px;padding:3px 0;">'
-                    f'{_label}'
-                    + (f' → <span style="color:#8b949e;">{_act}</span>' if _act else '')
-                    + '</div>', unsafe_allow_html=True
-                )
-
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
 
@@ -8104,6 +8092,19 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
 # TAB 4: 大師條件手冊（判讀邏輯完整版）
 # ══════════════════════════════════════════════════════════════
 with tab4_masters:
+
+    # ── 宏爺：股匯四象限判讀框架（從 Section 二移入）───────────────
+    st.markdown(section_header('C','💹 宏爺：股匯四象限判讀框架','💹'), unsafe_allow_html=True)
+    st.caption('💡 台幣 USD/TWD 漲(>0)=台幣貶值，跌(<0)=台幣升值。資金面M1B-M2請參考Section七。')
+    st.markdown("""
+| 象限 | 台股 | 台幣 | 意義 | 操作建議 |
+|------|------|------|------|---------|
+| 🟢 股匯雙漲（真實多頭）| ↑漲 | ↑升值（USD/TWD跌<0）| 外資真金白銀匯入，主升段啟動 | 順勢大膽作多 → 持股 **80~100%** |
+| ⚠️ 股漲匯貶（拉高出貨警戒）| ↑漲 | ↓貶值（USD/TWD漲>0）| 指數虛漲，疑似外資拉高出貨 | 不追高，謹慎觀察 → 持股 **50%** |
+| 🔴 股匯雙殺（外資大舉提款）| ↓跌 | ↓貶值（USD/TWD漲>0）| 外資無情撤出，面臨系統性修正 | 嚴格減碼防守 → 持股 **0~30%** |
+| 🟡 股跌匯升（技術性洗盤）| ↓跌 | ↑升值（USD/TWD跌<0）| 外資資金停泊台灣，技術性洗盤 | 尋找錯殺優質股逢低布局 → 持股 **50~70%** |
+""")
+    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
 
     # ── ADL 騰落指標判讀（從 Section 五移入）─────────────────────
     st.markdown(section_header('B','📉 ADL騰落指標判讀方法','📊'), unsafe_allow_html=True)
