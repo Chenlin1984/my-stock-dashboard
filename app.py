@@ -3071,8 +3071,20 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _adl_reg = _cl_reg.get('adl')
             if isinstance(_adl_reg, _pd_reg.DataFrame) and not _adl_reg.empty:
                 _reg_add('ADL 市場廣度', _adl_reg, category='大盤', frequency='daily')
+                # 拆分個別欄位：上漲家數 / 下跌家數 / AD累計值
+                _adl_date_col = '_date' if '_date' in _adl_reg.columns else (
+                    'date' if 'date' in _adl_reg.columns else None)
+                for _acname, _acol in [('上漲股票家數', 'up'), ('下跌股票家數', 'down'),
+                                        ('ADL 累計廣度值', 'adl')]:
+                    if _acol in _adl_reg.columns:
+                        _acsub = _adl_reg[[c for c in [_adl_date_col, _acol] if c]].copy()
+                        _reg_add(_acname, _acsub, category='大盤', frequency='daily')
+                    else:
+                        _reg_missing(_acname, category='大盤', frequency='daily')
             else:
                 _reg_missing('ADL 市場廣度', category='大盤', frequency='daily')
+                for _acname0 in ('上漲股票家數', '下跌股票家數', 'ADL 累計廣度值'):
+                    _reg_missing(_acname0, category='大盤', frequency='daily')
 
             # ── 三大法人 + 融資餘額（籌碼面，日更新）────────────────────
             _cl_inst_reg = _cl_reg.get('inst') or st.session_state.get('_last_inst') or {}
@@ -3122,6 +3134,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _reg_new[_mn] = {'last_updated': _proxy_date, 'rows': 1, 'category': '大盤', 'frequency': 'monthly'}
                 else:
                     _reg_missing(_mn, category='大盤', frequency='monthly')
+            # M1B-M2 資金缺口（衍生指標）
+            if _m1b_reg3.get('m1b_yoy') is not None and _m1b_reg3.get('m2_yoy') is not None:
+                _reg_new['M1B-M2 資金缺口'] = {'last_updated': _proxy_date, 'rows': 1, 'category': '大盤', 'frequency': 'monthly'}
+            else:
+                _reg_missing('M1B-M2 資金缺口', category='大盤', frequency='monthly')
 
             # ── 宏觀指標（月/日更新）────────────────────────────────────
             _macro_reg3 = st.session_state.get('macro_info') or {}
@@ -3338,15 +3355,24 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 )
                 # 健康度評分（純量）
                 _rp[f'{_spfx} | 健康度評分'] = _rp_scalar(_t2rp.get('health'), '個股', 'daily')
-                # 技術指標 RSI/KD（純量，任一有值即代表已計算）
-                _rsi_v = _t2rp.get('rsi'); _k_v = _t2rp.get('k')
-                _rp[f'{_spfx} | 技術指標 RSI/KD'] = _rp_scalar(
-                    _rsi_v if _rsi_v is not None else _k_v, '個股', 'daily')
+                # 技術指標：各自獨立
+                _rp[f'{_spfx} | RSI'] = _rp_scalar(_t2rp.get('rsi'), '個股', 'daily')
+                _rp[f'{_spfx} | KD (K值)'] = _rp_scalar(_t2rp.get('k'), '個股', 'daily')
+                _rp[f'{_spfx} | IBS 內部強弱'] = _rp_scalar(_t2rp.get('ibs'), '個股', 'daily')
+                _rp[f'{_spfx} | 量比 VR'] = _rp_scalar(_t2rp.get('vr'), '個股', 'daily')
+                _rp[f'{_spfx} | 布林帶'] = _rp_scalar(_t2rp.get('bb'), '個股', 'daily')
+                _rp[f'{_spfx} | VCP 波幅收縮'] = _rp_scalar(_t2rp.get('vcp'), '個股', 'daily')
+                # 財報延伸（合約負債/存貨/資本支出時序）
+                _rp[f'{_spfx} | 合約負債/資本支出'] = _rp_entry(_t2rp.get('qtr_extra'), '個股', 'quarterly')
             else:
                 _spfx0 = '[個股] — 尚未搜尋'
-                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),('季財報','quarterly'),
-                                    ('現金流量','quarterly'),('資產負債','quarterly'),
-                                    ('年度股利','yearly'),('健康度評分','daily'),('技術指標 RSI/KD','daily')]:
+                for _lbl0, _f0 in [
+                    ('價格走勢','daily'),('月營收','monthly'),('季財報','quarterly'),
+                    ('現金流量','quarterly'),('資產負債','quarterly'),('年度股利','yearly'),
+                    ('健康度評分','daily'),('RSI','daily'),('KD (K值)','daily'),
+                    ('IBS 內部強弱','daily'),('量比 VR','daily'),('布林帶','daily'),
+                    ('VCP 波幅收縮','daily'),('合約負債/資本支出','quarterly'),
+                ]:
                     _rp[f'{_spfx0} | {_lbl0}'] = {'last_updated':'N/A','rows':0,'category':'個股','frequency':_f0,'missing':True}
 
             # ── 比較排行 ──────────────────────────────────────────────────
@@ -3364,9 +3390,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _rp[f'{_epfxrp} | 現金殖利率'] = _rp_scalar(_e1rp.get('cur_yield'), 'ETF', 'daily')
             _rp[f'{_epfxrp} | 近5年平均殖利率'] = _rp_scalar(_e1rp.get('avg_yield'), 'ETF', 'yearly')
             _rp[f'{_epfxrp} | 近1年含息總報酬'] = _rp_scalar(_e1rp.get('total_ret'), 'ETF', 'daily')
-            _e1_prem = (_e1rp.get('premium') or {}).get('premium_pct')
-            _rp[f'{_epfxrp} | 折溢價率'] = _rp_scalar(_e1_prem, 'ETF', 'daily')
+            _e1_prem = (_e1rp.get('premium') or {})
+            _rp[f'{_epfxrp} | 折溢價率'] = _rp_scalar(_e1_prem.get('premium_pct'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | 淨值 (NAV)'] = _rp_scalar(_e1_prem.get('nav'), 'ETF', 'daily')
             _rp[f'{_epfxrp} | 追蹤誤差'] = _rp_scalar(_e1rp.get('te'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | VCP 波幅收縮'] = _rp_scalar(_e1rp.get('vcp'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | 內控費用率'] = _rp_scalar(_e1rp.get('expense'), 'ETF', 'yearly')
+            _rp[f'{_epfxrp} | Beta'] = _rp_scalar(_e1rp.get('beta'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | AuM 規模'] = _rp_scalar(_e1rp.get('aum'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | KD 技術指標'] = _rp_scalar(_e1rp.get('k_val'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | 年線乖離率 BIAS240'] = _rp_scalar(_e1rp.get('bias240'), 'ETF', 'daily')
 
             # ── ETF 組合 ──────────────────────────────────────────────────
             _e2rp = st.session_state.get('etf_portfolio_data') or {}
