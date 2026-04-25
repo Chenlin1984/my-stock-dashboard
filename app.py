@@ -3154,6 +3154,102 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.rerun()  # 資料更新完成，重跑腳本讓頂部看板讀取最新 session_state
 
     cd     = st.session_state.get('cl_data', {})
+
+    # ── Registry 常態 Patch：每次頁面渲染都更新個股/ETF 部分（不重發請求）──
+    # 個股(t2_data)、ETF、比較排行 是用戶互動後才載入，需在每次 rerun 補入 registry
+    try:
+        import pandas as _pd_rp
+        _rp = dict(st.session_state.get('data_registry') or {})
+        if _rp:
+            _cl_ts_rp = st.session_state.get('cl_ts', '')
+            try:
+                import re as _re_rp
+                _m_rp = _re_rp.search(r'(\d{4}-\d{2}-\d{2})', _cl_ts_rp)
+                _proxy_rp = _m_rp.group(1) if _m_rp else 'N/A'
+            except Exception:
+                _proxy_rp = 'N/A'
+
+            def _rp_ts(_df):
+                """取 DataFrame 最新日期字串（與 _reg_add 邏輯一致）。"""
+                if not isinstance(_df, _pd_rp.DataFrame) or _df.empty:
+                    return 'N/A'
+                if isinstance(_df.index, _pd_rp.DatetimeIndex):
+                    try: return _pd_rp.Timestamp(_df.index.max()).strftime('%Y-%m-%d')
+                    except: pass
+                for _c in _df.columns:
+                    _cl2 = str(_c).lower()
+                    _fmt2 = '%Y%m%d' if _cl2 == '_date' else None
+                    if _cl2 in ('_date', 'date', 'datetime', 'timestamp', '日期', 'quarter', 'period'):
+                        try:
+                            _lat2 = _pd_rp.to_datetime(_df[_c], format=_fmt2, errors='coerce').max()
+                            if _lat2 is not None and not _pd_rp.isna(_lat2):
+                                return _lat2.strftime('%Y-%m-%d')
+                        except: pass
+                return 'N/A'
+
+            def _rp_entry(_df, cat, freq):
+                if isinstance(_df, _pd_rp.DataFrame) and not _df.empty:
+                    return {'last_updated': _rp_ts(_df), 'rows': len(_df), 'category': cat, 'frequency': freq}
+                return {'last_updated': 'N/A', 'rows': 0, 'category': cat, 'frequency': freq, 'missing': True}
+
+            # 移除所有舊的個股 / ETF 單一 / ETF組合 / ETF回測 / 比較 key
+            for _ok in list(_rp.keys()):
+                if (_ok.startswith('[個股]') or _ok.startswith('[比較]')
+                        or (_ok.startswith('[ETF]') and '|' in _ok)
+                        or '[ETF組合]' in _ok or '[ETF回測]' in _ok):
+                    del _rp[_ok]
+
+            # ── 個股 ──────────────────────────────────────────────────────
+            _t2rp = st.session_state.get('t2_data')
+            if _t2rp:
+                _spfx = f'[個股] {_t2rp.get("sid","")} {(_t2rp.get("name") or _t2rp.get("sid",""))}'
+                for _lbl, _key, _f in [('價格走勢','df','daily'),('月營收','rev','monthly'),
+                                        ('季財報','qtr','quarterly'),('現金流量','cl','quarterly'),
+                                        ('資產負債','cx','quarterly')]:
+                    _rp[f'{_spfx} | {_lbl}'] = _rp_entry(_t2rp.get(_key), '個股', _f)
+            else:
+                _spfx0 = '[個股] — 尚未搜尋'
+                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),
+                                    ('季財報','quarterly'),('現金流量','quarterly'),('資產負債','quarterly')]:
+                    _rp[f'{_spfx0} | {_lbl0}'] = {'last_updated':'N/A','rows':0,'category':'個股','frequency':_f0,'missing':True}
+
+            # ── 比較排行 ──────────────────────────────────────────────────
+            _t3rp = st.session_state.get('t3_data')
+            if _t3rp and _t3rp.get('results'):
+                _rp['[比較] 多股比較排行'] = {'last_updated': _proxy_rp, 'rows': len(_t3rp['results']), 'category': '個股', 'frequency': 'daily'}
+            else:
+                _rp['[比較] 多股比較排行'] = {'last_updated': 'N/A', 'rows': 0, 'category': '個股', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 單一 ──────────────────────────────────────────────────
+            _e1rp = st.session_state.get('etf_single_data') or {}
+            _etkrp = _e1rp.get('ticker', '')
+            _epfxrp = f'[ETF] {_etkrp} {_e1rp.get("name","")}'.strip() if _etkrp else '[ETF] — 尚未搜尋'
+            _rp[f'{_epfxrp} | 價格走勢'] = _rp_entry(_e1rp.get('price_df'), 'ETF', 'daily')
+            if _e1rp.get('cur_yield') is not None:
+                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': _proxy_rp, 'rows': 1, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 組合 ──────────────────────────────────────────────────
+            _e2rp = st.session_state.get('etf_portfolio_data') or {}
+            if _e2rp.get('rows'):
+                _e2n = len(_e2rp['rows'])
+                _rp[f'[ETF組合] 再平衡分析（{_e2n}檔）'] = {'last_updated': _proxy_rp, 'rows': _e2n, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp['[ETF組合] 再平衡分析'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            # ── ETF 回測 ──────────────────────────────────────────────────
+            _e3rp = st.session_state.get('etf_backtest_data') or {}
+            if _e3rp.get('cagr') is not None:
+                _e3n = len(_e3rp.get('weights', {}))
+                _rp[f'[ETF回測] 回測績效（{_e3n}檔）'] = {'last_updated': _proxy_rp, 'rows': _e3n, 'category': 'ETF', 'frequency': 'daily'}
+            else:
+                _rp['[ETF回測] 回測績效'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+
+            st.session_state['data_registry'] = _rp
+    except Exception as _rpe:
+        print(f'[RegistryPatch] {_rpe}')
+
     intl   = {n:s for n,s in cd.get('intl',{}).items() if s is not None and not s.empty}
     tw     = {n:s for n,s in cd.get('tw',{}).items()   if s is not None and not s.empty}
     tech   = {n:s for n,s in cd.get('tech',{}).items() if s is not None and not s.empty}
