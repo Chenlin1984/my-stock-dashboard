@@ -2046,7 +2046,8 @@ def render_data_health():
         _today = _pd_dh.Timestamp.now().normalize()
 
         # ── 純時間戳新鮮度判定（依 frequency 欄位，不依名稱猜測）────────
-        _FREQ_LBL = {'daily': '📈 日更新', 'monthly': '📅 月更新', 'quarterly': '📊 季更新'}
+        _FREQ_LBL = {'daily': '📈 日更新', 'monthly': '📅 月更新',
+                     'quarterly': '📊 季更新', 'yearly': '📆 年更新'}
         _CAT_ICON = {'大盤': '📊', '個股': '🔬', 'ETF': '🏦'}
 
         def _freshness(date_str: str, frequency: str = 'daily'):
@@ -2054,7 +2055,11 @@ def render_data_health():
                 _age = (_today - _pd_dh.Timestamp(date_str)).days
             except Exception:
                 return '⚪', '無法解析'
-            if frequency == 'quarterly':
+            if frequency == 'yearly':
+                if _age <= 365:   return '🟢', f'{_age}天前'
+                elif _age <= 548: return '🟡', f'{_age}天前'
+                else:             return '🔴', f'{_age}天前 ⚠️'
+            elif frequency == 'quarterly':
                 if _age <= 90:    return '🟢', f'{_age}天前'
                 elif _age <= 180: return '🟡', f'{_age}天前'
                 else:             return '🔴', f'{_age}天前 ⚠️'
