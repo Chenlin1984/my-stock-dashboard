@@ -2096,7 +2096,7 @@ def render_data_health():
                 return rn.replace('[先行指標]', '').strip()
             if '| ' in rn:
                 return rn.split('| ', 1)[-1]
-            for _pfx in ('[ETF]', '[個股]', '[大盤]'):
+            for _pfx in ('[ETF組合]', '[ETF回測]', '[ETF]', '[個股]', '[比較]', '[大盤]'):
                 if rn.startswith(_pfx):
                     return rn[len(_pfx):].strip()
             return rn
@@ -2167,14 +2167,48 @@ def render_data_health():
                     if not any([_tw, _intl, _bond, _inst, _money, _macro, _li]):
                         st.info('請先點擊「🔄 更新全部總經數據」載入市場資料。')
                 elif _cat == '個股':
+                    _raw_keys_s = {_disp_name(rn): rn for rn in _reg
+                                   if _reg[rn].get('category', '未分類') == '個股'}
+                    _stk_items  = [(dn, rv) for dn, rv in _cat_items
+                                   if not _raw_keys_s.get(dn, dn).startswith('[比較]')]
+                    _cmp_items  = [(dn, rv) for dn, rv in _cat_items
+                                   if _raw_keys_s.get(dn, dn).startswith('[比較]')]
+                    # 個股分析
                     _sk = next((k for k in _reg if k.startswith('[個股]')), '')
                     _sid = _sk.split('[個股]')[-1].split('|')[0].strip() if _sk else ''
-                    if _sid:
-                        st.caption(f'當前已載入個股：**{_sid}**')
-                    st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
-                    _n_miss_s = sum(1 for _, v in _cat_items if v.get('missing'))
+                    _stk_lbl = f'🔬 個股分析（{_sid.strip()}）' if _sid and '尚未' not in _sid else '🔬 個股分析'
+                    _n_bad_s = sum(1 for _, v in _stk_items if v.get('missing') or
+                                   _freshness(v.get('last_updated',''), v.get('frequency','daily'))[0] == '🔴')
+                    st.markdown(f'**{_stk_lbl}{"  ⚠️ " + str(_n_bad_s) + "項問題" if _n_bad_s else "  ✅"}**')
+                    st.dataframe(_build_table(_stk_items), use_container_width=True, hide_index=True)
+                    _n_miss_s = sum(1 for _, v in _stk_items if v.get('missing'))
                     if _n_miss_s:
                         st.warning(f'⚫ {_n_miss_s} 項財報資料缺失 → DSO / 負債比等指標將顯示 N/A')
+                    # 比較排行
+                    if _cmp_items:
+                        _n_bad_c = sum(1 for _, v in _cmp_items if v.get('missing'))
+                        st.markdown(f'**🏆 比較排行{"  ⚠️ 尚未載入" if _n_bad_c else "  ✅"}**')
+                        st.dataframe(_build_table(_cmp_items), use_container_width=True, hide_index=True)
+                elif _cat == 'ETF':
+                    _raw_keys_e = {_disp_name(rn): rn for rn in _reg
+                                   if _reg[rn].get('category', '未分類') == 'ETF'}
+                    _etf1_items = [(dn, rv) for dn, rv in _cat_items
+                                   if not _raw_keys_e.get(dn, dn).startswith('[ETF組合]')
+                                   and not _raw_keys_e.get(dn, dn).startswith('[ETF回測]')]
+                    _etf2_items = [(dn, rv) for dn, rv in _cat_items
+                                   if _raw_keys_e.get(dn, dn).startswith('[ETF組合]')]
+                    _etf3_items = [(dn, rv) for dn, rv in _cat_items
+                                   if _raw_keys_e.get(dn, dn).startswith('[ETF回測]')]
+                    for _etitle, _egrp in [
+                        ('🏦 ETF 單一診斷',  _etf1_items),
+                        ('⚖️ ETF 組合分析',  _etf2_items),
+                        ('📈 ETF 回測績效',  _etf3_items),
+                    ]:
+                        if not _egrp:
+                            continue
+                        _n_bad_e = sum(1 for _, v in _egrp if v.get('missing'))
+                        st.markdown(f'**{_etitle}{"  ⚠️ 尚未載入" if _n_bad_e else "  ✅"}**')
+                        st.dataframe(_build_table(_egrp), use_container_width=True, hide_index=True)
                 else:
                     st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
 

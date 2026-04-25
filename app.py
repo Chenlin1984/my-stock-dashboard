@@ -3019,15 +3019,55 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         _reg_add(_rname, _sub, category='個股', frequency=_f)
                     else:
                         _reg_missing(_rname, category='個股', frequency=_f)
+            else:
+                _pfx0 = '[個股] — 尚未搜尋'
+                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),
+                                    ('季財報','quarterly'),('現金流量','quarterly'),('資產負債','quarterly')]:
+                    _reg_missing(f'{_pfx0} | {_lbl0}', category='個股', frequency=_f0)
 
-            # ── ETF 細項（日更新）────────────────────────────────────────
+            # ── 比較排行（個股類別）──────────────────────────────────────
+            _t3d_reg = st.session_state.get('t3_data')
+            if _t3d_reg and _t3d_reg.get('results'):
+                _reg_new['[比較] 多股比較排行'] = {
+                    'last_updated': 'N/A', 'rows': len(_t3d_reg['results']),
+                    'category': '個股', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[比較] 多股比較排行', category='個股', frequency='daily')
+
+            # ── ETF 細項（全部強制顯示）─────────────────────────────────
             _etf1_reg = st.session_state.get('etf_single_data') or {}
             _etf_pdf  = _etf1_reg.get('price_df')
+            _etf_tk   = _etf1_reg.get('ticker', '')
+            _etf_nm   = _etf1_reg.get('name', '')
+            _etf_pfx  = f'[ETF] {_etf_tk} {_etf_nm}'.strip() if _etf_tk else '[ETF] — 尚未搜尋'
             if isinstance(_etf_pdf, _pd_reg.DataFrame) and not _etf_pdf.empty:
-                _etf_tk = _etf1_reg.get('ticker', 'ETF')
-                _etf_nm = _etf1_reg.get('name', '')
-                _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢',
-                         _etf_pdf, category='ETF', frequency='daily')
+                _reg_add(f'{_etf_pfx} | 價格走勢', _etf_pdf, category='ETF', frequency='daily')
+            else:
+                _reg_missing(f'{_etf_pfx} | 價格走勢', category='ETF', frequency='daily')
+            if _etf1_reg.get('cur_yield') is not None:
+                _reg_new[f'{_etf_pfx} | 殖利率與技術分析'] = {
+                    'last_updated': 'N/A', 'rows': 1, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing(f'{_etf_pfx} | 殖利率與技術分析', category='ETF', frequency='daily')
+            _etf2_reg = st.session_state.get('etf_portfolio_data') or {}
+            if _etf2_reg.get('rows'):
+                _etf2n = len(_etf2_reg['rows'])
+                _reg_new[f'[ETF組合] 再平衡分析（{_etf2n}檔）'] = {
+                    'last_updated': 'N/A', 'rows': _etf2n, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[ETF組合] 再平衡分析', category='ETF', frequency='daily')
+            _etf3_reg = st.session_state.get('etf_backtest_data') or {}
+            if _etf3_reg.get('cagr') is not None:
+                _etf3n = len(_etf3_reg.get('weights', {}))
+                _reg_new[f'[ETF回測] 回測績效（{_etf3n}檔）'] = {
+                    'last_updated': 'N/A', 'rows': _etf3n, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[ETF回測] 回測績效', category='ETF', frequency='daily')
+
 
             st.session_state['data_registry'] = _reg_new
             print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源，類別標籤已寫入')
