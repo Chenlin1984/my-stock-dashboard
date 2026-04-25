@@ -3169,6 +3169,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             except Exception:
                 _proxy_rp = 'N/A'
 
+            _QE_MAP = {'1': '03-31', '2': '06-30', '3': '09-30', '4': '12-31'}
+
             def _rp_ts(_df):
                 """取 DataFrame 最新日期字串（與 _reg_add 邏輯一致）。"""
                 if not isinstance(_df, _pd_rp.DataFrame) or _df.empty:
@@ -3177,9 +3179,23 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     try: return _pd_rp.Timestamp(_df.index.max()).strftime('%Y-%m-%d')
                     except: pass
                 for _c in _df.columns:
-                    _cl2 = str(_c).lower()
-                    _fmt2 = '%Y%m%d' if _cl2 == '_date' else None
-                    if _cl2 in ('_date', 'date', 'datetime', 'timestamp', '日期', 'quarter', 'period'):
+                    _cl2 = str(_c)
+                    _cl2l = _cl2.lower()
+                    # 季度標籤 '2024Q4' → '2024-12-31'
+                    if _cl2 == '季度標籤':
+                        try:
+                            _lq = str(_df[_c].dropna().iloc[-1])
+                            _yr_q, _qn = _lq.split('Q')
+                            return f'{_yr_q}-{_QE_MAP.get(_qn, "12-31")}'
+                        except: pass
+                    # 年度 integer column → 'YYYY-12-31'
+                    if _cl2 == '年度':
+                        try:
+                            _yr = int(_df[_c].dropna().iloc[-1])
+                            return f'{_yr}-12-31'
+                        except: pass
+                    _fmt2 = '%Y%m%d' if _cl2l == '_date' else None
+                    if _cl2l in ('_date', 'date', 'datetime', 'timestamp', '日期', 'quarter', 'period'):
                         try:
                             _lat2 = _pd_rp.to_datetime(_df[_c], format=_fmt2, errors='coerce').max()
                             if _lat2 is not None and not _pd_rp.isna(_lat2):
@@ -3190,6 +3206,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             def _rp_entry(_df, cat, freq):
                 if isinstance(_df, _pd_rp.DataFrame) and not _df.empty:
                     return {'last_updated': _rp_ts(_df), 'rows': len(_df), 'category': cat, 'frequency': freq}
+                return {'last_updated': 'N/A', 'rows': 0, 'category': cat, 'frequency': freq, 'missing': True}
+
+            def _rp_scalar(val, cat, freq):
+                """純量值（健康度評分、RSI、殖利率等）有值即視為有效，日期用 proxy。"""
+                if val is not None:
+                    return {'last_updated': _proxy_rp, 'rows': 1, 'category': cat, 'frequency': freq}
                 return {'last_updated': 'N/A', 'rows': 0, 'category': cat, 'frequency': freq, 'missing': True}
 
             # 移除所有舊的個股 / ETF 單一 / ETF組合 / ETF回測 / 比較 key
@@ -3203,14 +3225,31 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _t2rp = st.session_state.get('t2_data')
             if _t2rp:
                 _spfx = f'[個股] {_t2rp.get("sid","")} {(_t2rp.get("name") or _t2rp.get("sid",""))}'
+                # DataFrame 型資料
                 for _lbl, _key, _f in [('價格走勢','df','daily'),('月營收','rev','monthly'),
                                         ('季財報','qtr','quarterly'),('現金流量','cl','quarterly'),
                                         ('資產負債','cx','quarterly')]:
                     _rp[f'{_spfx} | {_lbl}'] = _rp_entry(_t2rp.get(_key), '個股', _f)
+                # 年度股利（list of dicts）
+                _yr_rp = _t2rp.get('yearly') or []
+                _rp[f'{_spfx} | 年度股利'] = (
+                    {'last_updated': str(_yr_rp[-1].get('year',''))[:4] + '-12-31'
+                        if _yr_rp and _yr_rp[-1].get('year') else _proxy_rp,
+                     'rows': len(_yr_rp), 'category': '個股', 'frequency': 'yearly'}
+                    if _yr_rp else
+                    {'last_updated': 'N/A', 'rows': 0, 'category': '個股', 'frequency': 'yearly', 'missing': True}
+                )
+                # 健康度評分（純量）
+                _rp[f'{_spfx} | 健康度評分'] = _rp_scalar(_t2rp.get('health'), '個股', 'daily')
+                # 技術指標 RSI/KD（純量，任一有值即代表已計算）
+                _rsi_v = _t2rp.get('rsi'); _k_v = _t2rp.get('k')
+                _rp[f'{_spfx} | 技術指標 RSI/KD'] = _rp_scalar(
+                    _rsi_v if _rsi_v is not None else _k_v, '個股', 'daily')
             else:
                 _spfx0 = '[個股] — 尚未搜尋'
-                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),
-                                    ('季財報','quarterly'),('現金流量','quarterly'),('資產負債','quarterly')]:
+                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),('季財報','quarterly'),
+                                    ('現金流量','quarterly'),('資產負債','quarterly'),
+                                    ('年度股利','yearly'),('健康度評分','daily'),('技術指標 RSI/KD','daily')]:
                     _rp[f'{_spfx0} | {_lbl0}'] = {'last_updated':'N/A','rows':0,'category':'個股','frequency':_f0,'missing':True}
 
             # ── 比較排行 ──────────────────────────────────────────────────
@@ -3225,10 +3264,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _etkrp = _e1rp.get('ticker', '')
             _epfxrp = f'[ETF] {_etkrp} {_e1rp.get("name","")}'.strip() if _etkrp else '[ETF] — 尚未搜尋'
             _rp[f'{_epfxrp} | 價格走勢'] = _rp_entry(_e1rp.get('price_df'), 'ETF', 'daily')
-            if _e1rp.get('cur_yield') is not None:
-                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': _proxy_rp, 'rows': 1, 'category': 'ETF', 'frequency': 'daily'}
-            else:
-                _rp[f'{_epfxrp} | 殖利率與技術分析'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
+            _rp[f'{_epfxrp} | 現金殖利率'] = _rp_scalar(_e1rp.get('cur_yield'), 'ETF', 'daily')
+            _rp[f'{_epfxrp} | 近5年平均殖利率'] = _rp_scalar(_e1rp.get('avg_yield'), 'ETF', 'yearly')
+            _rp[f'{_epfxrp} | 近1年含息總報酬'] = _rp_scalar(_e1rp.get('total_ret'), 'ETF', 'daily')
+            _e1_prem = (_e1rp.get('premium') or {}).get('premium_pct')
+            _rp[f'{_epfxrp} | 折溢價率'] = _rp_scalar(_e1_prem, 'ETF', 'daily')
+            _rp[f'{_epfxrp} | 追蹤誤差'] = _rp_scalar(_e1rp.get('te'), 'ETF', 'daily')
 
             # ── ETF 組合 ──────────────────────────────────────────────────
             _e2rp = st.session_state.get('etf_portfolio_data') or {}
