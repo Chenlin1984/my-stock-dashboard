@@ -2914,6 +2914,63 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             else:
                 _reg_missing('ADL 市場廣度', category='大盤', frequency='daily')
 
+            # ── 三大法人 + 融資餘額（籌碼面，日更新）────────────────────
+            _cl_inst_reg = _cl_reg.get('inst') or st.session_state.get('_last_inst') or {}
+            _inst_date_reg = (_cl_reg.get('inst_date') or st.session_state.get('_last_inst_date'))
+            try:
+                _inst_ds = str(_inst_date_reg)[:10] if _inst_date_reg else 'N/A'
+            except Exception:
+                _inst_ds = 'N/A'
+            for _ik, _iname in [('外資及陸資', '三大法人 外資買賣超'),
+                                 ('投信',       '三大法人 投信買賣超'),
+                                 ('自營商',     '三大法人 自營商買賣超')]:
+                if _cl_inst_reg.get(_ik) is not None:
+                    _reg_new[_iname] = {'last_updated': _inst_ds, 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+                else:
+                    _reg_missing(_iname, category='大盤', frequency='daily')
+            _margin_reg2 = _cl_reg.get('margin') or st.session_state.get('_last_margin')
+            if _margin_reg2:
+                _reg_new['融資餘額（台股）'] = {'last_updated': _inst_ds, 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+            else:
+                _reg_missing('融資餘額（台股）', category='大盤', frequency='daily')
+
+            # ── 旌旗指數 + 乖離率（日更新）──────────────────────────────
+            _jq_reg3 = st.session_state.get('jingqi_info') or {}
+            if _jq_reg3.get('avg') is not None:
+                _reg_new['旌旗指數（上漲佔比）'] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+            else:
+                _reg_missing('旌旗指數（上漲佔比）', category='大盤', frequency='daily')
+            _bias_reg3 = st.session_state.get('bias_info') or {}
+            for _bk, _bn in [('bias_240', 'TWII 年線乖離率'), ('bias_20', 'TWII 月線乖離率')]:
+                if _bias_reg3.get(_bk) is not None:
+                    _reg_new[_bn] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'daily'}
+                else:
+                    _reg_missing(_bn, category='大盤', frequency='daily')
+
+            # ── M1B / M2 貨幣資金（月更新）──────────────────────────────
+            _m1b_reg3 = st.session_state.get('m1b_m2_info') or {}
+            for _mk, _mn in [('m1b_yoy', 'M1B 資金活水年增率'), ('m2_yoy', 'M2 廣義貨幣年增率')]:
+                if _m1b_reg3.get(_mk) is not None:
+                    _reg_new[_mn] = {'last_updated': 'N/A', 'rows': 1, 'category': '大盤', 'frequency': 'monthly'}
+                else:
+                    _reg_missing(_mn, category='大盤', frequency='monthly')
+
+            # ── 宏觀指標（月/日更新）────────────────────────────────────
+            _macro_reg3 = st.session_state.get('macro_info') or {}
+            for _mkey, _mname, _mfreq in [
+                ('vix',         'VIX 波動率指數',      'daily'),
+                ('us_core_cpi', '美國核心CPI年增率',   'monthly'),
+                ('ism_pmi',     'ISM PMI 製造業指數',  'monthly'),
+                ('tw_export',   '台灣出口年增率',       'monthly'),
+                ('ndc_signal',  '景氣先行指標（NDC）', 'monthly'),
+            ]:
+                _msub = _macro_reg3.get(_mkey)
+                if _msub:
+                    _mdate = str(_msub.get('date') or _msub.get('period') or 'N/A')[:10] if isinstance(_msub, dict) else 'N/A'
+                    _reg_new[_mname] = {'last_updated': _mdate, 'rows': 1, 'category': '大盤', 'frequency': _mfreq}
+                else:
+                    _reg_missing(_mname, category='大盤', frequency=_mfreq)
+
             # ── 先行指標：按來源拆 5 細項（大盤，日更新）────────────────
             _li_reg = st.session_state.get('li_latest')
             _li_groups = {
@@ -2962,15 +3019,55 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         _reg_add(_rname, _sub, category='個股', frequency=_f)
                     else:
                         _reg_missing(_rname, category='個股', frequency=_f)
+            else:
+                _pfx0 = '[個股] — 尚未搜尋'
+                for _lbl0, _f0 in [('價格走勢','daily'),('月營收','monthly'),
+                                    ('季財報','quarterly'),('現金流量','quarterly'),('資產負債','quarterly')]:
+                    _reg_missing(f'{_pfx0} | {_lbl0}', category='個股', frequency=_f0)
 
-            # ── ETF 細項（日更新）────────────────────────────────────────
+            # ── 比較排行（個股類別）──────────────────────────────────────
+            _t3d_reg = st.session_state.get('t3_data')
+            if _t3d_reg and _t3d_reg.get('results'):
+                _reg_new['[比較] 多股比較排行'] = {
+                    'last_updated': 'N/A', 'rows': len(_t3d_reg['results']),
+                    'category': '個股', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[比較] 多股比較排行', category='個股', frequency='daily')
+
+            # ── ETF 細項（全部強制顯示）─────────────────────────────────
             _etf1_reg = st.session_state.get('etf_single_data') or {}
             _etf_pdf  = _etf1_reg.get('price_df')
+            _etf_tk   = _etf1_reg.get('ticker', '')
+            _etf_nm   = _etf1_reg.get('name', '')
+            _etf_pfx  = f'[ETF] {_etf_tk} {_etf_nm}'.strip() if _etf_tk else '[ETF] — 尚未搜尋'
             if isinstance(_etf_pdf, _pd_reg.DataFrame) and not _etf_pdf.empty:
-                _etf_tk = _etf1_reg.get('ticker', 'ETF')
-                _etf_nm = _etf1_reg.get('name', '')
-                _reg_add(f'[ETF] {_etf_tk} {_etf_nm} | 價格走勢',
-                         _etf_pdf, category='ETF', frequency='daily')
+                _reg_add(f'{_etf_pfx} | 價格走勢', _etf_pdf, category='ETF', frequency='daily')
+            else:
+                _reg_missing(f'{_etf_pfx} | 價格走勢', category='ETF', frequency='daily')
+            if _etf1_reg.get('cur_yield') is not None:
+                _reg_new[f'{_etf_pfx} | 殖利率與技術分析'] = {
+                    'last_updated': 'N/A', 'rows': 1, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing(f'{_etf_pfx} | 殖利率與技術分析', category='ETF', frequency='daily')
+            _etf2_reg = st.session_state.get('etf_portfolio_data') or {}
+            if _etf2_reg.get('rows'):
+                _etf2n = len(_etf2_reg['rows'])
+                _reg_new[f'[ETF組合] 再平衡分析（{_etf2n}檔）'] = {
+                    'last_updated': 'N/A', 'rows': _etf2n, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[ETF組合] 再平衡分析', category='ETF', frequency='daily')
+            _etf3_reg = st.session_state.get('etf_backtest_data') or {}
+            if _etf3_reg.get('cagr') is not None:
+                _etf3n = len(_etf3_reg.get('weights', {}))
+                _reg_new[f'[ETF回測] 回測績效（{_etf3n}檔）'] = {
+                    'last_updated': 'N/A', 'rows': _etf3n, 'category': 'ETF', 'frequency': 'daily',
+                }
+            else:
+                _reg_missing('[ETF回測] 回測績效', category='ETF', frequency='daily')
+
 
             st.session_state['data_registry'] = _reg_new
             print(f'[DataRegistry] 已登錄 {len(_reg_new)} 個資料源，類別標籤已寫入')
@@ -3717,26 +3814,65 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if 'is_proxy' in _adl_chk.columns and _adl_chk['is_proxy'].any():
             st.caption('⚠️ 目前顯示 yfinance 代理數據（TWSE 上漲/下跌家數暫時無法取得），上漲佔比為估算值')
 
-    # ── 騰落指標：初學者說明 ─────────────────────────────────────
-    with st.expander('💡 什麼是騰落指標（ADL）？點此了解', expanded=False):
-        st.markdown('''
-<div style="font-size:13px;color:#c9d1d9;line-height:1.9;">
-<b>📌 一句話理解：「今天台股1800支股票，到底幾支在漲？幾支在跌？」</b><br><br>
-<b>計算方式：</b><br>
-　① 每天統計全市場「上漲家數 A」和「下跌家數 D」<br>
-　② AD值 = A - D（今天的淨上漲家數）<br>
-　③ ADL = 累積加總每天的 AD 值（趨勢線）<br><br>
-<b>🟢 判讀重點一：上漲佔比</b><br>
-　>60% = 多數股票在漲 → 廣度健康，真多頭<br>
-　40-60% = 多空均衡 → 市場整理<br>
-　<40% = 少數股票在漲 → 廣度萎縮，注意拉尾盤風險<br><br>
-<b>⚠️ 判讀重點二：背離訊號（最重要！）</b><br>
-　✅ 指數創高 + ADL 也創高 = 百花齊放，健康多頭<br>
-　🔴 指數創高 + ADL 卻走低 = 拉權值、出中小！崩盤前兆，要降倉<br>
-　🌱 指數創低 + ADL 止跌回升 = 底部可能不遠，左側布局機會<br><br>
-<b>📊 資料來源：</b>FinMind API (TaiwanStockMarketCondition) → TWSE MI_INDEX → FMTQIK
-</div>
-        ''', unsafe_allow_html=True)
+    # ── 宏爺策略 + 上漲佔比動態結論（移至 Section 標題下方）──────────
+    if df_adl is not None and not df_adl.empty:
+        st.caption('💡 宏爺策略：ADL 趨勢比今日漲跌更重要，要看「方向」是否與指數一致。')
+        _ar2 = df_adl.iloc[-1]
+        _ad2 = _ar2.get('ad', 0)
+        _ratio2 = _ar2.get('ad_ratio', 50)
+        _adl2 = _ar2.get('adl', 0)
+        _ma2  = df_adl['adl_ma20'].dropna().iloc[-1] if df_adl['adl_ma20'].notna().any() else _adl2
+        _twii_pct2 = tw_s.get('台股加權指數', {}).get('pct', 0) if tw_s.get('台股加權指數') else 0
+        _ad_ratio_int  = int(round(_ratio2)) if _ratio2 else 0
+        _adl_above_ma  = (_adl2 is not None and _ma2 is not None and _adl2 > _ma2)
+        _adl_below_ma  = (_adl2 is not None and _ma2 is not None and _adl2 < _ma2)
+        _adl_concl = []
+        if _twii_pct2 > 0.5 and _ad2 < -50:
+            _adl_concl.append(
+                f'🔴 指數漲({_twii_pct2:+.1f}%) 但 AD值({_ad2:+,}) < -50 → '
+                f'背離！僅少數大型股撐盤，廣度萎縮，建議準備降倉')
+        elif _twii_pct2 < -0.5 and _ad2 > 50:
+            _adl_concl.append(
+                f'🟢 指數跌({_twii_pct2:+.1f}%) 但 AD值({_ad2:+,}) > 50 → '
+                f'底部擴散！多數股票止跌，可留意逢低布局機會')
+        elif _ratio2 >= 70 and _adl_above_ma:
+            _adl_concl.append(
+                f'✅ 上漲佔比 {_ad_ratio_int}%（>70%）+ ADL在MA上 → '
+                f'全面多頭，市場廣度充足，可積極持股')
+        elif _ratio2 >= 60 and _adl_above_ma:
+            _adl_concl.append(
+                f'✅ 上漲佔比 {_ad_ratio_int}%（60~70%）+ ADL在MA上 → '
+                f'多頭健康，可持股偏多，注意量能配合')
+        elif _ratio2 < 40 and _adl_below_ma:
+            _adl_concl.append(
+                f'🔴 上漲佔比 {_ad_ratio_int}%（<40%）+ ADL破MA → '
+                f'廣泛賣壓，空頭格局，建議降倉保守')
+        elif _ratio2 < 40:
+            _adl_concl.append(
+                f'⚠️ 上漲佔比 {_ad_ratio_int}%（<40%）→ '
+                f'廣度不足，多數股票弱勢，不宜追高')
+        elif _adl_below_ma:
+            _adl_concl.append(
+                f'⚠️ 上漲佔比 {_ad_ratio_int}% 但 ADL跌破MA → '
+                f'趨勢轉弱訊號，觀望等方向確認')
+        else:
+            _adl_concl.append(
+                f'⚪ 上漲佔比 {_ad_ratio_int}%（40~60%）→ '
+                f'廣度中性，盤整格局，等待方向選擇')
+        for _ac in _adl_concl:
+            _ac_c = ('#2ea043' if '✅' in _ac or '可進攻' in _ac
+                     else '#da3633' if '🔴' in _ac or '警告' in _ac
+                     else '#d29922' if '⚠️' in _ac else '#388bfd')
+            _ac_dot = '🟢' if '✅' in _ac else ('🔴' if '🔴' in _ac else ('🟡' if '⚠️' in _ac else '⚪'))
+            _ac_clean = _ac.lstrip('✅⚠️🔴⚪').strip()
+            st.markdown(
+                f'<div style="border-left:5px solid {_ac_c};background:#0d1117;'
+                f'padding:9px 14px;border-radius:0 8px 8px 0;margin:5px 0;">'
+                f'<span style="font-size:14px;font-weight:900;color:{_ac_c};">{_ac_dot} {_ac_clean}</span><br>'
+                f'<span style="font-size:10px;color:#484f58;">詳細判讀 → 「策略手冊」Tab</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
     # ── ADL 即時補救（TWSE 封鎖時自動觸發 FinMind）─────────────────
     if (df_adl is None or df_adl.empty):
@@ -3903,69 +4039,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 'AD值': st.column_config.NumberColumn('AD值', format='%+d'),
             })
 
-        with st.container():
-            st.caption('💡 宏爺策略：ADL 趨勢比今日漲跌更重要，要看「方向」是否與指數一致。')
-            # 連動結論
-            _adl_concl = []
-            if df_adl is not None and not df_adl.empty:
-                _ar2 = df_adl.iloc[-1]
-                _ad2 = _ar2.get('ad', 0)
-                _ratio2 = _ar2.get('ad_ratio', 50)
-                _adl2 = _ar2.get('adl', 0)
-                _ma2  = df_adl['adl_ma20'].dropna().iloc[-1] if df_adl['adl_ma20'].notna().any() else _adl2
-                _twii_pct2 = tw_s.get('台股加權指數', {}).get('pct', 0) if tw_s.get('台股加權指數') else 0
-                # ── 初步條件判斷（給出具體數字與明確結論）
-                _ad_ratio_int  = int(round(_ratio2)) if _ratio2 else 0
-                _adl_above_ma  = (_adl2 is not None and _ma2 is not None and _adl2 > _ma2)
-                _adl_below_ma  = (_adl2 is not None and _ma2 is not None and _adl2 < _ma2)
-
-                if _twii_pct2 > 0.5 and _ad2 < -50:
-                    _adl_concl.append(
-                        f'🔴 指數漲({_twii_pct2:+.1f}%) 但 AD值({_ad2:+,}) < -50 → '
-                        f'背離！僅少數大型股撐盤，廣度萎縮，建議準備降倉')
-                elif _twii_pct2 < -0.5 and _ad2 > 50:
-                    _adl_concl.append(
-                        f'🟢 指數跌({_twii_pct2:+.1f}%) 但 AD值({_ad2:+,}) > 50 → '
-                        f'底部擴散！多數股票止跌，可留意逢低布局機會')
-                elif _ratio2 >= 70 and _adl_above_ma:
-                    _adl_concl.append(
-                        f'✅ 上漲佔比 {_ad_ratio_int}%（>70%）+ ADL在MA上 → '
-                        f'全面多頭，市場廣度充足，可積極持股')
-                elif _ratio2 >= 60 and _adl_above_ma:
-                    _adl_concl.append(
-                        f'✅ 上漲佔比 {_ad_ratio_int}%（60~70%）+ ADL在MA上 → '
-                        f'多頭健康，可持股偏多，注意量能配合')
-                elif _ratio2 < 40 and _adl_below_ma:
-                    _adl_concl.append(
-                        f'🔴 上漲佔比 {_ad_ratio_int}%（<40%）+ ADL破MA → '
-                        f'廣泛賣壓，空頭格局，建議降倉保守')
-                elif _ratio2 < 40:
-                    _adl_concl.append(
-                        f'⚠️ 上漲佔比 {_ad_ratio_int}%（<40%）→ '
-                        f'廣度不足，多數股票弱勢，不宜追高')
-                elif _adl_below_ma:
-                    _adl_concl.append(
-                        f'⚠️ 上漲佔比 {_ad_ratio_int}% 但 ADL跌破MA → '
-                        f'趨勢轉弱訊號，觀望等方向確認')
-                else:
-                    _adl_concl.append(
-                        f'⚪ 上漲佔比 {_ad_ratio_int}%（40~60%）→ '
-                        f'廣度中性，盤整格局，等待方向選擇')
-            for _ac in _adl_concl:
-                _ac_c = ('#2ea043' if '✅' in _ac or '可進攻' in _ac
-                         else '#da3633' if '🔴' in _ac or '警告' in _ac
-                         else '#d29922' if '⚠️' in _ac else '#388bfd')
-                _ac_dot = '🟢' if '✅' in _ac else ('🔴' if '🔴' in _ac else ('🟡' if '⚠️' in _ac else '⚪'))
-                _ac_clean = _ac.lstrip('✅⚠️🔴⚪').strip()
-                st.markdown(
-                    f'<div style="border-left:5px solid {_ac_c};background:#0d1117;'
-                    f'padding:9px 14px;border-radius:0 8px 8px 0;margin:5px 0;">'
-                    f'<span style="font-size:14px;font-weight:900;color:{_ac_c};">{_ac_dot} {_ac_clean}</span><br>'
-                    f'<span style="font-size:10px;color:#484f58;">詳細判讀 → 「策略手冊」Tab</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-        st.caption('📖 ADL判讀方法 → 詳見「策略手冊」Tab')
 
     else:
         _adl_debug = st.session_state.get('adl_debug_msg', '')
@@ -8104,6 +8177,30 @@ with tab4_masters:
 | 🔴 股匯雙殺（外資大舉提款）| ↓跌 | ↓貶值（USD/TWD漲>0）| 外資無情撤出，面臨系統性修正 | 嚴格減碼防守 → 持股 **0~30%** |
 | 🟡 股跌匯升（技術性洗盤）| ↓跌 | ↑升值（USD/TWD跌<0）| 外資資金停泊台灣，技術性洗盤 | 尋找錯殺優質股逢低布局 → 持股 **50~70%** |
 """)
+    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
+
+    # ── 什麼是騰落指標（ADL）？（從 Section 五移入）────────────────
+    st.markdown(section_header('B','💡 什麼是騰落指標（ADL）？','📉'), unsafe_allow_html=True)
+    st.markdown('''
+**📌 一句話理解：「今天台股1800支股票，到底幾支在漲？幾支在跌？」**
+
+**計算方式：**
+1. 每天統計全市場「上漲家數 A」和「下跌家數 D」
+2. AD值 = A − D（今天的淨上漲家數）
+3. ADL = 累積加總每天的 AD 值（趨勢線）
+
+**🟢 判讀重點一：上漲佔比**
+- \>60% = 多數股票在漲 → 廣度健康，真多頭
+- 40~60% = 多空均衡 → 市場整理
+- <40% = 少數股票在漲 → 廣度萎縮，注意拉尾盤風險
+
+**⚠️ 判讀重點二：背離訊號（最重要！）**
+- ✅ 指數創高 + ADL 也創高 = 百花齊放，健康多頭
+- 🔴 指數創高 + ADL 卻走低 = 拉權值、出中小！崩盤前兆，要降倉
+- 🌱 指數創低 + ADL 止跌回升 = 底部可能不遠，左側布局機會
+
+> 資料來源：FinMind API (TaiwanStockMarketCondition) → TWSE MI\_INDEX → FMTQIK
+''')
     st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
 
     # ── ADL 騰落指標判讀（從 Section 五移入）─────────────────────
