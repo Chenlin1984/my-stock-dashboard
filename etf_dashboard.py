@@ -892,6 +892,9 @@ def render_etf_single(gemini_fn=None):
         'total_ret': total_ret, 'vcp': vcp,
         'premium': prem, 'te': te, 'regime': regime,
         'price_df': df,
+        'expense': expense, 'beta': beta, 'aum': aum,
+        'k_val': _kv_ai, 'd_val': _dv_ai,
+        'bias240': _bias240_ai,
     }
 
     # ── AI ETF 存股決策總結 ───────────────────────────────────
