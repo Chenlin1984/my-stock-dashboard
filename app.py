@@ -2559,6 +2559,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             def _job_macro():
                 """總經拼圖 v4.0：NDC景氣燈號 / 外銷訂單 / ISM PMI / 核心CPI / VIX"""
                 import requests as _rq_mc, pandas as _pd_mc, io as _io_mc
+                # 所有 HTTP 請求走 Proxy Session（讀取 Streamlit Secrets PROXY_HOST/PORT/USER/PASS）
+                try:
+                    from tw_stock_data_fetcher import build_proxy_session as _bps_mc
+                    _rq_mc_s = _bps_mc()
+                except Exception:
+                    _rq_mc_s = _rq_mc.Session()
                 _r = {}
 
                 # 1. VIX 時間序列（直接 Yahoo Finance Chart API，避免 yfinance 執行緒競態）
@@ -2567,7 +2573,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                  'Accept': 'application/json,*/*'}
                     for _vix_host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
                         try:
-                            _vix_r = _rq_mc.get(
+                            _vix_r = _rq_mc_s.get(
                                 f'https://{_vix_host}/v8/finance/chart/%5EVIX',
                                 params={'range': '3mo', 'interval': '1d'},
                                 headers=_vix_hdrs, timeout=12, verify=False)
@@ -2603,7 +2609,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 # 主：US Bureau of Labor Statistics Public API（政府免費，Streamlit Cloud 可靠）
                 # CUSR0000SA0L1E = CPI-U All Urban Consumers: All Items Less Food & Energy
                 try:
-                    _bls_r = _rq_mc.post(
+                    _bls_r = _rq_mc_s.post(
                         'https://api.bls.gov/publicAPI/v2/timeseries/data/',
                         json={'seriesid': ['CUSR0000SA0L1E'],
                               'startyear': str(__import__('datetime').date.today().year - 2),
@@ -2639,7 +2645,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 for _cpi_id, _cpi_src in [('CPILFESL', 'FRED'), ('CPIAUCSL', 'FRED_TOTAL')]:
                     if 'us_core_cpi' in _r: break
                     try:
-                        _cr = _rq_mc.get(f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_cpi_id}',
+                        _cr = _rq_mc_s.get(f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_cpi_id}',
                                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
                         print(f'[Macro/CPI/{_cpi_src}] status={_cr.status_code}')
                         if _cr.status_code == 200:
@@ -2674,7 +2680,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 # 3. US PMI（FRED NAPM 已於 2023-12 終止，改用 S&P Global PMI MFPMI01USM657S）
                 try:
                     # 主：FRED S&P Global US Manufacturing PMI（接替 ISM NAPM，每月更新）
-                    _pr = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=MFPMI01USM657S',
+                    _pr = _rq_mc_s.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=MFPMI01USM657S',
                                      headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
                     print(f'[Macro/PMI/SPGLOBAL] status={_pr.status_code}')
                     if _pr.status_code == 200:
@@ -2720,7 +2726,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 # 備援 B：嘗試舊 ISM NAPM（若 FRED 仍可用）
                 if 'ism_pmi' not in _r:
                     try:
-                        _pr2 = _rq_mc.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
+                        _pr2 = _rq_mc_s.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
                                           headers={'User-Agent': 'Mozilla/5.0'}, timeout=12, verify=False)
                         if _pr2.status_code == 200:
                             _pdf2 = _pd_mc.read_csv(_io_mc.StringIO(_pr2.text))
@@ -2779,7 +2785,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         try:
                             _ng_url = f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}'
                             # 以 statistic_ym 降序排列，確保取得最新月份
-                            _ngr = _rq_mc.get(_ng_url,
+                            _ngr = _rq_mc_s.get(_ng_url,
                                               params={'limit': 50},
                                               timeout=8, verify=False,
                                               headers={'Accept': 'application/json'})
@@ -2887,7 +2893,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _fm_tok_ex = _get_fm_token() or ''
                     _ex_start = (_dt_ex.date.today() - _dt_ex.timedelta(days=400)).strftime('%Y-%m-%d')
                     _ex_fm_url = 'https://api.finmindtrade.com/api/v4/data'
-                    _ex_fm_r = _rq_mc.get(_ex_fm_url,
+                    _ex_fm_r = _rq_mc_s.get(_ex_fm_url,
                                           params={'dataset': 'TaiwanExportStatistics',
                                                   'start_date': _ex_start,
                                                   'token': _fm_tok_ex},
