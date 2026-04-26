@@ -2,8 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.28 | branch `claude/analyze-test-coverage-070Kf`
-- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
+- **版本**: v10.29 | branch `claude/analyze-test-coverage-070Kf`
+- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
+- **⚠️ 待 merge**: PR #61 (`claude/analyze-test-coverage-070Kf → main`) — Proxy + 診斷修正
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -21,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.29，commit `42a9e44`）
+
+### 總經資料過期根因修復（app.py）
+| 問題 | 根本原因 | 修正 |
+|------|---------|------|
+| **PMI 877天** | FRED `MFPMI01USM657S` 授權於 2023-10 終止，fetch 成功但資料是舊的，所有備援永遠無法觸發 | 加入 freshness 檢查（>60天自動跳過）；新增 `BSCICP03USM665S`、`PMDILK03USM665S` 備援系列；讓 dbnomics OECD PMI 備援得以生效 |
+| **NDC 877天** | data.gov.tw resource_id 已過期 | 加入動態搜尋 API（`package_search`）預先取得最新 resource_id；sort key 補上 `period`/`期間` 欄位 |
+| **Export 390天** | FinMind 欄位偵測漏掉 `value` 欄；country 列未過濾；stale 資料未跳備援 | 補 `value` 欄偵測；自動過濾 country=Total/全球 列；加 90天 freshness 跳往 OECD dbnomics；補充 MOF 直接 API 嘗試（debug log） |
+| **Timeout** | 40s 不夠（含 Proxy 延遲） | 調升至 80s |
+
+**Proxy 前提（部署端）：PR #61 merge 後 Streamlit Cloud 才能正常使用 PROXY_URL。**
 
 ## ✅ 最新異動（v10.28，commit `4c76307`）
 
