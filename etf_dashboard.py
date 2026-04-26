@@ -2391,19 +2391,53 @@ def render_data_health():
             else:
                 st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
 
-    # ── 全域摘要 Banner ──────────────────────────────────────
-    _n_miss  = sum(1 for _, v in _all_items if v.get('missing'))
-    _n_stale = sum(
-        1 for _, v in _all_items
-        if not v.get('missing') and
-        _freshness(v.get('last_updated', ''), v.get('frequency', 'daily'))[0] == '🔴'
-    )
-    if _n_miss or _n_stale:
-        _msgs = []
-        if _n_miss:  _msgs.append(f'⚫ {_n_miss} 筆缺失')
-        if _n_stale: _msgs.append(f'🔴 {_n_stale} 筆過期')
-        st.warning('　'.join(_msgs) + ' — 建議重新載入或確認 API 狀態')
-    else:
+    # ── 全域摘要 Banner（按分類拆解，方便對應各頁數字）──────────
+    _summary_b: dict = {}  # cat -> {miss, stale, yellow}
+    for _dn_b, _v_b in _all_items:
+        _cb = _v_b.get('category', '未分類')
+        if _cb not in _summary_b:
+            _summary_b[_cb] = {'miss': 0, 'stale': 0, 'yellow': 0}
+        if _v_b.get('missing'):
+            _summary_b[_cb]['miss'] += 1
+        else:
+            _ic_b, _ = _freshness(_v_b.get('last_updated', ''), _v_b.get('frequency', 'daily'))
+            if _ic_b == '🔴':
+                _summary_b[_cb]['stale'] += 1
+            elif _ic_b == '🟡':
+                _summary_b[_cb]['yellow'] += 1
+
+    _n_miss   = sum(d['miss']   for d in _summary_b.values())
+    _n_stale  = sum(d['stale']  for d in _summary_b.values())
+    _n_yellow = sum(d['yellow'] for d in _summary_b.values())
+
+    if _n_miss or _n_stale or _n_yellow:
+        _blines = ['**📊 全站資料摘要**（數字涵蓋所有分類頁，非僅當前頁）']
+        if _n_miss:
+            _md = ' / '.join(
+                f'{_CAT_ICON.get(c, "")}{c} {d["miss"]}筆'
+                for c, d in _summary_b.items() if d['miss']
+            )
+            _blines.append(f'⚫ **{_n_miss}筆缺失** ← {_md}')
+        if _n_stale:
+            _sd = ' / '.join(
+                f'{_CAT_ICON.get(c, "")}{c} {d["stale"]}筆'
+                for c, d in _summary_b.items() if d['stale']
+            )
+            _blines.append(f'🔴 **{_n_stale}筆過期** ← {_sd}')
+        if _n_yellow:
+            _yd = ' / '.join(
+                f'{_CAT_ICON.get(c, "")}{c} {d["yellow"]}筆'
+                for c, d in _summary_b.items() if d['yellow']
+            )
+            _blines.append(f'🟡 **{_n_yellow}筆略舊** ← {_yd}')
+        # 針對性建議
+        if _summary_b.get('大盤', {}).get('stale', 0) > 0 or _summary_b.get('大盤', {}).get('yellow', 0) > 0:
+            _blines.append('💡 **大盤過期/略舊** → 點擊上方「🔄 更新全部總經數據」按鈕')
+        _fin_miss = _summary_b.get('個股', {}).get('miss', 0) + _summary_b.get('ETF', {}).get('miss', 0)
+        if _fin_miss:
+            _blines.append('💡 **個股/ETF缺失** → 確認 FINMIND_TOKEN 已設定（詳見頁頂「系統配置狀態」）')
+        st.warning('\n\n'.join(_blines))
+    elif _all_items:
         st.success(f'✅ 全部 {len(_all_items)} 筆資料均為最新')
 
 
