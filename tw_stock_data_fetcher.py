@@ -86,23 +86,27 @@ FIELD_ALIASES: dict[str, list[str]] = {
 # §3 Proxy Config
 # ─────────────────────────────────────────────
 def _load_proxy_config() -> dict[str, str] | None:
-    """Read proxy settings: Streamlit Secrets first, then OS env vars."""
+    """Read proxy settings: PROXY_URL (single key) → PROXY_HOST/PORT → OS env vars."""
     import os as _os_proxy
-    # 1. Streamlit Secrets（最高優先）
     try:
         secrets = st.secrets
+        # 優先：單一 PROXY_URL（Streamlit Cloud 格式）
+        _purl = secrets.get("PROXY_URL", "")
+        if _purl:
+            return {"http": _purl, "https": _purl}
+        # 次選：分開的 HOST/PORT/USER/PASS
         host = secrets.get("PROXY_HOST", "")
         port = secrets.get("PROXY_PORT", "")
         if host and port:
-            user = secrets.get("PROXY_USER", "")
+            user   = secrets.get("PROXY_USER", "")
             passwd = secrets.get("PROXY_PASS", "")
-            auth = f"{user}:{passwd}@" if user else ""
-            url = f"http://{auth}{host}:{port}"
-            return {"http": url, "https": url}
+            auth   = f"{user}:{passwd}@" if user else ""
+            _purl2 = f"http://{auth}{host}:{port}"
+            return {"http": _purl2, "https": _purl2}
     except Exception:
         pass
-    # 2. OS 環境變數 fallback（HTTP_PROXY / HTTPS_PROXY）
-    _hp = _os_proxy.environ.get("HTTP_PROXY") or _os_proxy.environ.get("http_proxy")
+    # OS 環境變數 fallback
+    _hp  = _os_proxy.environ.get("HTTP_PROXY")  or _os_proxy.environ.get("http_proxy")
     _hsp = _os_proxy.environ.get("HTTPS_PROXY") or _os_proxy.environ.get("https_proxy")
     if _hp or _hsp:
         return {"http": _hp or _hsp, "https": _hsp or _hp}

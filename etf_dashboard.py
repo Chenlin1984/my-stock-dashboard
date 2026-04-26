@@ -2033,15 +2033,16 @@ def render_data_health():
 
     # ── 系統配置狀態卡 ────────────────────────────────────────────
     with st.expander('⚙️ 系統配置狀態（⚫缺失原因請查此處）', expanded=True):
-        _fm_tok_dh  = _os_dh.environ.get('FINMIND_TOKEN', '')
-        _proxy_host = ''
+        _fm_tok_dh = _os_dh.environ.get('FINMIND_TOKEN', '')
+        _proxy_url = ''
         try:
-            _proxy_host = st.secrets.get('PROXY_HOST', '')
+            _proxy_url = (st.secrets.get('PROXY_URL', '')
+                          or st.secrets.get('PROXY_HOST', ''))
         except Exception:
             pass
-        if not _proxy_host:
-            _proxy_host = (_os_dh.environ.get('HTTP_PROXY') or
-                           _os_dh.environ.get('HTTPS_PROXY') or '')
+        if not _proxy_url:
+            _proxy_url = (_os_dh.environ.get('HTTP_PROXY') or
+                          _os_dh.environ.get('HTTPS_PROXY') or '')
         _c1, _c2 = st.columns(2)
         with _c1:
             if _fm_tok_dh:
@@ -2056,16 +2057,16 @@ def render_data_health():
                     '3. 加入：`FINMIND_TOKEN = "你的Token"`'
                 )
         with _c2:
-            if _proxy_host:
-                st.success(f'✅ **Proxy** 已設定：`{_proxy_host}`')
+            if _proxy_url:
+                # 遮蔽密碼，只顯示 host:port
+                import re as _re_dh
+                _disp = _re_dh.sub(r'://[^@]+@', '://***@', _proxy_url)
+                st.success(f'✅ **Proxy** 已設定：`{_disp}`')
             else:
                 st.warning(
                     '⚠️ **Proxy 未設定** → 若 BLS/NDC/PMI 等總經 API '
-                    '無法連線，請在 `.streamlit/secrets.toml` 加入：\n\n'
-                    '```\nPROXY_HOST = "your.proxy.host"\n'
-                    'PROXY_PORT = "3128"\n'
-                    'PROXY_USER = "user"  # 選填\n'
-                    'PROXY_PASS = "pass"  # 選填\n```'
+                    '無法連線，請在 Streamlit Cloud Secrets 加入：\n\n'
+                    '```\nPROXY_URL = "http://user:pass@host:3128"\n```'
                 )
 
     # ════════════════════════════════════════════════════════════════
