@@ -2027,8 +2027,46 @@ def _check_etf_health(ticker: str) -> dict:
 
 def render_data_health():
     import pandas as _pd_dh
+    import os as _os_dh
     st.markdown('### 🔎 資料健診儀表板')
-    st.caption('顯示全系統每項資料的實際數值，確認為真實市場資料（非沙盒/空值）。點擊「更新全部總經數據」後再來此頁驗證。')
+    st.caption('顯示全系統每項資料的實際數值，確認為真實市場資料（非沙盒/空值）。')
+
+    # ── 系統配置狀態卡 ────────────────────────────────────────────
+    with st.expander('⚙️ 系統配置狀態（⚫缺失原因請查此處）', expanded=True):
+        _fm_tok_dh  = _os_dh.environ.get('FINMIND_TOKEN', '')
+        _proxy_host = ''
+        try:
+            _proxy_host = st.secrets.get('PROXY_HOST', '')
+        except Exception:
+            pass
+        if not _proxy_host:
+            _proxy_host = (_os_dh.environ.get('HTTP_PROXY') or
+                           _os_dh.environ.get('HTTPS_PROXY') or '')
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            if _fm_tok_dh:
+                st.success('✅ **FINMIND_TOKEN** 已設定')
+            else:
+                st.error(
+                    '❌ **FINMIND_TOKEN 未設定** → 月營收、財報、現金流量、'
+                    '資産負債將顯示 ⚫缺失\n\n'
+                    '**修復步驟：**\n'
+                    '1. 至 https://finmindtrade.com 免費註冊\n'
+                    '2. 建立 `.streamlit/secrets.toml`\n'
+                    '3. 加入：`FINMIND_TOKEN = "你的Token"`'
+                )
+        with _c2:
+            if _proxy_host:
+                st.success(f'✅ **Proxy** 已設定：`{_proxy_host}`')
+            else:
+                st.warning(
+                    '⚠️ **Proxy 未設定** → 若 BLS/NDC/PMI 等總經 API '
+                    '無法連線，請在 `.streamlit/secrets.toml` 加入：\n\n'
+                    '```\nPROXY_HOST = "your.proxy.host"\n'
+                    'PROXY_PORT = "3128"\n'
+                    'PROXY_USER = "user"  # 選填\n'
+                    'PROXY_PASS = "pass"  # 選填\n```'
+                )
 
     # ════════════════════════════════════════════════════════════════
     # §0  全域資料新鮮度診斷（動態域分組，無寫死類別）
@@ -2039,7 +2077,7 @@ def render_data_health():
         'border-left:4px solid #58a6ff;border-radius:0 6px 6px 0;margin-bottom:10px;">'
         '<span style="font-size:14px;font-weight:900;color:#58a6ff;">📋 資料新鮮度診斷</span>'
         '<span style="font-size:11px;color:#8b949e;margin-left:8px;">'
-        '各資料源最新時間戳 × 更新頻率 → 自動判定是否為最新，嚴禁跨域顯示</span></div>',
+        '各資料源最新時間戳 × 更新頻率 → 自動判定是否為最新</span></div>',
         unsafe_allow_html=True
     )
     import datetime as _dt_dh

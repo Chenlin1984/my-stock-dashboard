@@ -86,20 +86,27 @@ FIELD_ALIASES: dict[str, list[str]] = {
 # §3 Proxy Config
 # ─────────────────────────────────────────────
 def _load_proxy_config() -> dict[str, str] | None:
-    """Read proxy settings from Streamlit Secrets; return None if absent."""
+    """Read proxy settings: Streamlit Secrets first, then OS env vars."""
+    import os as _os_proxy
+    # 1. Streamlit Secrets（最高優先）
     try:
         secrets = st.secrets
         host = secrets.get("PROXY_HOST", "")
         port = secrets.get("PROXY_PORT", "")
-        if not host or not port:
-            return None
-        user = secrets.get("PROXY_USER", "")
-        passwd = secrets.get("PROXY_PASS", "")
-        auth = f"{user}:{passwd}@" if user else ""
-        url = f"http://{auth}{host}:{port}"
-        return {"http": url, "https": url}
+        if host and port:
+            user = secrets.get("PROXY_USER", "")
+            passwd = secrets.get("PROXY_PASS", "")
+            auth = f"{user}:{passwd}@" if user else ""
+            url = f"http://{auth}{host}:{port}"
+            return {"http": url, "https": url}
     except Exception:
-        return None
+        pass
+    # 2. OS 環境變數 fallback（HTTP_PROXY / HTTPS_PROXY）
+    _hp = _os_proxy.environ.get("HTTP_PROXY") or _os_proxy.environ.get("http_proxy")
+    _hsp = _os_proxy.environ.get("HTTPS_PROXY") or _os_proxy.environ.get("https_proxy")
+    if _hp or _hsp:
+        return {"http": _hp or _hsp, "https": _hsp or _hp}
+    return None
 
 
 # ─────────────────────────────────────────────

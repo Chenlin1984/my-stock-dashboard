@@ -324,7 +324,12 @@ def fetch_financials(sid, industry: str = ""):
     type 欄位為主鍵，比 origin_name 更可靠。
     """
     import datetime as _dtf
-    import requests as _rq_f
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _bps_fin
+        _rq_f = _bps_fin()
+    except Exception:
+        import requests as _rq_f_fallback
+        _rq_f = _rq_f_fallback.Session()
 
     cl = cx = _capex = None
     cl_src = cx_src = cx_src_capex = ""
