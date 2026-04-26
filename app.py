@@ -2619,11 +2619,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _bls_s = sorted(
                                 [o for o in _bls_obs if o.get('period', 'M13') != 'M13'],
                                 key=lambda x: (x['year'], x['period']))
-                            _bls_vals = [float(x['value']) for x in _bls_s]
-                            if len(_bls_vals) >= 13:
+                            # 過濾非數值（未發布月份 value 可能為 '-' 或空白）
+                            _bls_valid = []
+                            for _bo in _bls_s:
+                                try:
+                                    _bv = float(str(_bo.get('value', '')).replace(',', ''))
+                                    if _bv > 0: _bls_valid.append((_bo, _bv))
+                                except Exception: pass
+                            if len(_bls_valid) >= 13:
+                                _bls_entries = [o for o, _ in _bls_valid]
+                                _bls_vals    = [v for _, v in _bls_valid]
                                 _bcyoy = round((_bls_vals[-1] / _bls_vals[-13] - 1) * 100, 2)
-                                _blast = _bls_s[-1]
-                                _bdate = f"{_blast['year']}-{_blast['period'][1:]}-01"
+                                _blast = _bls_entries[-1]
+                                _bdate = f"{_blast['year']}-{int(_blast['period'][1:]):02d}-01"
                                 _r['us_core_cpi'] = {'yoy': _bcyoy, 'date': _bdate, 'source': 'BLS'}
                                 print(f'[Macro/CPI/BLS] ✅ YoY={_bcyoy:.2f}% date={_bdate}')
                 except Exception as _e: print(f'[Macro/CPI/BLS] ❌ {_e}')
@@ -2772,8 +2780,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _ng_url = f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}'
                             # 以 statistic_ym 降序排列，確保取得最新月份
                             _ngr = _rq_mc.get(_ng_url,
-                                              params={'limit': 3,
-                                                      'sort': 'statistic_ym desc'},
+                                              params={'limit': 50},
                                               timeout=8, verify=False,
                                               headers={'Accept': 'application/json'})
                             print(f'[Macro/NDC/Gov] {_ng_res[:8]}... status={_ngr.status_code} len={len(_ngr.content)}')
@@ -2784,6 +2791,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             print(f'[Macro/NDC/Gov] records={len(_ngd)} keys={list(_ngd[0].keys())[:8] if _ngd else []}')
                             if not _ngd:
                                 continue
+                            # API sort 不穩定，client-side 以 statistic_ym 降序取最新
+                            _ngd = sorted(_ngd, key=lambda x: str(x.get('statistic_ym', '')), reverse=True)
                             _lng = _ngd[0]
                             _sc_ng = None
                             # 先嘗試已知欄位名稱
@@ -3341,18 +3350,28 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _spfx = f'[個股] {_t2rp.get("sid","")} {(_t2rp.get("name") or _t2rp.get("sid",""))}'
                 # DataFrame 型資料
                 for _lbl, _key, _f in [('價格走勢','df','daily'),('月營收','rev','monthly'),
-                                        ('季財報','qtr','quarterly'),('現金流量','cl','quarterly'),
-                                        ('資產負債','cx','quarterly')]:
+                                        ('季財報','qtr','quarterly')]:
                     _rp[f'{_spfx} | {_lbl}'] = _rp_entry(_t2rp.get(_key), '個股', _f)
+                # cl/cx 為 fetch_financials 回傳的純量金額（非 DataFrame），須用 _rp_scalar
+                _rp[f'{_spfx} | 現金流量'] = _rp_scalar(_t2rp.get('cl'), '個股', 'quarterly')
+                _rp[f'{_spfx} | 資產負債'] = _rp_scalar(_t2rp.get('cx'), '個股', 'quarterly')
                 # 年度股利（list of dicts）
+                import datetime as _dt_yr_rp
                 _yr_rp = _t2rp.get('yearly') or []
-                _rp[f'{_spfx} | 年度股利'] = (
-                    {'last_updated': str(_yr_rp[-1].get('year',''))[:4] + '-12-31'
-                        if _yr_rp and _yr_rp[-1].get('year') else _proxy_rp,
-                     'rows': len(_yr_rp), 'category': '個股', 'frequency': 'yearly'}
-                    if _yr_rp else
-                    {'last_updated': 'N/A', 'rows': 0, 'category': '個股', 'frequency': 'yearly', 'missing': True}
-                )
+                if _yr_rp:
+                    _yr_raw = str(_yr_rp[-1].get('year', ''))[:4]
+                    if _yr_raw.isdigit():
+                        _yr_date = f'{_yr_raw}-12-31'
+                        # 若為未來日期（如年度=當年但12月尚未到），截斷至今天
+                        _today_cap = _dt_yr_rp.date.today().strftime('%Y-%m-%d')
+                        _yr_date = min(_yr_date, _today_cap)
+                    else:
+                        _yr_date = _proxy_rp
+                    _rp[f'{_spfx} | 年度股利'] = {'last_updated': _yr_date,
+                                                   'rows': len(_yr_rp), 'category': '個股', 'frequency': 'yearly'}
+                else:
+                    _rp[f'{_spfx} | 年度股利'] = {'last_updated': 'N/A', 'rows': 0,
+                                                   'category': '個股', 'frequency': 'yearly', 'missing': True}
                 # 健康度評分（純量）
                 _rp[f'{_spfx} | 健康度評分'] = _rp_scalar(_t2rp.get('health'), '個股', 'daily')
                 # 技術指標：各自獨立

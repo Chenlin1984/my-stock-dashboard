@@ -2055,7 +2055,7 @@ def render_data_health():
 
         def _freshness(date_str: str, frequency: str = 'daily'):
             try:
-                _age = (_today - _pd_dh.Timestamp(date_str)).days
+                _age = max(0, (_today - _pd_dh.Timestamp(date_str)).days)
             except Exception:
                 return '⚪', '無法解析'
             if frequency == 'yearly':
