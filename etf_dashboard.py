@@ -2140,7 +2140,17 @@ def render_data_health():
         ]:
             _reg[f'{_epfx} | {_lbl}'] = _live(_e1.get(_key), "ETF", _fr)
     else:
-        _reg["[ETF] — 尚未搜尋 | VCP 波幅收縮"] = {"last_updated":"N/A","category":"ETF","frequency":"daily","missing":True}
+        _epfx0 = '[ETF] — 尚未搜尋'
+        for _lbl0, _f0 in [
+            ('價格走勢','daily'), ('折溢價率','daily'), ('淨值 (NAV)','daily'),
+            ('現金殖利率','daily'), ('近5年平均殖利率','yearly'),
+            ('近1年含息總報酬','daily'), ('追蹤誤差','daily'),
+            ('VCP 波幅收縮','daily'), ('內控費用率','yearly'),
+            ('Beta','daily'), ('AuM 規模','daily'),
+            ('KD 技術指標','daily'), ('年線乖離率 BIAS240','daily'),
+        ]:
+            _reg[f'{_epfx0} | {_lbl0}'] = {
+                "last_updated": "N/A", "category": "ETF", "frequency": _f0, "missing": True}
 
     # ── ETF 組合 / 回測 ───────────────────────────────────────────────────
     _e2 = st.session_state.get("etf_portfolio_data") or {}
@@ -2177,7 +2187,16 @@ def render_data_health():
             _reg[f'{_spfx} | {_lbl}'] = _live(_t2.get(_key), "個股", _fr)
         _reg[f'{_spfx} | 合約負債/資本支出'] = _live_df(_t2.get("qtr_extra"), "個股", "quarterly")
     else:
-        _reg["[個股] — 尚未搜尋 | 價格走勢"] = {"last_updated":"N/A","category":"個股","frequency":"daily","missing":True}
+        _spfx0 = '[個股] — 尚未搜尋'
+        for _lbl0, _f0 in [
+            ('價格走勢','daily'), ('月營收','monthly'), ('季財報','quarterly'),
+            ('現金流量','quarterly'), ('資產負債','quarterly'), ('年度股利','yearly'),
+            ('健康度評分','daily'), ('RSI','daily'), ('KD (K值)','daily'),
+            ('IBS 內部強弱','daily'), ('量比 VR','daily'), ('布林帶','daily'),
+            ('VCP 波幅收縮','daily'), ('合約負債/資本支出','quarterly'),
+        ]:
+            _reg[f'{_spfx0} | {_lbl0}'] = {
+                "last_updated": "N/A", "category": "個股", "frequency": _f0, "missing": True}
 
     # ── 比較排行 ──────────────────────────────────────────────────────────
     _t3 = st.session_state.get("t3_data") or {}
