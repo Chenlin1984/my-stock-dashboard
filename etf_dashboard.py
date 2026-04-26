@@ -2096,7 +2096,9 @@ def render_data_health():
                                  '更新頻率': _freq_lbl,
                                  '最新資料時間': f'{_rv["last_updated"]}（{_lbl}）',
                                  '狀態': _status_map.get(_icon, _icon)})
-            return _pd_dh.DataFrame(rows) if rows else _pd_dh.DataFrame()
+            _df = _pd_dh.DataFrame(rows) if rows else _pd_dh.DataFrame()
+            _cols = ['資料項目', '所屬類別', '更新頻率', '最新資料時間', '狀態']
+            return _df[[c for c in _cols if c in _df.columns]] if not _df.empty else _df
 
         def _disp_name(rn):
             """Convert registry key to user-friendly display name."""
@@ -2111,7 +2113,7 @@ def render_data_health():
 
         # ── 動態掃描 registry 中實際存在的 category（不寫死）────────────
         _categories = sorted(set(v.get('category', '未分類') for v in _reg.values()))
-        _TW_KW    = ('台股', 'ADL', '新台幣', '匯率')
+        _TW_KW    = ('台股', 'ADL', '新台幣', '匯率', '上漲股票', '下跌股票')
         _BOND_KW  = ('公債', '殖利率', '利率')
         _INST_KW  = ('三大法人', '融資餘額')
         _MONEY_KW = ('M1B', 'M2', '旌旗', '乖離率')
@@ -2214,8 +2216,13 @@ def render_data_health():
                     ]:
                         if not _egrp:
                             continue
-                        _n_bad_e = sum(1 for _, v in _egrp if v.get('missing'))
-                        st.markdown(f'**{_etitle}{"  ⚠️ 尚未載入" if _n_bad_e else "  ✅"}**')
+                        _n_total_e = len(_egrp)
+                        _n_bad_e   = sum(1 for _, v in _egrp if v.get('missing'))
+                        _etf_loaded = _n_bad_e < _n_total_e
+                        _badge = ('  ✅' if _n_bad_e == 0
+                                  else (f'  ⚠️ {_n_bad_e}項缺失' if _etf_loaded
+                                        else '  ⚠️ 尚未載入'))
+                        st.markdown(f'**{_etitle}{_badge}**')
                         st.dataframe(_build_table(_egrp), use_container_width=True, hide_index=True)
                 else:
                     st.dataframe(_build_table(_cat_items), use_container_width=True, hide_index=True)
