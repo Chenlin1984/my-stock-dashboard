@@ -2682,27 +2682,43 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             except Exception as _ce: print(f'[Macro/CPI/DBN] ❌ {_cs}: {_ce}')
                     except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
 
-                # 3. US PMI（FRED NAPM 已於 2023-12 終止，改用 S&P Global PMI MFPMI01USM657S）
-                try:
-                    # 主：FRED S&P Global US Manufacturing PMI（接替 ISM NAPM，每月更新）
-                    _pr = _rq_mc_s.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=MFPMI01USM657S',
-                                     headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
-                    print(f'[Macro/PMI/SPGLOBAL] status={_pr.status_code}')
-                    if _pr.status_code == 200:
+                # 3. US PMI（FRED NAPM 已於 2023-12 終止；MFPMI01USM657S 授權截止約 2023-10）
+                # 主：多個 FRED PMI 系列（含 freshness 檢查，避免使用已停更的系列）
+                import datetime as _dt_pmi_chk
+                for _pmi_fid, _pmi_flabel in [
+                    ('MFPMI01USM657S', 'S&P Global Mfg PMI'),
+                    ('BSCICP03USM665S', 'OECD Business Confidence'),
+                    ('PMDILK03USM665S', 'Markit Mfg PMI'),
+                ]:
+                    if 'ism_pmi' in _r: break
+                    try:
+                        _pr = _rq_mc_s.get(
+                            f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_pmi_fid}',
+                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                        print(f'[Macro/PMI/{_pmi_fid}] status={_pr.status_code}')
+                        if _pr.status_code != 200: continue
                         _pdf = _pd_mc.read_csv(_io_mc.StringIO(_pr.text))
                         _pdf.columns = ['date', 'value']
                         _pdf['value'] = _pd_mc.to_numeric(_pdf['value'], errors='coerce')
                         _pdf = _pdf.dropna()
-                        if len(_pdf) > 0:
-                            _r['ism_pmi'] = {
-                                'value': round(float(_pdf['value'].iloc[-1]), 1),
-                                'date': str(_pdf['date'].iloc[-1]),
-                                'dates': [str(d)[:10] for d in _pdf['date'].iloc[-24:]],
-                                'values': [round(float(v), 1) for v in _pdf['value'].iloc[-24:]],
-                                'label': 'S&P Global Mfg PMI',
-                            }
-                            print(f'[Macro/PMI/SPGLOBAL] ✅ PMI={_r["ism_pmi"]["value"]} date={_r["ism_pmi"]["date"]}')
-                except Exception as _e: print(f'[Macro/PMI/SPGLOBAL] ❌ {_e}')
+                        if len(_pdf) == 0: continue
+                        _pmi_last = str(_pdf['date'].iloc[-1])[:10]
+                        try:
+                            _pmi_age = (_dt_pmi_chk.date.today() -
+                                        _dt_pmi_chk.datetime.strptime(_pmi_last, '%Y-%m-%d').date()).days
+                        except Exception: _pmi_age = 0
+                        if _pmi_age > 60:
+                            print(f'[Macro/PMI/{_pmi_fid}] ⚠️ stale {_pmi_age}d (last={_pmi_last}) → fallback')
+                            continue
+                        _r['ism_pmi'] = {
+                            'value': round(float(_pdf['value'].iloc[-1]), 1),
+                            'date': _pmi_last,
+                            'dates': [str(d)[:10] for d in _pdf['date'].iloc[-24:]],
+                            'values': [round(float(v), 1) for v in _pdf['value'].iloc[-24:]],
+                            'label': _pmi_flabel,
+                        }
+                        print(f'[Macro/PMI/{_pmi_fid}] ✅ PMI={_r["ism_pmi"]["value"]} date={_pmi_last}')
+                    except Exception as _e: print(f'[Macro/PMI/{_pmi_fid}] ❌ {_e}')
                 # 備援 A：dbnomics OECD Manufacturing PMI（真實PMI數值，非CLI）
                 if 'ism_pmi' not in _r:
                     try:
@@ -2782,11 +2798,32 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     # NDC 特定欄位名稱（優先搜尋，比範圍掃描更精確）
                     _NDC_SCORE_KEYS = ('composite_index', 'judgment_score', 'score',
                                        '綜合判斷分數', '景氣對策信號值', '分數')
-                    for _ng_res in [
+                    # 動態取得最新 resource_id（data.gov.tw 資料集 ID 會定期更新）
+                    _ng_res_ids = [
                         '32d4c078-cfd6-4d3b-b2a0-dbbf26f27773',
                         'e8f35029-22f9-42da-92b8-c2baa7a7c6c6',
                         'A000001_1',
-                    ]:
+                    ]
+                    try:
+                        # 搜尋最新 NDC 景氣資料集取得 resource ID
+                        for _ndc_search_q in ['景氣對策信號', '景氣燈號']:
+                            _ng_search_r = _rq_mc_s.get(
+                                'https://data.gov.tw/api/v2/rest/package_search',
+                                params={'q': _ndc_search_q, 'rows': 5},
+                                timeout=8, verify=False,
+                                headers={'Accept': 'application/json'})
+                            if _ng_search_r.status_code != 200: continue
+                            _ng_search_j = _ng_search_r.json()
+                            for _ng_pkg in (_ng_search_j.get('result', {}).get('results', []) or []):
+                                for _ng_res_obj in (_ng_pkg.get('resources', []) or []):
+                                    _found_rid = _ng_res_obj.get('id', '')
+                                    if _found_rid and _found_rid not in _ng_res_ids:
+                                        _ng_res_ids.insert(0, _found_rid)
+                                        print(f'[Macro/NDC] 發現新 resource_id: {_found_rid[:8]}...')
+                            if len(_ng_res_ids) > 3: break
+                    except Exception as _ndc_s_e:
+                        print(f'[Macro/NDC] 搜尋 resource_id 失敗: {_ndc_s_e}')
+                    for _ng_res in _ng_res_ids:
                         try:
                             _ng_url = f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}'
                             # 以 statistic_ym 降序排列，確保取得最新月份
@@ -2802,8 +2839,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             print(f'[Macro/NDC/Gov] records={len(_ngd)} keys={list(_ngd[0].keys())[:8] if _ngd else []}')
                             if not _ngd:
                                 continue
-                            # API sort 不穩定，client-side 以 statistic_ym 降序取最新
-                            _ngd = sorted(_ngd, key=lambda x: str(x.get('statistic_ym', '')), reverse=True)
+                            # API sort 不穩定，client-side 以 statistic_ym / period / 期間 降序取最新
+                            _ngd = sorted(_ngd, key=lambda x: str(
+                                x.get('statistic_ym') or x.get('period') or x.get('期間') or ''), reverse=True)
                             _lng = _ngd[0]
                             _sc_ng = None
                             # 先嘗試已知欄位名稱
@@ -2908,23 +2946,67 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     if _ex_fm_r.status_code == 200:
                         _ex_fm_j = _ex_fm_r.json()
                         _ex_fm_d = _ex_fm_j.get('data', [])
-                        if _ex_fm_d and len(_ex_fm_d) >= 13:
+                        if _ex_fm_d and len(_ex_fm_d) >= 2:
                             _ex_df = _pd_mc.DataFrame(_ex_fm_d)
+                            print(f'[Macro/Export/FinMind] columns={list(_ex_df.columns)} rows={len(_ex_df)}')
                             _ex_df = _ex_df.sort_values('date').reset_index(drop=True)
-                            # 找出口總額欄位
+                            # 若有 country 欄，先過濾出總計列
+                            if 'country' in _ex_df.columns:
+                                _ex_total = _ex_df[_ex_df['country'].isin(
+                                    ['', '全球', 'Total', 'TOTAL', 'All', '合計', '總計'])]
+                                if len(_ex_total) >= 2:
+                                    _ex_df = _ex_total.reset_index(drop=True)
+                                    print(f'[Macro/Export/FinMind] 過濾 country=Total, rows={len(_ex_df)}')
+                            # 找出口總額欄位（FinMind 通常用 value，也可能有其他名稱）
                             _ex_val_col = next((c for c in _ex_df.columns
-                                                if '出口' in str(c) or 'export' in str(c).lower()
+                                                if c == 'value' or '出口' in str(c)
+                                                or 'export' in str(c).lower()
                                                 or 'total' in str(c).lower()), None)
+                            if _ex_val_col is None:
+                                # 備援：找第一個非識別欄的數值欄位
+                                _ex_val_col = next((c for c in _ex_df.columns
+                                    if c not in ('date', 'country', 'id', 'dataset_id')
+                                    and _pd_mc.to_numeric(_ex_df[c], errors='coerce').notna().sum() > 2), None)
+                                if _ex_val_col:
+                                    print(f'[Macro/Export/FinMind] 使用備援欄位 col={_ex_val_col}')
                             if _ex_val_col:
                                 _ex_v = _pd_mc.to_numeric(_ex_df[_ex_val_col], errors='coerce').dropna()
                                 if len(_ex_v) >= 13:
                                     _ex_yoy = round((_ex_v.iloc[-1] / _ex_v.iloc[-13] - 1) * 100, 2)
                                     _ex_date = str(_ex_df['date'].iloc[-1])[:7]
-                                    _r['tw_export'] = {'yoy': _ex_yoy, 'date': _ex_date, 'source': 'FinMind'}
-                                    print(f'[Macro/Export/FinMind] ✅ YoY={_ex_yoy:.2f}% date={_ex_date}')
+                                    # 出口資料允許最多 90 天滯後（通常 1-2 個月）
+                                    import datetime as _dt_ex_chk
+                                    try:
+                                        _ex_age = (_dt_ex_chk.date.today() -
+                                            _dt_ex_chk.datetime.strptime(_ex_date + '-01', '%Y-%m-%d').date()).days
+                                    except Exception: _ex_age = 0
+                                    if _ex_age > 90:
+                                        print(f'[Macro/Export/FinMind] ⚠️ stale {_ex_age}d (last={_ex_date}) → fallback')
+                                    else:
+                                        _r['tw_export'] = {'yoy': _ex_yoy, 'date': _ex_date, 'source': 'FinMind'}
+                                        print(f'[Macro/Export/FinMind] ✅ YoY={_ex_yoy:.2f}% date={_ex_date}')
                 except Exception as _ex_e:
                     print(f'[Macro/Export/FinMind] ❌ {_ex_e}')
-                # 備援：OECD dbnomics（有 6-12 個月發布滯後，僅作補底）
+                # 備援 A：台灣財政部/主計總處開放資料（若 FinMind 失敗或過期）
+                if 'tw_export' not in _r:
+                    try:
+                        # 嘗試 data.gov.tw 台灣出口統計
+                        for _ex_gov_res in [
+                            'https://api.mof.gov.tw/ExportStatistics/ExportStatisticsJSON',
+                            'https://data.gov.tw/api/v2/rest/package_search?q=出口統計&rows=3',
+                        ]:
+                            try:
+                                _ex_gov_r = _rq_mc_s.get(_ex_gov_res, timeout=10, verify=False,
+                                    headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'})
+                                print(f'[Macro/Export/GOV] {_ex_gov_res[:50]} status={_ex_gov_r.status_code}')
+                                if _ex_gov_r.status_code == 200:
+                                    _ex_gov_j = _ex_gov_r.json()
+                                    print(f'[Macro/Export/GOV] keys={list(_ex_gov_j.keys())[:5] if isinstance(_ex_gov_j, dict) else type(_ex_gov_j)}')
+                                    break
+                            except Exception as _eg_e: print(f'[Macro/Export/GOV] ❌ {_eg_e}')
+                    except Exception as _ex_gov_e:
+                        print(f'[Macro/Export/GOV] ❌ outer: {_ex_gov_e}')
+                # 備援 B：OECD dbnomics（有 6-12 個月發布滯後，僅作補底）
                 if 'tw_export' not in _r:
                     try:
                         from dbnomics import fetch_series as _dbn_ex
@@ -2962,7 +3044,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             except: _m1b_res = None; print('[並發] ⏰ M1B 超時')
             try: _bias_res  = _fut_bias.result(timeout=30)
             except: _bias_res = None; print('[並發] ⏰ bias 超時')
-            try: _macro_res = _fut_macro.result(timeout=40)
+            try: _macro_res = _fut_macro.result(timeout=80)
             except: _macro_res = None; print('[並發] ⏰ Macro 超時')
             if _m1b_res:   st.session_state['m1b_m2_info'] = _m1b_res
             if _bias_res:  st.session_state['bias_info']   = _bias_res
