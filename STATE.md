@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.32 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.33 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #71 已 merge**（2026-04-27）— Phase 2 UI 重構：平坦 8-Tab + 資料診斷 Raw-only + 教學 Markdown
+- **✅ PR #72 已 merge**（2026-04-27）— 修正資料診斷 macro_info key 名稱錯誤
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.33，commit `7dee262`，PR #72）
+
+### 資料診斷 macro_info key 修正（etf_dashboard.py）
+
+| 項目 | 說明 |
+|------|------|
+| **CPI key 修正** | `'cpi'` → `'us_core_cpi'`（BLS/dbnomics 實際回傳 key） |
+| **PMI key 修正** | `'pmi'` → `'ism_pmi'`（OECD CLI 實際 key） |
+| **NDC key 修正** | `'ndc'` → `'ndc_signal'`（NDC/OECD CLI 代理實際 key） |
+| **M1B date 修正** | `m1b_m2_info` 無 `date` 欄位，改以 `cl_ts` 作為時間代理 |
+| **margin_ratio 判斷修正** | 數值 `0` 會被 `if val` 誤判缺失，改為 `is not None` |
 
 ## ✅ 最新異動（v10.32，commit `a5e3eca`，PR #71）
 

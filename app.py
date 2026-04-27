@@ -2640,13 +2640,37 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 2. CPI ──────────────────────────────────────────────────────────
                 def _fetch_cpi():
+                    import pandas as _pd2, datetime as _dt_cpi
                     _s = _mk_s()
-                    import pandas as _pd2, io as _io2
+                    # ── 方案1: pandas_datareader FRED（CPIAUCSL 全CPI；proxy env注入）──
+                    try:
+                        import pandas_datareader.data as _web_cpi
+                        _ek_c = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+                        _bak_c = {k: os.environ.get(k) for k in _ek_c}
+                        if _px_url:
+                            for k in _ek_c: os.environ[k] = _px_url
+                        try:
+                            _end_c = _dt_cpi.date.today()
+                            _start_c = _end_c.replace(year=_end_c.year - 3)
+                            _df_c = _web_cpi.DataReader('CPIAUCSL', 'fred', _start_c, _end_c)
+                            _df_c = _df_c.dropna()
+                            if len(_df_c) >= 13:
+                                _vals_c = _df_c['CPIAUCSL'].values
+                                _yoy = round((_vals_c[-1] / _vals_c[-13] - 1) * 100, 2)
+                                _date = str(_df_c.index[-1])[:10]
+                                print(f'[Macro/CPI/FRED] ✅ YoY={_yoy:.2f}% date={_date}')
+                                return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED/pdr'}}
+                        finally:
+                            for k, v in _bak_c.items():
+                                if v is None: os.environ.pop(k, None)
+                                else: os.environ[k] = v
+                    except Exception as _e: print(f'[Macro/CPI/FRED] ❌ {_e}')
+                    # ── 方案2: BLS API（CUSR0000SA0L1E 核心CPI）──────────────────────
                     try:
                         _rc = _s.post('https://api.bls.gov/publicAPI/v2/timeseries/data/',
-                                      json={'seriesid': ['CUSR0000SA0L1E'],
-                                            'startyear': str(__import__('datetime').date.today().year - 2),
-                                            'endyear':   str(__import__('datetime').date.today().year)},
+                                      json={'seriesid': ['CPIAUCSL'],
+                                            'startyear': str(_dt_cpi.date.today().year - 2),
+                                            'endyear':   str(_dt_cpi.date.today().year)},
                                       headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'},
                                       timeout=15, verify=False)
                         print(f'[Macro/CPI/BLS] status={_rc.status_code}')
@@ -2670,6 +2694,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     print(f'[Macro/CPI/BLS] ✅ YoY={_yoy:.2f}% date={_date}')
                                     return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'BLS'}}
                     except Exception as _e: print(f'[Macro/CPI/BLS] ❌ {_e}')
+                    # ── 方案3: dbnomics IMF（備援）──────────────────────────────────
                     try:
                         import pandas as _pd3
                         for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:
@@ -2685,10 +2710,46 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
                     return {}
 
-                # ── 3. PMI（跳過 FRED — Streamlit Cloud 封鎖，直接走 proxy→dbnomics API）──
+                # ── 3. PMI ────────────────────────────────────────────────────────
                 def _fetch_pmi():
-                    import pandas as _pd4
+                    import pandas as _pd4, datetime as _dt_pmi
                     _s_p = _mk_s()
+                    # ── 方案1: pandas_datareader FRED（NAPM=ISM PMI；降級 MANEMP）──
+                    try:
+                        import pandas_datareader.data as _web_pmi
+                        _ek_p = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+                        _bak_p = {k: os.environ.get(k) for k in _ek_p}
+                        if _px_url:
+                            for k in _ek_p: os.environ[k] = _px_url
+                        try:
+                            _end_p = _dt_pmi.date.today()
+                            _start_p = _end_p.replace(year=_end_p.year - 3)
+                            for _fred_s, _lbl_p in [
+                                ('NAPM',   'ISM Mfg PMI'),
+                                ('MANEMP', 'Mfg Employment (k)'),
+                                ('INDPRO', 'Industrial Production'),
+                            ]:
+                                try:
+                                    _df_p = _web_pmi.DataReader(_fred_s, 'fred', _start_p, _end_p).dropna()
+                                    if len(_df_p) < 5: continue
+                                    _t24p = _df_p.tail(24)
+                                    _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
+                                    _dates_p = [str(d)[:10] for d in _t24p.index]
+                                    print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
+                                    return {'ism_pmi': {
+                                        'value': _vals_p[-1],
+                                        'date': _dates_p[-1],
+                                        'dates': _dates_p,
+                                        'values': _vals_p,
+                                        'label': f'FRED {_lbl_p}',
+                                    }}
+                                except Exception as _fp: print(f'[Macro/PMI/FRED/{_fred_s}] ❌ {_fp}')
+                        finally:
+                            for k, v in _bak_p.items():
+                                if v is None: os.environ.pop(k, None)
+                                else: os.environ[k] = v
+                    except Exception as _e: print(f'[Macro/PMI/PDR] ❌ {_e}')
+                    # ── 方案2: dbnomics OECD PMI ──────────────────────────────────
                     for _pms in ['OECD/MEI_BTS_COS/USA.MNFCTRPMI.ST.M',
                                  'OECD/MEI/USA.MNFCTRPMI.ST.M']:
                         try:
@@ -2708,12 +2769,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 'label': 'OECD Mfg PMI',
                             }}
                         except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_pms}: {_e}')
+                    # ── 方案3: dbnomics OECD CLI（最終備援）─────────────────────
                     for _ps in ['OECD/MEI_CLI/LOLITOAA.USA.M', 'OECD/MEI_CLI/LOLITONO.USA.M']:
                         try:
-                            import pandas as _pd5
                             _d2 = _dbn_px(_s_p, _ps)
                             if _d2 is not None and len(_d2) > 5:
-                                _pv = _pd5.to_numeric(_d2['value'], errors='coerce').dropna()
+                                _pv = _pd4.to_numeric(_d2['value'], errors='coerce').dropna()
                                 if len(_pv) > 0:
                                     print(f'[Macro/PMI/DBN] ✅ OECD CLI={float(_pv.iloc[-1]):.1f} ({_ps})')
                                     return {'ism_pmi': {
@@ -2729,9 +2790,42 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
                 def _fetch_ndc():
                     _s = _mk_s()
-                    import pandas as _pd6
+                    import pandas as _pd6, datetime as _dt_ndc, re as _re_ndc
                     _NDC_SCORE_KEYS = ('composite_index', 'judgment_score', 'score',
                                        '綜合判斷分數', '景氣對策信號值', '分數')
+
+                    # ── 方案1: FinMind TaiwanMacroEconomics（景氣對策信號）──────────
+                    try:
+                        _fm_tok_n = _get_fm_token()
+                        _start_n = (_dt_ndc.date.today() - _dt_ndc.timedelta(days=365*3)).strftime('%Y-%m-%d')
+                        _p_n = {'dataset': 'TaiwanMacroEconomics', 'start_date': _start_n}
+                        if _fm_tok_n: _p_n['token'] = _fm_tok_n
+                        _r_n = _s.get('https://api.finmindtrade.com/api/v4/data',
+                                       params=_p_n, timeout=15, verify=False,
+                                       headers={'Authorization': f'Bearer {_fm_tok_n}'} if _fm_tok_n else {})
+                        _j_n = _r_n.json()
+                        print(f'[Macro/NDC/FM] status={_j_n.get("status")} rows={len(_j_n.get("data",[]))}')
+                        if _j_n.get('status') == 200 and _j_n.get('data'):
+                            _df_n = _pd6.DataFrame(_j_n['data'])
+                            # 過濾景氣對策信號欄位
+                            if 'indicator' in _df_n.columns and 'value' in _df_n.columns:
+                                _kw = ['景氣', '對策', '燈號', 'composite', 'leading', 'coincident']
+                                _mask = _df_n['indicator'].str.contains('|'.join(_kw), case=False, na=False)
+                                _sub = _df_n[_mask].copy()
+                                if len(_sub) > 0:
+                                    _sub = _sub.sort_values('date').dropna(subset=['value'])
+                                    _sub['_v'] = _pd6.to_numeric(_sub['value'], errors='coerce')
+                                    _sub = _sub.dropna(subset=['_v'])
+                                    if len(_sub) > 0:
+                                        _last_n = _sub.iloc[-1]
+                                        _sc_n = float(_last_n['_v'])
+                                        _date_n = str(_last_n['date'])[:10]
+                                        if 9.0 <= _sc_n <= 45.0:
+                                            print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
+                                            return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
+                    except Exception as _e_n: print(f'[Macro/NDC/FM] ❌ {_e_n}')
+
+                    # ── 方案2: data.gov.tw（動態 resource_id 搜尋）──────────────────
                     _ng_res_ids = [
                         '32d4c078-cfd6-4d3b-b2a0-dbbf26f27773',
                         'e8f35029-22f9-42da-92b8-c2baa7a7c6c6',
@@ -2748,7 +2842,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _rid = _ro.get('id', '')
                                     if _rid and _rid not in _ng_res_ids:
                                         _ng_res_ids.insert(0, _rid)
-                                        print(f'[Macro/NDC] 發現新 resource_id: {_rid[:8]}...')
                             if len(_ng_res_ids) > 3: break
                     except Exception as _e: print(f'[Macro/NDC] 搜尋失敗: {_e}')
                     for _res in _ng_res_ids:
@@ -2759,11 +2852,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             ]:
                                 _rn2 = _s.get(_api, timeout=8, verify=False,
                                               headers={'Accept': 'application/json'})
-                                print(f'[Macro/NDC/Gov] {_res[:8]}... api={_api[30:55]} status={_rn2.status_code}')
                                 if _rn2.status_code == 200: break
                             if _rn2.status_code != 200: continue
                             _recs = ((_rn2.json().get('result') or {}).get('records') or [])
-                            print(f'[Macro/NDC/Gov] records={len(_recs)} keys={list(_recs[0].keys())[:8] if _recs else []}')
                             if not _recs: continue
                             _recs = sorted(_recs, key=lambda x: str(
                                 x.get('statistic_ym') or x.get('period') or x.get('期間') or ''), reverse=True)
@@ -2774,19 +2865,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     try:
                                         _vv = float(str(_lng[_kk]).replace(',', ''))
                                         if 9.0 <= _vv <= 45.0:
-                                            _sc = _vv; print(f'[Macro/NDC/Gov] 分數(named) key={_kk} val={_sc}'); break
+                                            _sc = _vv; break
                                     except Exception: pass
                             if _sc is None:
                                 for _kk, _kv in _lng.items():
                                     try:
                                         _vv = float(str(_kv).replace(',', ''))
                                         if 9.0 <= _vv <= 45.0:
-                                            _sc = _vv; print(f'[Macro/NDC/Gov] 分數(scan) key={_kk} val={_sc}'); break
+                                            _sc = _vv; break
                                     except Exception: pass
                             if _sc is not None:
                                 _raw = str(_lng.get('statistic_ym', _lng.get('period', _lng.get('期間', ''))))
-                                import re as _re
-                                _nm = _re.match(r'^(\d{4})[-/]?(\d{2})$', _raw.strip())
+                                _nm = _re_ndc.match(r'^(\d{4})[-/]?(\d{2})$', _raw.strip())
                                 _date = f'{_nm.group(1)}-{_nm.group(2)}-01' if _nm else _raw[:10]
                                 print(f'[Macro/NDC/Gov] ✅ score={_sc}')
                                 return {'ndc_signal': {'score': _sc, 'signal': None, 'date': _date}}
@@ -2797,38 +2887,57 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 def _fetch_export():
                     import pandas as _pd7, datetime as _dt7
                     _s_ex = _mk_s()
-                    # ── 方案1: FinMind TaiwanExportValue（最即時，1月落差）──
+                    _fm_tok7 = _get_fm_token()
+                    _start7 = (_dt7.date.today() - _dt7.timedelta(days=365*3)).strftime('%Y-%m-%d')
+                    _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
+
+                    def _fm_get(ds, extra_params=None):
+                        _p = {'dataset': ds, 'start_date': _start7}
+                        if _fm_tok7: _p['token'] = _fm_tok7
+                        if extra_params: _p.update(extra_params)
+                        _r = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
+                                        params=_p, headers=_hdrs7, timeout=15, verify=False)
+                        _j = _r.json()
+                        print(f'[Export/FM/{ds}] status={_j.get("status")} rows={len(_j.get("data",[]))}')
+                        return _pd7.DataFrame(_j['data']) if _j.get('status') == 200 and _j.get('data') else None
+
+                    # ── 方案1: FinMind TaiwanMacroEconomics（出口總值）──────────────
                     try:
-                        _fm_tok7 = _get_fm_token()
-                        _start7 = (_dt7.date.today()-_dt7.timedelta(days=365*2)).strftime('%Y-%m-%d')
-                        _params7 = {'dataset':'TaiwanExchangeEconomicIndex',
-                                    'data_id':'匯率', 'start_date':_start7}
-                        # 嘗試 FinMind TaiwanExportImportTotal
-                        for _fm_ds7 in ['TaiwanExportImportTotal','TaiwanExportByIndustry']:
-                            try:
-                                _p7 = {'dataset': _fm_ds7, 'start_date': _start7}
-                                if _fm_tok7: _p7['token'] = _fm_tok7
-                                _r7 = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
-                                                params=_p7,
-                                                headers={'Authorization':f'Bearer {_fm_tok7}'} if _fm_tok7 else {},
-                                                timeout=15, verify=False)
-                                _j7 = _r7.json()
-                                if _j7.get('status') == 200 and _j7.get('data'):
-                                    _df7 = _pd7.DataFrame(_j7['data'])
-                                    _exp_col = next((c for c in _df7.columns
-                                                     if any(k in str(c) for k in ['export','Export','出口'])), None)
-                                    if _exp_col and 'date' in _df7.columns:
-                                        _df7 = _df7.sort_values('date').dropna(subset=[_exp_col])
-                                        _df7[_exp_col] = _pd7.to_numeric(_df7[_exp_col], errors='coerce')
-                                        _df7 = _df7.dropna(subset=[_exp_col])
-                                        if len(_df7) >= 13:
-                                            _yoy7 = round((_df7[_exp_col].iloc[-1]/_df7[_exp_col].iloc[-13]-1)*100,2)
-                                            _date7 = str(_df7['date'].iloc[-1])[:7]
-                                            print(f'[Macro/Export/FM] ✅ {_fm_ds7} YoY={_yoy7:.2f}% date={_date7}')
-                                            return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
-                            except Exception as _e7: print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
-                    except Exception as _ex7: print(f'[Macro/Export/FM] ❌ {_ex7}')
-                    # ── 方案2: dbnomics OECD/IMF（備援）──
+                        _df_me = _fm_get('TaiwanMacroEconomics')
+                        if _df_me is not None and 'indicator' in _df_me.columns:
+                            _exp_kw = ['出口', 'export', 'Export']
+                            _mask = _df_me['indicator'].str.contains('|'.join(_exp_kw), case=False, na=False)
+                            _sub_e = _df_me[_mask].copy()
+                            if len(_sub_e) >= 13:
+                                _sub_e = _sub_e.sort_values('date')
+                                _sub_e['_v'] = _pd7.to_numeric(_sub_e['value'], errors='coerce')
+                                _sub_e = _sub_e.dropna(subset=['_v'])
+                                if len(_sub_e) >= 13:
+                                    _yoy_me = round((_sub_e['_v'].iloc[-1] / _sub_e['_v'].iloc[-13] - 1) * 100, 2)
+                                    _date_me = str(_sub_e['date'].iloc[-1])[:7]
+                                    print(f'[Macro/Export/FM-ME] ✅ YoY={_yoy_me:.2f}% date={_date_me}')
+                                    return {'tw_export': {'yoy': _yoy_me, 'date': _date_me, 'source': 'FinMind-ME'}}
+                    except Exception as _e_me: print(f'[Macro/Export/FM-ME] ❌ {_e_me}')
+
+                    # ── 方案2: FinMind TaiwanExportImportTotal / TaiwanExportByIndustry ──
+                    for _fm_ds7 in ['TaiwanExportImportTotal', 'TaiwanExportByIndustry']:
+                        try:
+                            _df7 = _fm_get(_fm_ds7)
+                            if _df7 is None: continue
+                            _exp_col = next((c for c in _df7.columns
+                                             if any(k in str(c) for k in ['export', 'Export', '出口'])), None)
+                            if _exp_col and 'date' in _df7.columns:
+                                _df7 = _df7.sort_values('date').dropna(subset=[_exp_col])
+                                _df7[_exp_col] = _pd7.to_numeric(_df7[_exp_col], errors='coerce')
+                                _df7 = _df7.dropna(subset=[_exp_col])
+                                if len(_df7) >= 13:
+                                    _yoy7 = round((_df7[_exp_col].iloc[-1] / _df7[_exp_col].iloc[-13] - 1) * 100, 2)
+                                    _date7 = str(_df7['date'].iloc[-1])[:7]
+                                    print(f'[Macro/Export/FM] ✅ {_fm_ds7} YoY={_yoy7:.2f}% date={_date7}')
+                                    return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
+                        except Exception as _e7: print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
+
+                    # ── 方案3: dbnomics OECD/IMF（最終備援）────────────────────────
                     for _exs in ['OECD/MEI/TWN.XTEXVA01.CXML.M',
                                  'OECD/MEI/TWN.XTEXVA01.CXML.Q',
                                  'IMF/IFS/M.TW.TXG_FOB_USD']:

@@ -311,9 +311,12 @@ def fetch_margin_balance(date_str=None):
 
 def fetch_margin_maintenance_ratio():
     """
-    嘗試抓取全市場融資維持率(%)。
-    優先 TWSE MI_MARGN 欄位「維持率」；失敗時回傳 None。
+    全市場融資維持率(%)。
+    方案1: TWSE MI_MARGN JSON（data + totalData + notes）
+    方案2: TWSE TWT93U（信用交易概況）
+    方案3: 回傳 None
     """
+    import re as _re_mr
     today = _tw_today_dl()
     candidates = []
     d = today
@@ -323,9 +326,18 @@ def fetch_margin_maintenance_ratio():
         d -= datetime.timedelta(days=1)
         if len(candidates) >= 10:
             break
+
+    def _parse_ratio(raw):
+        try:
+            v = float(str(raw).replace(',', '').replace('%', '').strip())
+            if 100 <= v <= 500: return v
+        except Exception: pass
+        return None
+
+    # ── 方案 1: TWSE MI_MARGN JSON（data + totalData + notes 三層搜尋）──
     for _d in candidates:
         ds = _d.strftime('%Y%m%d')
-        for _sel in ['MS', 'ALL']:
+        for _sel in ['MS', 'ALL', 'ALLBUT0999']:
             try:
                 r = _TWSE_CK.get(
                     'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
@@ -333,28 +345,50 @@ def fetch_margin_maintenance_ratio():
                     headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
                     timeout=15)
                 j = r.json()
-                if j.get('stat') != 'OK':
-                    continue
+                if j.get('stat') != 'OK': continue
                 fields = [str(f) for f in j.get('fields', [])]
-                # 找「維持率」欄位
-                ratio_col = next(
-                    (i for i, f in enumerate(fields) if '維持率' in f), None)
-                if ratio_col is None:
-                    continue
-                data = j.get('data', [])
-                for row in reversed(data):
-                    if len(row) <= ratio_col:
-                        continue
-                    raw = str(row[ratio_col]).replace(',', '').replace('%', '').strip()
-                    try:
-                        v = float(raw)
-                    except:
-                        continue
-                    if 100 <= v <= 500:  # 合理範圍：100%~500%
-                        print(f'[維持率/{_sel}/{ds}] ✅ {v}%')
-                        return v
+                ratio_col = next((i for i, f in enumerate(fields) if '維持率' in f), None)
+                if ratio_col is None: continue
+                for _pool in [j.get('data', []), j.get('totalData', [])]:
+                    for row in reversed(_pool if isinstance(_pool, list) else []):
+                        if isinstance(row, list) and len(row) > ratio_col:
+                            v = _parse_ratio(row[ratio_col])
+                            if v:
+                                print(f'[維持率/MI_MARGN/{_sel}/{ds}] ✅ {v}%')
+                                return v
+                for note in (j.get('notes', []) or []):
+                    m = _re_mr.search(r'維持率[^0-9]*([0-9]{2,4}\.?[0-9]*)', str(note))
+                    if m:
+                        v = _parse_ratio(m.group(1))
+                        if v:
+                            print(f'[維持率/MI_MARGN/notes/{ds}] ✅ {v}%')
+                            return v
             except Exception as _e:
-                print(f'[維持率/{_sel}/{ds}] {_e}')
+                print(f'[維持率/MI_MARGN/{_sel}/{ds}] {_e}')
+
+    # ── 方案 2: TWSE TWT93U（全體信用交易概況）────────────────────────
+    for _d in candidates[:5]:
+        ds = _d.strftime('%Y%m%d')
+        try:
+            r2 = _TWSE_CK.get(
+                'https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U',
+                params={'date': ds, 'response': 'json'},
+                headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/tWT93U.html'},
+                timeout=12)
+            j2 = r2.json()
+            if j2.get('stat') == 'OK':
+                fields2 = [str(f) for f in j2.get('fields', [])]
+                ratio_col2 = next((i for i, f in enumerate(fields2) if '維持率' in f), None)
+                if ratio_col2 is not None:
+                    for row in reversed(j2.get('data', [])):
+                        if len(row) > ratio_col2:
+                            v = _parse_ratio(row[ratio_col2])
+                            if v:
+                                print(f'[維持率/TWT93U/{ds}] ✅ {v}%')
+                                return v
+        except Exception as _e2:
+            print(f'[維持率/TWT93U/{ds}] {_e2}')
+
     print('[維持率] 所有來源均無資料')
     return None
 

@@ -1353,6 +1353,13 @@ class StockDataLoader:
             if df_quarterly.empty:
                 return None, "查無有效季度資料（可能該公司/資料源未提供近年季報）"
 
+            # ── 加入季末標準 date 欄位，供資料診斷儀表板讀取 ──────────────
+            _QTR_END = {1: '03-31', 2: '06-30', 3: '09-30', 4: '12-31'}
+            df_quarterly['date'] = (
+                df_quarterly['年度'].astype(int).astype(str) + '-'
+                + df_quarterly['季度'].astype(int).map(_QTR_END)
+            )
+
             print(f"✓ 成功載入 {len(df_quarterly)} 筆季度資料")
             df_quarterly['是否金融股'] = is_finance
 
@@ -1425,8 +1432,12 @@ class StockDataLoader:
                         except: pass
                 return float('nan')
 
-            _CL_KEYS = ['CurrentContractLiabilities', 'ContractLiabilities',
-                        '合約負債', '契約負債', '預收款項']
+            _CL_KEYS = ['CurrentContractLiabilities', 'NonCurrentContractLiabilities',
+                        'ContractLiabilities', 'ContractLiabilitiesCurrent',
+                        'ContractLiabilitiesNonCurrent',
+                        '合約負債', '合約負債-流動', '合約負債－流動',
+                        '合約負債-非流動', '合約負債－非流動',
+                        '契約負債', '預收款項']
             _INV_KEYS = ['Inventories', 'InventoriesNet', 'Inventories_Net',
                          '存貨', '存貨淨額', '商品存貨']
             _CX_KEYS  = ['AcquisitionOfPropertyPlantAndEquipment',
@@ -1448,6 +1459,17 @@ class StockDataLoader:
                     _lbl = f'{_yr}Q{_qt}'
                 except: continue
                 _cl   = _val(_bs_map, _d, _CL_KEYS)
+                # 模糊加總：涵蓋「合約負債-流動」+「合約負債-非流動」等細分科目
+                if float('nan') == _cl or (isinstance(_cl, float) and _cl != _cl):
+                    _slot = _bs_map.get(_d, {})
+                    _parts = []
+                    for _k, _v in _slot.items():
+                        if '合約負債' in str(_k) and isinstance(_v, dict):
+                            try:
+                                _pv = float(str(_v.get('value', 0)).replace(',', '') or 0)
+                                if _pv != 0: _parts.append(abs(_pv))
+                            except Exception: pass
+                    if _parts: _cl = sum(_parts)
                 _inv  = _val(_bs_map, _d, _INV_KEYS)
                 _cx   = _val(_cf_map, _d, _CX_KEYS)
                 _disp = _val(_cf_map, _d, _DISP_KEYS)
@@ -1460,6 +1482,12 @@ class StockDataLoader:
             df_extra = pd.DataFrame(_records)
             df_extra = df_extra.drop_duplicates(subset=['季度標籤'], keep='last')
             df_extra = df_extra.sort_values('季度標籤').tail(12).reset_index(drop=True)
+            # ── 加入季末標準 date 欄位，供資料診斷儀表板讀取 ──────────────
+            _QME = {1: '03-31', 2: '06-30', 3: '09-30', 4: '12-31'}
+            def _qe2date(lbl):
+                try: return f'{lbl[:4]}-{_QME[int(lbl[5])]}'
+                except: return None
+            df_extra['date'] = df_extra['季度標籤'].apply(_qe2date)
             print(f'[BS/CF] {stock_id}: ✅ {len(df_extra)} 季 CL={df_extra["合約負債"].notna().sum()} INV={df_extra["存貨"].notna().sum()} CX={df_extra["資本支出"].notna().sum()} DISP={df_extra["處分資產現金流入"].notna().sum()}')
             return df_extra, None
 
