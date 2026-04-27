@@ -420,6 +420,16 @@ def fetch_single(symbol, period="60d"):
     _sym_list = [symbol]
     if symbol in ('DX-Y.NYB', 'DX=F'):
         _sym_list = ['DX=F', 'DX-Y.NYB', 'UUP']  # 期貨→NYB→ETF
+    # proxy 環境注入
+    try:
+        from tw_stock_data_fetcher import _load_proxy_config as _lpc_fs
+        _px_fs = ((_lpc_fs() or {}).get('https') or (_lpc_fs() or {}).get('http') or None)
+    except Exception:
+        _px_fs = None
+    _ek_fs = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+    _bak_fs = {k: _os2.environ.get(k) for k in _ek_fs}
+    if _px_fs:
+        for k in _ek_fs: _os2.environ[k] = _px_fs
     try:
         import yfinance as yf
         h = None
@@ -432,7 +442,6 @@ def fetch_single(symbol, period="60d"):
         if h is None or h.empty: return None
         h.index = pd.DatetimeIndex(h.index).tz_localize(None)
         h.columns = [c.lower().replace(' ','_') for c in h.columns]
-        # 移除全 NaN 行（某些 symbol 最新一筆可能是 NaN）
         if 'close' in h.columns:
             h = h.dropna(subset=['close'])
         elif 'Close' in h.columns:
@@ -442,6 +451,10 @@ def fetch_single(symbol, period="60d"):
         return h
     except Exception as e:
         print(f'[yf:{symbol}] {e}'); return None
+    finally:
+        for k, v in _bak_fs.items():
+            if v is None: _os2.environ.pop(k, None)
+            else: _os2.environ[k] = v
 
 def _fetch_otc_via_finmind(token=""):
     if not FINMIND_TOKEN: return None

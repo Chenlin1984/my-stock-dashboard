@@ -3374,6 +3374,43 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         else:
             _rp['[ETF回測] 回測績效'] = {'last_updated': 'N/A', 'rows': 0, 'category': 'ETF', 'frequency': 'daily', 'missing': True}
 
+        # 若大盤項目完全缺失（DataRegistry 建立時拋出 exception），從 cl_data 補建
+        if not any(v.get('category') == '大盤' for v in _rp.values()):
+            _cd_rb = st.session_state.get('cl_data', {})
+            if _cd_rb:
+                def _rb_add(_n, _df, _cat='大盤', _freq='daily'):
+                    if isinstance(_df, _pd_rp.DataFrame) and not _df.empty:
+                        _rp[_n] = {'last_updated': _rp_ts(_df), 'rows': len(_df), 'category': _cat, 'frequency': _freq}
+                    else:
+                        _rp[_n] = {'last_updated': 'N/A', 'rows': 0, 'category': _cat, 'frequency': _freq, 'missing': True}
+                for _n in INTL_MAP:
+                    _rb_add(_n, (_cd_rb.get('intl') or {}).get(_n))
+                for _n in TW_MAP:
+                    _rb_add(_n, (_cd_rb.get('tw') or {}).get(_n))
+                for _n in TECH_MAP:
+                    _rb_add(_n, (_cd_rb.get('tech') or {}).get(_n))
+                _rb_add('ADL 市場廣度', _cd_rb.get('adl'))
+                _inst_rb = _cd_rb.get('inst') or {}
+                for _ik, _iname in [('外資及陸資','三大法人 外資買賣超'),
+                                     ('投信','三大法人 投信買賣超'),
+                                     ('自營商','三大法人 自營商買賣超')]:
+                    _rp[_iname] = {'last_updated': 'N/A', 'rows': 1 if _inst_rb.get(_ik) else 0,
+                                   'category': '大盤', 'frequency': 'daily',
+                                   **({} if _inst_rb.get(_ik) else {'missing': True})}
+                _rp['融資餘額（台股）'] = {'last_updated': 'N/A', 'rows': 1 if _cd_rb.get('margin') else 0,
+                                          'category': '大盤', 'frequency': 'daily',
+                                          **({} if _cd_rb.get('margin') else {'missing': True})}
+                _macro_rb = st.session_state.get('macro_info') or {}
+                for _mk, _mn, _mf in [('vix','VIX 波動率指數','daily'),
+                                       ('us_core_cpi','美國核心CPI年增率','monthly'),
+                                       ('ism_pmi','ISM PMI 製造業指數','monthly'),
+                                       ('tw_export','台灣出口年增率','monthly'),
+                                       ('ndc_signal','景氣先行指標（NDC）','monthly')]:
+                    _rp[_mn] = {'last_updated': 'N/A', 'rows': 1 if _macro_rb.get(_mk) else 0,
+                                'category': '大盤', 'frequency': _mf,
+                                **({} if _macro_rb.get(_mk) else {'missing': True})}
+                print('[RegistryPatch] 大盤項目補建完成')
+
         st.session_state['data_registry'] = _rp
     except Exception as _rpe:
         print(f'[RegistryPatch] {_rpe}')
