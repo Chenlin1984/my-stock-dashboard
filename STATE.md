@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.33 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.34 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #72 已 merge**（2026-04-27）— 修正資料診斷 macro_info key 名稱錯誤
+- **✅ PR #73 已 merge**（2026-04-27）— 修復失效的總經/籌碼/個股財報 API 管線
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,21 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.34，commit `54a7132`，PR #73）
+
+### 修復失效的總經/籌碼/個股財報 API 管線（app.py + data_loader.py + daily_checklist.py）
+
+| 項目 | 修復內容 |
+|------|---------|
+| **CPI** | 新增 pandas_datareader FRED `CPIAUCSL` 主路徑（proxy env 注入）；BLS/dbnomics 降為備援 |
+| **PMI** | 新增 FRED `NAPM`→`MANEMP`→`INDPRO` 主路徑；dbnomics OECD 降為備援 |
+| **NDC 景氣燈號** | 新增 FinMind TaiwanMacroEconomics 主路徑；data.gov.tw 降為備援 |
+| **台灣出口 YoY** | 新增 FinMind TaiwanMacroEconomics 主路徑；TaiwanExportImportTotal/dbnomics 降為備援 |
+| **融資維持率** | MI_MARGN 新增搜尋 totalData+notes；加 TWSE TWT93U 備援端點 |
+| **季報 date 欄位** | qtr/qtr_extra 加 end-of-quarter date 欄（2025Q4→2025-12-31）供診斷正確讀取 |
+| **合約負債模糊加總** | _CL_KEYS 擴充含-流動/-非流動；精確 match 失敗時 contains 加總所有子科目 |
+| **requirements.txt** | 新增 `pandas-datareader>=0.10.0` |
 
 ## ✅ 最新異動（v10.33，commit `7dee262`，PR #72）
 
