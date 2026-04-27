@@ -2803,8 +2803,40 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 5. 台灣出口 YoY（proxy → dbnomics API）────────────────────
                 def _fetch_export():
-                    import pandas as _pd7
+                    import pandas as _pd7, datetime as _dt7
                     _s_ex = _mk_s()
+                    # ── 方案1: FinMind TaiwanExportValue（最即時，1月落差）──
+                    try:
+                        _fm_tok7 = _get_fm_token()
+                        _start7 = (_dt7.date.today()-_dt7.timedelta(days=365*2)).strftime('%Y-%m-%d')
+                        _params7 = {'dataset':'TaiwanExchangeEconomicIndex',
+                                    'data_id':'匯率', 'start_date':_start7}
+                        # 嘗試 FinMind TaiwanExportImportTotal
+                        for _fm_ds7 in ['TaiwanExportImportTotal','TaiwanExportByIndustry']:
+                            try:
+                                _p7 = {'dataset': _fm_ds7, 'start_date': _start7}
+                                if _fm_tok7: _p7['token'] = _fm_tok7
+                                _r7 = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
+                                                params=_p7,
+                                                headers={'Authorization':f'Bearer {_fm_tok7}'} if _fm_tok7 else {},
+                                                timeout=15, verify=False)
+                                _j7 = _r7.json()
+                                if _j7.get('status') == 200 and _j7.get('data'):
+                                    _df7 = _pd7.DataFrame(_j7['data'])
+                                    _exp_col = next((c for c in _df7.columns
+                                                     if any(k in str(c) for k in ['export','Export','出口'])), None)
+                                    if _exp_col and 'date' in _df7.columns:
+                                        _df7 = _df7.sort_values('date').dropna(subset=[_exp_col])
+                                        _df7[_exp_col] = _pd7.to_numeric(_df7[_exp_col], errors='coerce')
+                                        _df7 = _df7.dropna(subset=[_exp_col])
+                                        if len(_df7) >= 13:
+                                            _yoy7 = round((_df7[_exp_col].iloc[-1]/_df7[_exp_col].iloc[-13]-1)*100,2)
+                                            _date7 = str(_df7['date'].iloc[-1])[:7]
+                                            print(f'[Macro/Export/FM] ✅ {_fm_ds7} YoY={_yoy7:.2f}% date={_date7}')
+                                            return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
+                            except Exception as _e7: print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
+                    except Exception as _ex7: print(f'[Macro/Export/FM] ❌ {_ex7}')
+                    # ── 方案2: dbnomics OECD/IMF（備援）──
                     for _exs in ['OECD/MEI/TWN.XTEXVA01.CXML.M',
                                  'OECD/MEI/TWN.XTEXVA01.CXML.Q',
                                  'IMF/IFS/M.TW.TXG_FOB_USD']:
@@ -2837,33 +2869,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             if _part: _r.update(_part)
                         except Exception as _e: print(f'[Macro] ❌ {_futs_mc.get(_fut_mc, "?")}: {_e}')
 
-                # NDC CLI 代理（並行完成後，若 data.gov.tw 失敗才啟動，可使用 PMI 結果）
+                # NDC CLI 代理（並行完成後，若 data.gov.tw 失敗才啟動）
                 if 'ndc_signal' not in _r:
-                    _cli_prx = _r.get('ism_pmi') or {}
                     _cli_val, _cli_date = None, None
-                    if _cli_prx and _cli_prx.get('is_oecd_cli'):
-                        _cli_val  = float(_cli_prx.get('value', 100))
-                        _cli_date = _cli_prx.get('date', '')
-                    if _cli_val is None:
+                    import pandas as _pd8
+                    # 走 proxy 的 dbnomics OECD CLI Taiwan（取代 dbnomics library 直連）
+                    _s_ndc2 = _mk_s()
+                    for _tw_cli_s in ['OECD/MEI_CLI/TWN.LOLITOAA.ST.M',
+                                      'OECD/MEI_CLI/TWN.LOLITONO.ST.M',
+                                      'OECD/MEI/TWN.LORSGPRT.ST.M']:
                         try:
-                            from dbnomics import fetch_series as _dbn_tw_cli
-                            import pandas as _pd8
-                            for _tw_cli_s in ['OECD/MEI_CLI/LOLITOAA.TWN.M',
-                                               'OECD/MEI_CLI/LOLITONO.TWN.M',
-                                               'OECD/MEI/TWN.LORSGPRT.ST.M']:
-                                try:
-                                    _tcli_df = _dbn_tw_cli(_tw_cli_s)
-                                    if _tcli_df is None or len(_tcli_df) < 3: continue
-                                    _tcli_df = _tcli_df.copy()
-                                    _tcli_df['_v'] = _pd8.to_numeric(_tcli_df['value'], errors='coerce')
-                                    _tcli_df = _tcli_df.dropna(subset=['_v'])
-                                    if len(_tcli_df) == 0: continue
-                                    _cli_val  = float(_tcli_df['_v'].iloc[-1])
-                                    _cli_date = str(_tcli_df['period'].iloc[-1])[:10]
-                                    print(f'[Macro/NDC/TW-CLI] ✅ {_tw_cli_s} val={_cli_val:.2f} date={_cli_date}')
-                                    break
-                                except Exception as _te: print(f'[Macro/NDC/TW-CLI] ❌ {_tw_cli_s}: {_te}')
-                        except Exception as _e: print(f'[Macro/NDC/TW-CLI] ❌ {_e}')
+                            _tcli_df = _dbn_px(_s_ndc2, _tw_cli_s)
+                            if _tcli_df is None or len(_tcli_df) < 3: continue
+                            _tcli_df['_v'] = _pd8.to_numeric(_tcli_df['value'], errors='coerce')
+                            _tcli_df = _tcli_df.dropna(subset=['_v'])
+                            if len(_tcli_df) == 0: continue
+                            _cli_val  = float(_tcli_df['_v'].iloc[-1])
+                            _cli_date = str(_tcli_df['period'].iloc[-1])[:10]
+                            print(f'[Macro/NDC/TW-CLI] ✅ {_tw_cli_s} val={_cli_val:.2f} date={_cli_date}')
+                            break
+                        except Exception as _te: print(f'[Macro/NDC/TW-CLI] ❌ {_tw_cli_s}: {_te}')
                     if _cli_val is not None:
                         if _cli_val >= 101.5:   _psc = 36.0
                         elif _cli_val >= 100.5: _psc = 28.0
