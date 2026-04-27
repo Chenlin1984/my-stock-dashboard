@@ -23,9 +23,11 @@ _urllib3_dl.disable_warnings(_urllib3_dl.exceptions.InsecureRequestWarning)
 def _bps_dl():
     try:
         from tw_stock_data_fetcher import build_proxy_session as _b
-        return _b()
+        s = _b()
     except Exception:
-        s = _req_dl.Session(); s.verify = False; return s
+        s = _req_dl.Session()
+    s.verify = False
+    return s
 
 _TWSE_DL = _bps_dl()
 from stock_names import get_stock_name

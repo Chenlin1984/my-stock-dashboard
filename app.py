@@ -11,9 +11,11 @@ def _tw_now_str(): return _tw_now().strftime('%Y-%m-%d %H:%M')
 def _bps():
     try:
         from tw_stock_data_fetcher import build_proxy_session as _b
-        return _b()
+        s = _b()
     except Exception:
-        return requests.Session()
+        s = requests.Session()
+    s.verify = False
+    return s
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 
@@ -8473,7 +8475,7 @@ with tab4_masters:
 3. ADL = 累積加總每天的 AD 值（趨勢線）
 
 **🟢 判讀重點一：上漲佔比**
-- \>60% = 多數股票在漲 → 廣度健康，真多頭
+- >60% = 多數股票在漲 → 廣度健康，真多頭
 - 40~60% = 多空均衡 → 市場整理
 - <40% = 少數股票在漲 → 廣度萎縮，注意拉尾盤風險
 

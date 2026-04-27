@@ -26,9 +26,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 def _bps():
     try:
         from tw_stock_data_fetcher import build_proxy_session as _b
-        return _b()
+        s = _b()
     except Exception:
-        s = requests.Session(); s.verify = False; return s
+        s = requests.Session()
+    s.verify = False
+    return s
 
 _TWSE_S = _bps()
 from bs4 import BeautifulSoup
