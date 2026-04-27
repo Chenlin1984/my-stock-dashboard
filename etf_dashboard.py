@@ -3211,21 +3211,21 @@ def render_data_health_raw():
         _ma = st.session_state.get('macro_info') or {}
         rows = []
         for label, key, freq in [
-            ('VIX 恐慌指數（CBOE / dbnomics）',           'vix',       'daily'),
-            ('CPI 消費者物價指數（IMF / dbnomics）',        'cpi',       'monthly'),
-            ('ISM PMI / OECD CLI（dbnomics）',             'pmi',       'monthly'),
-            ('NDC 景氣燈號分數（data.gov.tw / OECD CLI）',  'ndc',       'monthly'),
-            ('台灣出口 YoY（FinMind TaiwanExportImport）',  'tw_export', 'monthly'),
+            ('VIX 恐慌指數（CBOE / dbnomics）',           'vix',         'daily'),
+            ('CPI 消費者物價指數（IMF / dbnomics）',        'us_core_cpi', 'monthly'),
+            ('ISM PMI / OECD CLI（dbnomics）',             'ism_pmi',     'monthly'),
+            ('NDC 景氣燈號分數（data.gov.tw / OECD CLI）',  'ndc_signal',  'monthly'),
+            ('台灣出口 YoY（FinMind TaiwanExportImport）',  'tw_export',   'monthly'),
         ]:
             item = _ma.get(key) or {}
             date = (item.get('date') or item.get('period') or
                     str(item.get('year', ''))[:7] or None)
             rows.append(_row(label, str(date)[:10] if date else None, freq))
-        # M1B / M2
+        # M1B / M2（無獨立 date 欄位，以 cl_ts 代理）
         _mi = st.session_state.get('m1b_m2_info') or {}
-        _mi_date = str(_mi.get('date', '') or '')[:10] or None
-        if not _mi_date and _mi.get('m1b_yoy') is not None:
-            _mi_date = str(st.session_state.get('cl_ts', ''))[:10] or None
+        _mi_date = None
+        if _mi.get('m1b_yoy') is not None:
+            _mi_date = str(st.session_state.get('cl_ts', ''))[:10] or str(_dt_r.date.today())
         rows.append(_row('M1B / M2 貨幣供給（CBC cpx.cbc.gov.tw / FinMind）', _mi_date, 'monthly'))
         _tbl(rows)
         st.caption('⚠️ M1B-M2 利差、年增率為計算值，不顯示於此。')
@@ -3252,8 +3252,13 @@ def render_data_health_raw():
             ('margin_ratio', '融資維持率%（TWSE MI_MARGN）'),
         ]:
             val = _cl.get(key)
-            date = (_last_date(val) if isinstance(val, _pd_r.DataFrame)
-                    else (_cl_ts if val is not None else None))
+            # margin_ratio 是純數值（非 DataFrame），用 is not None 判有效
+            if isinstance(val, _pd_r.DataFrame):
+                date = _last_date(val) or _cl_ts
+            elif val is not None:  # 數值 0 也算有效
+                date = _cl_ts
+            else:
+                date = None
             rows.append(_row(label, date, 'daily'))
 
         _adl = _cl.get('adl')

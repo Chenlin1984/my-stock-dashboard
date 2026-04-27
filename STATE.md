@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.31 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.32 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #61 已 merge**（2026-04-26）— Proxy + 診斷修正進入 main
+- **✅ PR #71 已 merge**（2026-04-27）— Phase 2 UI 重構：平坦 8-Tab + 資料診斷 Raw-only + 教學 Markdown
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,19 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.32，commit `a5e3eca`，PR #71）
+
+### Phase 2 UI 重構：平坦 8-Tab + 資料診斷 Raw-only + 教學 Markdown（app.py + etf_dashboard.py）
+
+| 項目 | 說明 |
+|------|------|
+| **平坦 8-Tab 結構** | `總經 / 產業熱力圖 / 個股 / 個股組合 / ETF / ETF組合 / 資料診斷 / 教學`，移除舊的巢狀 Tab 包裝層 |
+| **ETF組合子 Tab** | 內建 3 子頁：`組合配置 / 歷史回測 / ETF AI`（`_tab_etf_port/_tab_etf_bt/_tab_etf_ai`） |
+| **資料診斷 Raw-only** | 新 `render_data_health_raw()` 函式：5 個 expander（總經/大盤籌碼/先行指標/個股/ETF），每列 3 欄（資料名稱/最後更新/狀態燈號），嚴格排除所有計算值（RSI/MA/KD 等） |
+| **教學 Markdown** | 靜態 `st.expander` 4 師：孫慶龍（合約負債/資本支出/EPS框架）、蔡森（破底翻/頭肩底）、春哥 VCP（4大條件/ASCII圖）、宏爺（M1B-M2/四象限矩陣） |
+| **舊內容清理** | 移除 ~550 行舊巢狀 Tab 結構與 placeholder 手冊重複內容（9336→8793 行） |
+| **舊變數替換** | `tab_etf1~4/tab_health/tab4_masters` → `tab_etf/_tab_etf_port/_tab_etf_bt/_tab_etf_ai/tab_diag/tab_edu` |
 
 ## ✅ 最新異動（v10.31，commits `0f34d0a`–`5da3870`）
 
