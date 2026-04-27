@@ -2684,6 +2684,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # 3. US PMI（FRED NAPM 已於 2023-12 終止；MFPMI01USM657S 授權截止約 2023-10）
                 # 主：多個 FRED PMI 系列（含 freshness 檢查，避免使用已停更的系列）
+                # timeout=5s：Streamlit Cloud 常封鎖 fred.stlouisfed.org，快速 fail 避免堆積超時
                 import datetime as _dt_pmi_chk
                 for _pmi_fid, _pmi_flabel in [
                     ('MFPMI01USM657S', 'S&P Global Mfg PMI'),
@@ -2694,7 +2695,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     try:
                         _pr = _rq_mc_s.get(
                             f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_pmi_fid}',
-                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
+                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=5, verify=False)
                         print(f'[Macro/PMI/{_pmi_fid}] status={_pr.status_code}')
                         if _pr.status_code != 200: continue
                         _pdf = _pd_mc.read_csv(_io_mc.StringIO(_pr.text))
@@ -2748,7 +2749,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 if 'ism_pmi' not in _r:
                     try:
                         _pr2 = _rq_mc_s.get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=NAPM',
-                                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=12, verify=False)
+                                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=5, verify=False)
                         if _pr2.status_code == 200:
                             _pdf2 = _pd_mc.read_csv(_io_mc.StringIO(_pr2.text))
                             _pdf2.columns = ['date', 'value']
@@ -2805,10 +2806,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         'A000001_1',
                     ]
                     try:
-                        # 搜尋最新 NDC 景氣資料集取得 resource ID
+                        # 搜尋最新 NDC 景氣資料集取得 resource ID（CKAN v3 API）
                         for _ndc_search_q in ['景氣對策信號', '景氣燈號']:
                             _ng_search_r = _rq_mc_s.get(
-                                'https://data.gov.tw/api/v2/rest/package_search',
+                                'https://data.gov.tw/api/3/action/package_search',
                                 params={'q': _ndc_search_q, 'rows': 5},
                                 timeout=8, verify=False,
                                 headers={'Accept': 'application/json'})
@@ -2825,17 +2826,21 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         print(f'[Macro/NDC] 搜尋 resource_id 失敗: {_ndc_s_e}')
                     for _ng_res in _ng_res_ids:
                         try:
-                            _ng_url = f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}'
-                            # 以 statistic_ym 降序排列，確保取得最新月份
-                            _ngr = _rq_mc_s.get(_ng_url,
-                                              params={'limit': 50},
-                                              timeout=8, verify=False,
-                                              headers={'Accept': 'application/json'})
-                            print(f'[Macro/NDC/Gov] {_ng_res[:8]}... status={_ngr.status_code} len={len(_ngr.content)}')
+                            # 優先用 CKAN v3 API（data.gov.tw 已從 /api/v2/rest/ 遷移到 /api/3/action/）
+                            for _ng_api in [
+                                f'https://data.gov.tw/api/3/action/datastore_search?resource_id={_ng_res}&limit=50',
+                                f'https://data.gov.tw/api/v2/rest/datastore/{_ng_res}',
+                            ]:
+                                _ngr = _rq_mc_s.get(_ng_api, timeout=8, verify=False,
+                                                  headers={'Accept': 'application/json'})
+                                print(f'[Macro/NDC/Gov] {_ng_res[:8]}... api={_ng_api[30:55]} status={_ngr.status_code}')
+                                if _ngr.status_code == 200: break
                             if _ngr.status_code != 200:
                                 continue
                             _ngj = _ngr.json()
-                            _ngd = (_ngj.get('result') or {}).get('records') or []
+                            # CKAN v3 回傳 result.records；v2 回傳 result.records (同樣路徑)
+                            _ngd = ((_ngj.get('result') or {}).get('records')
+                                    or (_ngj.get('result') or {}).get('records') or [])
                             print(f'[Macro/NDC/Gov] records={len(_ngd)} keys={list(_ngd[0].keys())[:8] if _ngd else []}')
                             if not _ngd:
                                 continue
@@ -2929,84 +2934,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     else:
                         print('[Macro/NDC] ⚠️ data.gov.tw 失敗且無CLI代理')
 
-                # 5. 台灣出口 YoY（FinMind → 財政部 MOPS → OECD dbnomics 備援）
-                # FinMind TaiwanExportStatistics（月度，最新月份，通常僅滯後 1-2 個月）
-                try:
-                    import datetime as _dt_ex
-                    _fm_tok_ex = _get_fm_token() or ''
-                    _ex_start = (_dt_ex.date.today() - _dt_ex.timedelta(days=400)).strftime('%Y-%m-%d')
-                    _ex_fm_url = 'https://api.finmindtrade.com/api/v4/data'
-                    _ex_fm_r = _rq_mc_s.get(_ex_fm_url,
-                                          params={'dataset': 'TaiwanExportStatistics',
-                                                  'start_date': _ex_start,
-                                                  'token': _fm_tok_ex},
-                                          timeout=15, verify=False,
-                                          headers={'User-Agent': 'Mozilla/5.0'})
-                    print(f'[Macro/Export/FinMind] status={_ex_fm_r.status_code}')
-                    if _ex_fm_r.status_code == 200:
-                        _ex_fm_j = _ex_fm_r.json()
-                        _ex_fm_d = _ex_fm_j.get('data', [])
-                        if _ex_fm_d and len(_ex_fm_d) >= 2:
-                            _ex_df = _pd_mc.DataFrame(_ex_fm_d)
-                            print(f'[Macro/Export/FinMind] columns={list(_ex_df.columns)} rows={len(_ex_df)}')
-                            _ex_df = _ex_df.sort_values('date').reset_index(drop=True)
-                            # 若有 country 欄，先過濾出總計列
-                            if 'country' in _ex_df.columns:
-                                _ex_total = _ex_df[_ex_df['country'].isin(
-                                    ['', '全球', 'Total', 'TOTAL', 'All', '合計', '總計'])]
-                                if len(_ex_total) >= 2:
-                                    _ex_df = _ex_total.reset_index(drop=True)
-                                    print(f'[Macro/Export/FinMind] 過濾 country=Total, rows={len(_ex_df)}')
-                            # 找出口總額欄位（FinMind 通常用 value，也可能有其他名稱）
-                            _ex_val_col = next((c for c in _ex_df.columns
-                                                if c == 'value' or '出口' in str(c)
-                                                or 'export' in str(c).lower()
-                                                or 'total' in str(c).lower()), None)
-                            if _ex_val_col is None:
-                                # 備援：找第一個非識別欄的數值欄位
-                                _ex_val_col = next((c for c in _ex_df.columns
-                                    if c not in ('date', 'country', 'id', 'dataset_id')
-                                    and _pd_mc.to_numeric(_ex_df[c], errors='coerce').notna().sum() > 2), None)
-                                if _ex_val_col:
-                                    print(f'[Macro/Export/FinMind] 使用備援欄位 col={_ex_val_col}')
-                            if _ex_val_col:
-                                _ex_v = _pd_mc.to_numeric(_ex_df[_ex_val_col], errors='coerce').dropna()
-                                if len(_ex_v) >= 13:
-                                    _ex_yoy = round((_ex_v.iloc[-1] / _ex_v.iloc[-13] - 1) * 100, 2)
-                                    _ex_date = str(_ex_df['date'].iloc[-1])[:7]
-                                    # 出口資料允許最多 90 天滯後（通常 1-2 個月）
-                                    import datetime as _dt_ex_chk
-                                    try:
-                                        _ex_age = (_dt_ex_chk.date.today() -
-                                            _dt_ex_chk.datetime.strptime(_ex_date + '-01', '%Y-%m-%d').date()).days
-                                    except Exception: _ex_age = 0
-                                    if _ex_age > 90:
-                                        print(f'[Macro/Export/FinMind] ⚠️ stale {_ex_age}d (last={_ex_date}) → fallback')
-                                    else:
-                                        _r['tw_export'] = {'yoy': _ex_yoy, 'date': _ex_date, 'source': 'FinMind'}
-                                        print(f'[Macro/Export/FinMind] ✅ YoY={_ex_yoy:.2f}% date={_ex_date}')
-                except Exception as _ex_e:
-                    print(f'[Macro/Export/FinMind] ❌ {_ex_e}')
-                # 備援 A：台灣財政部/主計總處開放資料（若 FinMind 失敗或過期）
-                if 'tw_export' not in _r:
-                    try:
-                        # 嘗試 data.gov.tw 台灣出口統計
-                        for _ex_gov_res in [
-                            'https://api.mof.gov.tw/ExportStatistics/ExportStatisticsJSON',
-                            'https://data.gov.tw/api/v2/rest/package_search?q=出口統計&rows=3',
-                        ]:
-                            try:
-                                _ex_gov_r = _rq_mc_s.get(_ex_gov_res, timeout=10, verify=False,
-                                    headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'})
-                                print(f'[Macro/Export/GOV] {_ex_gov_res[:50]} status={_ex_gov_r.status_code}')
-                                if _ex_gov_r.status_code == 200:
-                                    _ex_gov_j = _ex_gov_r.json()
-                                    print(f'[Macro/Export/GOV] keys={list(_ex_gov_j.keys())[:5] if isinstance(_ex_gov_j, dict) else type(_ex_gov_j)}')
-                                    break
-                            except Exception as _eg_e: print(f'[Macro/Export/GOV] ❌ {_eg_e}')
-                    except Exception as _ex_gov_e:
-                        print(f'[Macro/Export/GOV] ❌ outer: {_ex_gov_e}')
-                # 備援 B：OECD dbnomics（有 6-12 個月發布滯後，僅作補底）
+                # 5. 台灣出口 YoY（OECD dbnomics — FinMind TaiwanExportStatistics 已停用: 422）
                 if 'tw_export' not in _r:
                     try:
                         from dbnomics import fetch_series as _dbn_ex
