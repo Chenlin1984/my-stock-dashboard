@@ -2660,21 +2660,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     print(f'[Macro/CPI/BLS] ✅ YoY={_yoy:.2f}% date={_date}')
                                     return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'BLS'}}
                     except Exception as _e: print(f'[Macro/CPI/BLS] ❌ {_e}')
-                    for _cid, _src in [('CPILFESL', 'FRED'), ('CPIAUCSL', 'FRED_TOTAL')]:
-                        try:
-                            _rc2 = _s.get(f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={_cid}',
-                                          headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, verify=False)
-                            print(f'[Macro/CPI/{_src}] status={_rc2.status_code}')
-                            if _rc2.status_code == 200:
-                                _df = _pd2.read_csv(_io2.StringIO(_rc2.text))
-                                _df.columns = ['date', 'value']
-                                _df['value'] = _pd2.to_numeric(_df['value'], errors='coerce')
-                                _df = _df.dropna()
-                                if len(_df) >= 13:
-                                    _yoy = round((_df['value'].iloc[-1]/_df['value'].iloc[-13]-1)*100, 2)
-                                    print(f'[Macro/CPI/{_src}] ✅ YoY={_yoy:.2f}% date={_df["date"].iloc[-1]}')
-                                    return {'us_core_cpi': {'yoy': _yoy, 'date': str(_df['date'].iloc[-1]), 'source': _src}}
-                        except Exception as _e: print(f'[Macro/CPI/{_src}] ❌ {_e}')
                     try:
                         import pandas as _pd3
                         for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:

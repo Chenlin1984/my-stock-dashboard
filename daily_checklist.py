@@ -525,18 +525,26 @@ def fetch_adl(days=60, token=None):
     # ════════════════════════════════════════════════════════════════
     _alog('[ADL-①] yfinance ^TWII 估算...')
     try:
-        import yfinance as _yf_adl
+        import yfinance as _yf_adl, os as _os_yf
         try:
             from tw_stock_data_fetcher import _load_proxy_config as _lpc_adl
             _yf_px = (_lpc_adl() or {})
             _yf_px = _yf_px.get('https') or _yf_px.get('http') or None
         except Exception:
             _yf_px = None
-        _twii = _yf_adl.download(
-            '^TWII', start=s_dash, end=e_dash,
-            progress=False, auto_adjust=True,
-            **({"proxy": _yf_px} if _yf_px else {})
-        )
+        _ek = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+        _ebak = {k: _os_yf.environ.get(k) for k in _ek}
+        if _yf_px:
+            for k in _ek:
+                _os_yf.environ[k] = _yf_px
+        try:
+            _twii = _yf_adl.download('^TWII', start=s_dash, end=e_dash, progress=False, auto_adjust=True)
+        finally:
+            for k, v in _ebak.items():
+                if v is None:
+                    _os_yf.environ.pop(k, None)
+                else:
+                    _os_yf.environ[k] = v
         if not _twii.empty:
             # [Fix] yfinance 新版可能回傳 MultiIndex columns，需先攤平
             if isinstance(_twii.columns, pd.MultiIndex):
