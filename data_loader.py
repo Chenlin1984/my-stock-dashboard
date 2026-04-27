@@ -29,6 +29,28 @@ def _bps_dl():
     s.verify = False
     return s
 
+def _yf_dl(symbol, **kwargs):
+    """yfinance download，透過 os.environ 注入 proxy（相容新舊版 yfinance）。"""
+    import os as _os_yfd
+    try:
+        from tw_stock_data_fetcher import _load_proxy_config as _lpc_yfd
+        _px_url = ((_lpc_yfd() or {}).get('https') or (_lpc_yfd() or {}).get('http') or None)
+    except Exception:
+        _px_url = None
+    _ek = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+    _bak = {k: _os_yfd.environ.get(k) for k in _ek}
+    if _px_url:
+        for k in _ek:
+            _os_yfd.environ[k] = _px_url
+    try:
+        return yf.download(symbol, **kwargs)
+    finally:
+        for k, v in _bak.items():
+            if v is None:
+                _os_yfd.environ.pop(k, None)
+            else:
+                _os_yfd.environ[k] = v
+
 _TWSE_DL = _bps_dl()
 from stock_names import get_stock_name
 
@@ -327,7 +349,7 @@ class StockDataLoader:
             if use_adjusted:
                 try:
                     yf_symbol = f"{stock_id}.TW"
-                    df_yf_adj = yf.download(
+                    df_yf_adj = _yf_dl(
                         yf_symbol,
                         start=start_date,
                         end=end_date + datetime.timedelta(days=1),
@@ -337,7 +359,7 @@ class StockDataLoader:
                     # 若 .TW 查無資料，嘗試 .TWO（上櫃股票）
                     if df_yf_adj.empty:
                         yf_symbol = f"{stock_id}.TWO"
-                        df_yf_adj = yf.download(
+                        df_yf_adj = _yf_dl(
                             yf_symbol,
                             start=start_date,
                             end=end_date + datetime.timedelta(days=1),
@@ -378,10 +400,10 @@ class StockDataLoader:
                 if df_price.empty:
                     # Yahoo 備援（先 .TW，再試 .TWO 上櫃）
                     yf_symbol = f"{stock_id}.TW"
-                    df_yf = yf.download(yf_symbol, start=start_date, progress=False)
+                    df_yf = _yf_dl(yf_symbol, start=start_date, progress=False)
                     if df_yf.empty:
                         yf_symbol = f"{stock_id}.TWO"
-                        df_yf = yf.download(yf_symbol, start=start_date, progress=False)
+                        df_yf = _yf_dl(yf_symbol, start=start_date, progress=False)
                     if df_yf.empty:
                         return None, "❌ 查無資料", None
 
@@ -428,7 +450,7 @@ class StockDataLoader:
                     if use_adjusted:
                         try:
                             yf_symbol = f"{stock_id}.TW"
-                            df_adj = yf.download(yf_symbol, start=start_date, progress=False)
+                            df_adj = _yf_dl(yf_symbol, start=start_date, progress=False)
 
                             if not df_adj.empty:
                                 df_adj = df_adj.reset_index()
@@ -598,7 +620,7 @@ class StockDataLoader:
         # ── 方案0: FinMind TaiwanStockMonthRevenue（優先，MOPS year-file全部404）
         if _tok and df_revenue is None:
             try:
-                _r_fm0 = _rq_rv.get(
+                _r_fm0 = _bps_dl().get(
                     'https://api.finmindtrade.com/api/v4/data',
                     params={'dataset':'TaiwanStockMonthRevenue',
                             'data_id':stock_id, 'start_date':start_str,
@@ -622,7 +644,7 @@ class StockDataLoader:
         # ── 方案0: FinMind 月營收（優先，因MOPS 年份HTML全部404）────
         if df_revenue is None and _tok:
             try:
-                _rfm0 = _rq_rv.get(
+                _rfm0 = _bps_dl().get(
                     'https://api.finmindtrade.com/api/v4/data',
                     params={'dataset':'TaiwanStockMonthRevenue',
                             'data_id':stock_id,'start_date':start_str,'token':_tok},
@@ -735,9 +757,9 @@ class StockDataLoader:
                     _y = _today.year - _y_offset
                     _url_mops = ('https://mops.twse.com.tw/nas/t21/sii/'
                                  f't21sc03_{_y}_0.html')
-                    _rm = _rq_rv.get(_url_mops,
-                                     headers={'User-Agent':'Mozilla/5.0'},
-                                     timeout=15)
+                    _rm = _bps_dl().get(_url_mops,
+                                         headers={'User-Agent':'Mozilla/5.0'},
+                                         timeout=15)
                     if _rm.status_code != 200: continue
                     _dfs_m = _pd_rv.read_html(_rm.text)
                     for _dm in _dfs_m:
@@ -776,7 +798,7 @@ class StockDataLoader:
                     f'https://goodinfo.tw/tw/StockMonthlyBizStatus.asp?STOCK_ID={stock_id}',
                 ]:
                   try:
-                    _rgi = _rq_rv.get(_gi_url, headers=_gi_hdr, timeout=20)
+                    _rgi = _bps_dl().get(_gi_url, headers=_gi_hdr, timeout=20)
                     _rgi.encoding = 'utf-8'
                     if _rgi.status_code != 200 or len(_rgi.text) < 1000: continue
                     _gi_tables = _pd_rv.read_html(_rgi.text, encoding='utf-8')
@@ -1363,7 +1385,7 @@ class StockDataLoader:
             def _fm_fetch(dataset):
                 _p = {'dataset': dataset, 'data_id': stock_id, 'start_date': _start}
                 if _tok: _p['token'] = _tok
-                _r = _rq_bscf.get('https://api.finmindtrade.com/api/v4/data',
+                _r = _bps_dl().get('https://api.finmindtrade.com/api/v4/data',
                                     params=_p, headers=_hdrs, timeout=20)
                 _j = _r.json()
                 print(f'[BS/CF] {stock_id} {dataset}: status={_j.get("status")} rows={len(_j.get("data",[]))}')

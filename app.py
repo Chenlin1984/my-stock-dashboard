@@ -239,8 +239,23 @@ def fetch_dividend_data(sid):
     # ── 備援2: yfinance ──
     if avg_div == 0:
         try:
-            tk = yf.Ticker(f'{sid}.TW')
-            divs = tk.dividends
+            import os as _os_div
+            try:
+                from tw_stock_data_fetcher import _load_proxy_config as _lpc_div
+                _px_div = ((_lpc_div() or {}).get('https') or (_lpc_div() or {}).get('http') or None)
+            except Exception:
+                _px_div = None
+            _ek_div = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+            _bak_div = {k: _os_div.environ.get(k) for k in _ek_div}
+            if _px_div:
+                for k in _ek_div: _os_div.environ[k] = _px_div
+            try:
+                tk = yf.Ticker(f'{sid}.TW')
+                divs = tk.dividends
+            finally:
+                for k, v in _bak_div.items():
+                    if v is None: _os_div.environ.pop(k, None)
+                    else: _os_div.environ[k] = v
             if divs is not None and len(divs) > 0:
                 divs.index = pd.DatetimeIndex(divs.index).tz_localize(None)
                 rec = divs[divs.index >= pd.Timestamp.now()-pd.DateOffset(years=5)]
@@ -339,6 +354,7 @@ def fetch_financials(sid, industry: str = ""):
     except Exception:
         import requests as _rq_f_fallback
         _rq_f = _rq_f_fallback.Session()
+    _rq_f.verify = False
 
     cl = cx = _capex = None
     cl_src = cx_src = cx_src_capex = ""
