@@ -10,9 +10,11 @@ import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarni
 def _bps():
     try:
         from tw_stock_data_fetcher import build_proxy_session as _b
-        return _b()
+        s = _b()
     except Exception:
-        s = requests.Session(); s.verify = False; return s
+        s = requests.Session()
+    s.verify = False
+    return s
 
 _TWSE_CK = _bps()
 import streamlit as st
