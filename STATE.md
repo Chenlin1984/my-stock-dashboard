@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.29 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.30 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **⚠️ 待 merge**: PR #61 (`claude/analyze-test-coverage-070Kf → main`) — Proxy + 診斷修正
+- **✅ PR #61 已 merge**（2026-04-26）— Proxy + 診斷修正進入 main
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -23,17 +23,32 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.29，commit `42a9e44`）
+## ✅ 最新異動（v10.30，commit `3d8bf30`）
+
+### 總經 Macro Job 超時根因修復（app.py）— 移除確認永遠失敗的 API
+
+| 問題 | 根本原因 | 修正 |
+|------|---------|------|
+| **Export 永遠 422** | FinMind `TaiwanExportStatistics` 資料集不存在，每次浪費 15s | 完整移除此區塊；OECD dbnomics 升格為主要 Export 來源 |
+| **GOV 探測 ProxyError** | `api.mof.gov.tw` 在 Streamlit Cloud 透過 Proxy 連線失敗（500），且從未成功設定 `tw_export`，浪費 10s | 整個 GOV debug 區塊移除 |
+| **Macro Job 超時 >80s** | FRED 15s×3 + FinMind 15s + MOF 10s 疊加 → 超過限制 → `_macro_res=None` | 合計省下 ~25s；配合 PR #61 的 FRED 5s/NDC CKAN v3，總耗時降至 ~35-45s |
+
+**PR #61（已 merge 2026-04-26）收錄：**
+- FRED PMI timeout: 15s → 5s；新增 freshness 檢查（>60天跳過舊 FRED series）
+- NDC: CKAN v3 端點優先（`/api/3/action/datastore_search`）；sort key 補 `period`/`期間`
+- BLS CPI: 過濾 `value='&#39;`（未公布月份）
+- `build_proxy_session()` 套用至 macro + financials 請求
+- `PROXY_URL` 單一 key 支援（Streamlit Cloud 格式）
+
+## ✅ 最新異動（v10.29，commit `a3548cb`）
 
 ### 總經資料過期根因修復（app.py）
 | 問題 | 根本原因 | 修正 |
 |------|---------|------|
 | **PMI 877天** | FRED `MFPMI01USM657S` 授權於 2023-10 終止，fetch 成功但資料是舊的，所有備援永遠無法觸發 | 加入 freshness 檢查（>60天自動跳過）；新增 `BSCICP03USM665S`、`PMDILK03USM665S` 備援系列；讓 dbnomics OECD PMI 備援得以生效 |
 | **NDC 877天** | data.gov.tw resource_id 已過期 | 加入動態搜尋 API（`package_search`）預先取得最新 resource_id；sort key 補上 `period`/`期間` 欄位 |
-| **Export 390天** | FinMind 欄位偵測漏掉 `value` 欄；country 列未過濾；stale 資料未跳備援 | 補 `value` 欄偵測；自動過濾 country=Total/全球 列；加 90天 freshness 跳往 OECD dbnomics；補充 MOF 直接 API 嘗試（debug log） |
+| **Export 390天** | FinMind 422 + MOF ProxyError，從未成功取得資料 | v10.30 正式移除（詳上） |
 | **Timeout** | 40s 不夠（含 Proxy 延遲） | 調升至 80s |
-
-**Proxy 前提（部署端）：PR #61 merge 後 Streamlit Cloud 才能正常使用 PROXY_URL。**
 
 ## ✅ 最新異動（v10.28，commit `4c76307`）
 
