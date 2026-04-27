@@ -50,7 +50,7 @@ from scoring_engine import score_single_stock, rank_stocks, momentum_signal, cal
 from etf_dashboard import (
     render_etf_single, render_etf_portfolio,
     render_etf_backtest, render_etf_ai,
-    render_data_health, render_sector_heatmap,
+    render_data_health, render_data_health_raw, render_sector_heatmap,
 )
 from ai_engine import generate_daily_report
 from unified_decision import render_unified_decision
@@ -1307,21 +1307,13 @@ st.markdown(
     '<div style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;">'    '<span style="font-size:22px;font-weight:900;color:#e6edf3;">&#128202; 台股 AI 戰情室</span>'    '<span style="font-size:10px;color:#484f58;background:#161b22;border-radius:10px;padding:2px 8px;">v4.0 Pro</span>'    '</div>',
     unsafe_allow_html=True)
 
-tab1_macro, tab_heatmap, tab_stock_grp, tab_etf_grp, tab_health, tab4_masters = st.tabs([
-    '🌍 總經',
-    '🗺️ 熱力板塊',
-    '🔬 台股',
-    '🏦 ETF',
-    '🔎 資料診斷',
-    '📚 策略手冊',
+tab_macro, tab_heatmap, tab_stock, tab_stock_grp, tab_etf, tab_etf_grp, tab_diag, tab_edu = st.tabs([
+    '🌍 總經', '🗺️ 產業熱力圖', '🔬 個股', '🏆 個股組合',
+    '🏦 ETF', '⚖️ ETF組合', '🔎 資料診斷', '📚 教學',
 ])
-with tab_stock_grp:
-    tab2_stock, tab3_compare = st.tabs([
-        '🔬 個股分析', '🏆 比較 × 排行',
-    ])
 with tab_etf_grp:
-    tab_etf1, tab_etf2, tab_etf3, tab_etf4 = st.tabs([
-        '🏦 ETF 診斷', '⚖️ ETF 組合', '📈 ETF 回測', '🤖 ETF AI',
+    _tab_etf_port, _tab_etf_bt, _tab_etf_ai = st.tabs([
+        '⚖️ 組合配置', '📈 歷史回測', '🤖 ETF AI',
     ])
 
 # ══════════════════════════════════════════════════════════════
@@ -1521,7 +1513,7 @@ def _run_llm_analysis(macro_info: dict, news: list) -> dict:
         return {'error': str(_le)[:150]}
 
 
-with tab1_macro:
+with tab_macro:
     # ════════════════════════════════════════════════════════
     # 【模組一】紅綠燈決策儀表板（st.empty 佔位符修復版）
     # 修復：先挖洞（placeholder）→ 資料到位後回填，杜絕未審先判
@@ -5357,7 +5349,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 # ══════════════════════════════════════════════════════════════
 # TAB 2: 個股深度分析 + 健康度評分
 # ══════════════════════════════════════════════════════════════
-with tab2_stock:
+with tab_stock:
     st.markdown('''<div style="background:#0a1628;border:1px solid #1f6feb;border-radius:12px;padding:16px;margin-bottom:12px;">
 <div style="font-size:18px;font-weight:900;color:#58a6ff;margin-bottom:8px;">🔬 個股深度分析 — 這支股票值得買嗎？</div>
 <div style="font-size:13px;color:#c9d1d9;line-height:1.8;">
@@ -7561,7 +7553,7 @@ padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
 # ══════════════════════════════════════════════════════════════
 # TAB 3+4: 比較排行 + 策略手冊（從 v3_20_21 恢復）
 # ══════════════════════════════════════════════════════════════
-with tab3_compare:
+with tab_stock_grp:
     st.markdown("""<div style="padding:6px 0 4px;">
 <span style="font-size:20px;font-weight:900;color:#e6edf3;">📊 比較 × 排行</span>
 <span style="font-size:11px;color:#484f58;margin-left:10px;">市場狀態 · 多股比較 · 多因子排行 · 汰弱留強 · 最終建議</span>
@@ -8525,587 +8517,275 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
             st.caption('▲ 點擊上方按鈕，AI 將生成投資組合強弱排序矩陣與汰弱留強建議。')
 
 # ══════════════════════════════════════════════════════════════
-# TAB 4: 大師條件手冊（判讀邏輯完整版）
+# TAB 教學：策略邏輯說明書（靜態 Markdown）
 # ══════════════════════════════════════════════════════════════
-with tab4_masters:
+with tab_edu:
+    st.markdown('## 📚 台股 AI 戰情室 — 策略邏輯說明書')
+    st.caption('整理自各大師公開課程，僅供學術研究。投資涉及風險，本系統不構成買賣建議，盈虧自負。')
 
-    # ── 宏爺：股匯四象限判讀框架（從 Section 二移入）───────────────
-    st.markdown(section_header('C','💹 宏爺：股匯四象限判讀框架','💹'), unsafe_allow_html=True)
-    st.caption('💡 台幣 USD/TWD 漲(>0)=台幣貶值，跌(<0)=台幣升值。資金面M1B-M2請參考Section七。')
-    st.markdown("""
-| 象限 | 台股 | 台幣 | 意義 | 操作建議 |
-|------|------|------|------|---------|
-| 🟢 股匯雙漲（真實多頭）| ↑漲 | ↑升值（USD/TWD跌<0）| 外資真金白銀匯入，主升段啟動 | 順勢大膽作多 → 持股 **80~100%** |
-| ⚠️ 股漲匯貶（拉高出貨警戒）| ↑漲 | ↓貶值（USD/TWD漲>0）| 指數虛漲，疑似外資拉高出貨 | 不追高，謹慎觀察 → 持股 **50%** |
-| 🔴 股匯雙殺（外資大舉提款）| ↓跌 | ↓貶值（USD/TWD漲>0）| 外資無情撤出，面臨系統性修正 | 嚴格減碼防守 → 持股 **0~30%** |
-| 🟡 股跌匯升（技術性洗盤）| ↓跌 | ↑升值（USD/TWD跌<0）| 外資資金停泊台灣，技術性洗盤 | 尋找錯殺優質股逢低布局 → 持股 **50~70%** |
-""")
-    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
+    # ── 孫慶龍 ───────────────────────────────────────────────────
+    with st.expander('📊 孫慶龍 — 財報領先指標與盈餘成長選股', expanded=True):
+        st.markdown("""
+### 核心邏輯：在「業績加速成長」前提早佈局
 
-    # ── 什麼是騰落指標（ADL）？（從 Section 五移入）────────────────
-    st.markdown(section_header('B','💡 什麼是騰落指標（ADL）？','📉'), unsafe_allow_html=True)
-    st.markdown('''
-**📌 一句話理解：「今天台股1800支股票，到底幾支在漲？幾支在跌？」**
+孫慶龍老師強調，股價長期反映的是企業「未來盈餘的折現值」。
+市場往往落後財報數字，懂得讀「領先財報」的人就能在機構法人之前看見機會。
 
-**計算方式：**
-1. 每天統計全市場「上漲家數 A」和「下跌家數 D」
-2. AD值 = A − D（今天的淨上漲家數）
-3. ADL = 累積加總每天的 AD 值（趨勢線）
+---
 
-**🟢 判讀重點一：上漲佔比**
-- >60% = 多數股票在漲 → 廣度健康，真多頭
-- 40~60% = 多空均衡 → 市場整理
-- <40% = 少數股票在漲 → 廣度萎縮，注意拉尾盤風險
+#### 🔑 財報領先指標一：合約負債（Contract Liabilities）
 
-**⚠️ 判讀重點二：背離訊號（最重要！）**
-- ✅ 指數創高 + ADL 也創高 = 百花齊放，健康多頭
-- 🔴 指數創高 + ADL 卻走低 = 拉權值、出中小！崩盤前兆，要降倉
-- 🌱 指數創低 + ADL 止跌回升 = 底部可能不遠，左側布局機會
+> **白話定義**：客戶已付錢但公司尚未交貨 → 代表「口袋裡的訂單」
 
-> 資料來源：FinMind API (TaiwanStockMarketCondition) → TWSE MI\_INDEX → FMTQIK
-''')
-    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
-
-    # ── ADL 騰落指標判讀（從 Section 五移入）─────────────────────
-    st.markdown(section_header('B','📉 ADL騰落指標判讀方法','📊'), unsafe_allow_html=True)
-    st.markdown("""
-| 情況 | 意義 | 操作建議 |
-|------|------|----------|
-| 指數↑ + ADL↑ | 廣泛多頭，市場健康 | ✅ 可持股或加碼 |
-| 指數↑ + ADL↓ | ⚠️ 背離！漲勢由少數權值股撐 | 🔴 謹慎，行情不穩 |
-| 指數↓ + ADL↑ | 廣泛底部，回升可期 | 🟡 可留意佈局 |
-| 指數↓ + ADL↓ | 廣泛賣壓，空頭格局 | 🔴 降倉防守 |
-| 上漲佔比 > 60% | 多頭廣度充足 | ✅ 市場有支撐 |
-| 上漲佔比 < 40% | 廣度不足，僅權值股撐盤 | ⚠️ 轉弱訊號 |
-""")
-    st.caption('宏爺策略：ADL 趨勢比今日漲跌更重要，要看「方向」是否與指數一致。')
-    st.markdown('---')
-
-    # ── 先行指標欄位說明與警戒門檻（從 Section 四移入）─────────────
-    st.markdown(section_header('A','📡 先行指標：欄位說明與警戒門檻','📊'), unsafe_allow_html=True)
-    st.markdown("""
-| 欄位 | 資料來源 | 計算公式 | 警戒門檻 |
-|------|---------|---------|---------|
-| 外資大小（期貨留倉）| FinMind TX+MTX | 外資(多口-空口)×1 + MTX×0.25 | 空單 > **30,000口** = 高風險 |
-| 選PCR | FinMind TXO | 全體Put未平倉口 ÷ 全體Call未平倉口 × 100 | > 100 偏多；< 100 偏空；< 110 易走弱 |
-| 外(選) | FinMind TXO | BC金額 − SC金額 − BP金額 + SP金額（÷10千元）| ±10,000千元為關鍵門檻 |
-| 三大法人（外資/投信/自營）| FinMind 三大法人大盤 | 買進金額 − 賣出金額（億元） | 外資連買 = 跟進；連賣 = 謹慎 |
-| 前五大留倉 | TAIFEX（需爬蟲） | 前五大買方所有契約 − 賣方所有契約 | 淨空 > **-10,000口** = 警訊 |
-| 前十大留倉 | TAIFEX（需爬蟲） | 前十大買方所有契約 − 賣方所有契約 | 淨空 > **-20,000口** = 強烈警訊 |
-| 韭菜指數 | FinMind MTX 估算 | (全體MTX OI/2 − 法人多方口) / 全體OI × 100 | 正值(散戶多)→反向偏空；負值(散戶空)→反向偏多 |
-""")
-
-    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
-
-    # ── 宏爺判斷方式（從 Section 四移入）─────────────────────────
-    st.markdown(section_header('B','🎓 宏爺：先行指標判讀方式','🎓'), unsafe_allow_html=True)
-    st.markdown("""
-**外資期貨留倉（最重要指標）**
-- ⚠️ 空單 > 30,000口 = 嚴重警戒線
-- **「流向 > 存量」**：空單5萬口但每日持續減少 → 危機解除；短期急遽暴增 → 準備大幅修正
-
-**外資選擇權金額（BC-SC-BP+SP）**
-- 期貨佈空 + 選擇權也由多翻空 → **「真的要殺了」**
-- 期貨空單增加但選擇權持多 → 只是短線避險，不一定大跌
-- 門檻：±10,000千元
-
-**選PCR（Put/Call Ratio × 100）**
-- > 100 → 下方有支撐（偏多）；< 100 → 上方有壓（偏空）；< 110 → 市場易走弱
-- > 130 以上多方保護很強，空方難以推倒市場
-
-**韭菜指數（反向指標）**
-- 最高原則：**不要跟散戶站同向**
-- 散戶大量做多 → 大盤容易被殺；散戶死命放空 → 空單成為「軋空燃料」
-
-**前五大 / 前十大交易人留倉**
-- 扣除反向ETF避險後的真實多空意圖
-- 前5大淨空接近 **-10,000口**、前10大接近 **-20,000口** → 強烈警訊
-""")
-
-    st.markdown('<hr style="border-color:#21262d;margin:16px 0;">', unsafe_allow_html=True)
-
-
-    # ── 合約負債 × 固定資產規則（財報關鍵指標）────────────────
-    st.markdown('### 📋 財報關鍵指標判讀')
-    _fb1, _fb2 = st.columns(2)
-    with _fb1:
-        st.markdown('''
-<div style="background:#0d1117;border:1px solid #3fb950;border-radius:10px;padding:14px;">
-<div style="font-size:14px;font-weight:700;color:#3fb950;margin-bottom:8px;">📦 合約負債（Contract Liabilities）</div>
-<div style="font-size:12px;color:#c9d1d9;line-height:1.8;">
-<b>是什麼：</b>客戶已付訂金但產品/服務尚未交付的款項<br>
-<b>為何重要：</b>代表「未來確定的收入」，合約負債高 = 訂單有保障<br><br>
-<b>孫慶龍判讀標準：</b><br>
-　✅ 合約負債 / 股本 ≥ 50% → 未來3-6月訂單有保障<br>
-　🟡 合約負債連續成長 → 業績加速訊號<br>
-　🔴 合約負債突然下滑 → 訂單減少，需警戒<br><br>
-<b>查詢方式：</b>財報資產負債表「合約負債」或「預收款項」<br>
-<b>案例：</b>振曜(6650)合約負債/股本 >100% → 大幅超前排程
-</div></div>
-        ''', unsafe_allow_html=True)
-    with _fb2:
-        st.markdown('''
-<div style="background:#0d1117;border:1px solid #58a6ff;border-radius:10px;padding:14px;">
-<div style="font-size:14px;font-weight:700;color:#58a6ff;margin-bottom:8px;">🏭 固定資產 / 資本支出（CapEx）</div>
-<div style="font-size:12px;color:#c9d1d9;line-height:1.8;">
-<b>是什麼：</b>公司買廠房、機器設備的支出<br>
-<b>為何重要：</b>老闆用真錢擴廠 = 對未來充滿信心的最直接證明<br><br>
-<b>孫慶龍判讀標準：</b><br>
-　✅ 資本支出 / 股本 ≥ 80% → 大幅擴廠，2-3年後營收爆發<br>
-　✅ 固定資產年增率 ≥ 20% → 產能大幅擴張<br>
-　🔴 資本支出持續萎縮 → 公司喪失成長意願<br><br>
-<b>查詢方式：</b>現金流量表「購置不動產廠房及設備」<br>
-<b>重要原則：</b>「不要聽老闆說什麼，要看他做什麼」<br>
-　→ 老闆看好未來，就會砸大錢擴廠
-</div></div>
-        ''', unsafe_allow_html=True)
-
-    st.markdown('''
-<div style="background:#0a2818;border:1px solid #3fb950;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:12px;color:#c9d1d9;">
-💡 <b>搭配使用建議：</b>
-合約負債↑ + 資本支出↑ = 「今年訂單爆滿 + 老闆拚命擴廠」→ 這是最強的雙重買入訊號<br>
-在系統「🔬 個股分析」Tab → 財報 C節 可看到這兩項數據
-</div>
-    ''', unsafe_allow_html=True)
-    st.markdown('---')
-
-    # ── 先行指標警戒標準（從 Tab1 移來，詳細規則集中於此）─────
-    with st.expander('📡 先行指標警戒標準（宏爺規則）', expanded=True):
-        st.markdown('''
-<div style="background:#0a1628;border-left:3px solid #ffd700;padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:10px;font-size:13px;color:#c9d1d9;">
-💡 這些指標讓你在大盤下跌<b>前</b>就察覺到危險，是宏爺最重視的「聰明錢方向」指標。
-</div>''', unsafe_allow_html=True)
-
-        _wt_cols = st.columns(2)
-        with _wt_cols[0]:
-            st.markdown('''
-| 指標 | 🟢 安全 | 🔴 警戒 |
-|------|--------|--------|
-| 外資期貨（大小台） | 多單 或 空單<30,000口 | **空單>30,000口** |
-| 前五大留倉 | 淨多 | **淨空≈-10,000口** |
-| 韭菜指數 | -10%~+10% | **>+10%且法人賣** |
-| 選擇權 PCR | >100（偏多） | **<100（偏空）** |
-''')
-        with _wt_cols[1]:
-            st.markdown('''
-**📖 宏爺判讀邏輯：**
-
-• **外資期貨空單>30,000口** = 大戶準備放空，散戶要小心
-
-• **前五大留倉淨空** = 前五大主力在賣，跟著大戶走
-
-• **韭菜指數>+10%** = 散戶槓桿過高，回調在即
-
-• **PCR<100** = 選擇權偏向買認購，市場偏多情緒過熱
-''')
-    st.markdown('---')
-
-    st.markdown("""<div style="padding:6px 0 8px;">
-<span style="font-size:20px;font-weight:900;color:#e6edf3;">📚 策略手冊</span>
-<span style="font-size:11px;color:#484f58;margin-left:10px;">五大門派完整操作條件 — 層2/3 判斷結論的理論依據</span>
-</div>""", unsafe_allow_html=True)
-
-    # ── 總操作節奏總結 ───────────────────────────────────────
-    st.markdown("""<div style="background:#0d1117;border:1px solid #1f6feb;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
-<div style="font-size:13px;font-weight:700;color:#58a6ff;margin-bottom:10px;">🗺️ 全方位操作節奏（9位老師共識）</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
-<span style="background:#1f6feb22;border:1px solid #1f6feb;border-radius:5px;padding:4px 10px;color:#58a6ff;">①總經定多空<br><small>M1B-M2↑+旌旗↑</small></span>
-<span style="color:#484f58;">→</span>
-<span style="background:#3fb95022;border:1px solid #3fb950;border-radius:5px;padding:4px 10px;color:#3fb950;">②財報選好股<br><small>合約負債+資本支出</small></span>
-<span style="color:#484f58;">→</span>
-<span style="background:#d2992222;border:1px solid #d29922;border-radius:5px;padding:4px 10px;color:#d29922;">③型態找進場<br><small>VCP+帶量突破</small></span>
-<span style="color:#484f58;">→</span>
-<span style="background:#bc8cff22;border:1px solid #bc8cff;border-radius:5px;padding:4px 10px;color:#bc8cff;">④獲利才加碼<br><small>回測不破+再突破</small></span>
-<span style="color:#484f58;">→</span>
-<span style="background:#f8514922;border:1px solid #f85149;border-radius:5px;padding:4px 10px;color:#f85149;">⑤轉弱即減碼<br><small>跌5MA+脫離布林上軌</small></span>
-</div>
-</div>""", unsafe_allow_html=True)
-
-    # 兩列布局：進場 vs 出場
-    t4_c1, t4_c2 = st.columns(2)
-
-    with t4_c1:
-        # 孫慶龍
-        st.markdown("""<div style="background:#0d1117;border:2px solid #3fb950;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#3fb950;margin-bottom:8px;">💡 孫慶龍 — 存股龍多策略</div>
-
-**【進場條件】**
-- 殖利率 ≥ 7% → 便宜價，積極買進
-- 殖利率 5-7% → 合理價，分批布局
-- 月KD < 20 且 K向上穿D → 黃金交叉
-- 合約負債 ÷ 股本 ≥ 50% → 訂單有保障
-- 年線負乖離 > 20%（2008/2020等） → 左側大布局
-
-**【加碼法則（倒金字塔）】**
-- 預期跌幅分4等份（跌10%/20%/30%/40%）
-- 金額按 1:2:3:4 比例加碼
-- 目標：平均成本落在底部1/3
-
-**【出場條件】**
-- 殖利率 ≤ 3% → 昂貴價，開始分批出場
-- 月KD > 80 且 K向下穿D → 死亡交叉出場
-- 年線正乖離 > 20% → 分批減碼</div>""", unsafe_allow_html=True)
-
-        # 朱家泓
-        st.markdown("""<div style="background:#0d1117;border:2px solid #ffd700;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#ffd700;margin-bottom:8px;">📊 朱家泓 — 型態右側交易</div>
-
-**【進場型態】**
-- W底頸線突破 + 帶量 → 初始底倉30~50%
-- 箱型突破高點（平台底帶量） → 第2次加碼
-- 需確認收盤突破，非盤中假突破
-
-**【加碼法則（右側）】**
-- 加碼點A：回測頸線/10MA 不破再上 → 加碼
-- 加碼點B：平台整理再突破高點 → 擴倉
-- 原則：只在賺錢情況下加碼，嚴禁攤平
-
-**【停損條件】**
-- 跌破進場紅K低點 → 無條件停損
-- 跌破20MA（月線） → 停損或大幅減碼</div>""", unsafe_allow_html=True)
-
-        # 蔡森
-        st.markdown("""<div style="background:#0d1117;border:2px solid #58a6ff;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#58a6ff;margin-bottom:8px;">📐 蔡森 — 目標價滿足減碼法</div>
-
-**【目標價計算（一比一對稱法）】**
-- 計算底部型態高度（箱型或W底的震幅）
-- 向上翻一倍 → 初步滿足點
-- 到達目標 → 減碼一半，剩餘移動停利
-
-**【分批減碼節奏】**
-- 到達TP1（+1倍震幅） → 減碼50%
-- 到達TP2（+2倍震幅） → 再減25%
-- 剩25%以5MA為停利線移動保護</div>""", unsafe_allow_html=True)
-
-    with t4_c2:
-        # 弘爺
-        st.markdown("""<div style="background:#0d1117;border:2px solid #58a6ff;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#58a6ff;margin-bottom:8px;">🎯 弘爺 — 總經籌碼法</div>
-
-**【總經進場條件】**
-- M1B > M2（M1B-M2正成長）→ 資金行情
-- 外資期貨淨多單 + 連續增加
-- 三大法人現貨連買3日
-- 融資餘額 < 2000億 → 籌碼乾淨
-
-**【加碼時機】**
-- M1B-M2持續向上 + 外資連買 → 大膽加碼
-- 旌旗指數增加（更多股票站上均線）→ 廣度確認
-
-**【減碼/出場條件】**
-- 外資期貨轉淨空 > 10,000口 → 立即降倉
-- 融資餘額 > 2500億 → 警戒；> 3400億 → 出清
-- M1B-M2轉為負值 → 空手觀望
-- 旌旗指數 vs 大盤出現背離 → 大跌前兆</div>""", unsafe_allow_html=True)
-
-        # 妮可+春哥
-        st.markdown("""<div style="background:#0d1117;border:2px solid #ffd700;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#ffd700;margin-bottom:8px;">📊 妮可+春哥 — 動能布林法</div>
-
-**【布林進場】**
-- 布林帶寬收縮至歷史低點（<均值60%）→ 即將爆發
-- 股價突破布林上軌 + 量>均量1.5倍 → 強勢突破
-
-**【減碼訊號】**
-- 股價從黏著上軌掉回95%區間內 → 減碼50%
-- 月線正乖離達歷史高值(20~30%) → 分批出場
-- 週KD進入80以上高檔死亡交叉 → 減碼
-
-**【VCP進場（妮可）】**
-- 3段波幅收縮（如28%→12%→5%）→ 籌碼轉移完成
-- VCP突破當天+帶量 → 建30~50%底倉</div>""", unsafe_allow_html=True)
-
-        # 林穎+小王子
-        st.markdown("""<div style="background:#0d1117;border:2px solid #3fb950;border-radius:10px;padding:14px;margin:6px 0;">
-<div style="font-size:14px;font-weight:900;color:#3fb950;margin-bottom:8px;">🛡️ 林穎+小王子 — 移動停利法</div>
-
-**【5MA停利（短線）— 林穎】**
-- 收盤價跌破5日均線且方向轉下 → 全數了結
-- 適合短線波段（1~4週）
-
-**【10週線停利（中長線）— 小王子】**
-- 週線不破10週均線（≈50MA）→ 持續抱緊
-- 週線實體跌破10週均線 → 出清
-- 適合趨勢波段（1~6個月）
-
-**【陳重銘 — 資產再平衡】**
-- 股票因大漲超過總資產70% → 強制減碼
-- 轉入債券型ETF，維持股6債4防禦配置</div>""", unsafe_allow_html=True)
-
-    # 風險管理總表
-    st.markdown('---')
-    st.markdown('#### ⚔️ 風險管理：生存的最後底線')
-    st.markdown("""
-| 動作 | 執行條件 | 心理心法 |
-|------|---------|---------|
-| 🛑 停損 | 跌破進場紅K低點、跌破20MA、單筆損失達5~7% | **絕對執行**：停損是為了保留下一次揮棒的子彈 |
-| 📉 減碼 | 趨勢轉弱、布林上軌掉回、指標高檔背離 | **落袋為安**：不求賣在最高點，求守住大部獲利 |
-| ✋ 不交易 | M1B-M2持續向下、大盤多空排列加速 < 15% | **空手也是操作**：看不懂、沒勝率時，忍住不動是最高境界 |
-| 💰 加碼 | 只在賺錢情況下加碼，嚴禁賠錢攤平 | **贏家思維**：擴大正確決策的戰果 |
-""")
-
-    st.markdown("""<div style="background:#2a0d0d;border:1px solid #f85149;border-radius:8px;
-padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
-⚠️ 本手冊整理自各大師公開課程內容，僅供學術研究與教育用途。
-投資涉及風險，任何操作均應自行判斷，盈虧自負。本系統非投資顧問，不構成買賣建議。
-</div>""", unsafe_allow_html=True)
-
-    m1, m2 = st.columns(2)
-    # ── 孫慶龍 ──────────────────────────────────────────────
-    with m1:
-        st.markdown("""<div style="background:#0d1117;border:2px solid #3fb950;border-radius:10px;padding:16px;margin:6px 0;">
-<div style="font-size:15px;font-weight:900;color:#3fb950;margin-bottom:10px;">💡 孫慶龍 — 存股龍多策略</div>
-
-**【進場條件】**
-- 殖利率 ≥ 7% → 便宜價，積極買進
-- 殖利率 5-7% → 合理價，分批布局
-- 月KD < 20 且 K向上穿D → 黃金交叉，景氣底部進場
-- 合約負債 ÷ 股本 ≥ 50% → 未來3-6月訂單有保障
-- 資本支出 ÷ 股本 ≥ 80% → 大擴廠，2-3年後營收爆發
-
-**【出場條件】**
-- 殖利率 ≤ 3% → 昂貴價，開始分批出場
-- 月KD > 80 且 K向下穿D → 死亡交叉，高點出場
-- 毛利率連續3季下滑 → 護城河消失，停利
-
-**【加碼規則】**
-- 回跌7%加碼1/3、回跌15%再加碼1/3
-- 最多持倉不超過個股資金3成
-
-**【健康度對應】**
-- 🟢 ≥80：持股不動，佛系等殖利率
-- 🟡 50-79：觀望，等月KD訊號
-- 🔴 <50：降低持倉，保留現金等機會
-</div>""", unsafe_allow_html=True)
-
-    with m2:
-        st.markdown("""<div style="background:#0d1117;border:2px solid #58a6ff;border-radius:10px;padding:16px;margin:6px 0;">
-<div style="font-size:15px;font-weight:900;color:#58a6ff;margin-bottom:10px;">🎯 弘爺（宏爺）— 總經籌碼法</div>
-
-**【進場條件】**
-- 外資期貨大台 + 小台×0.25 = 淨多單 > 0 且連續3日增加
-- 三大法人現貨連買3日 → 跟著大戶走
-- M1B > M2（M1B-M2正成長）→ 資金行情啟動
-- 融資餘額 < 2000億 → 籌碼乾淨，多頭健康
-- 台幣升值 + 台股上漲 → 外資匯入正常多頭
-
-**【出場條件】**
-- 外資期貨轉淨空 > 10,000口 → 立即降倉
-- 融資餘額 > 2500億 → 警戒；> 3400億 → 嚴重警戒
-- 台股漲 但台幣貶值 → 外資拉高出貨，準備跑
-- 韭菜指數 > +10% 且外資賣 → 散戶過熱，行情尾端
-
-**【倉位管理】**
-- 總經多頭期：持股7-8成
-- 總經空頭期：現金5成以上，不做多
-- 費半先行：費半跌破月線→台股半導體提前減倉
-
-**【健康度對應】**
-- 🟢 ≥80 + 外資連買：全倉進攻
-- 🟡 50-79：半倉觀察
-- 🔴 <50：空手等待
-</div>""", unsafe_allow_html=True)
-
-    m3, m4 = st.columns(2)
-    with m3:
-        st.markdown("""<div style="background:#0d1117;border:2px solid #ffd700;border-radius:10px;padding:16px;margin:6px 0;">
-<div style="font-size:15px;font-weight:900;color:#ffd700;margin-bottom:10px;">📊 妮可/春哥 — 動能布林法</div>
-
-**【布林通道進場】**
-- 布林帶寬收縮至歷史低點（< 均值60%） → 即將爆發
-- 股價突破布林上軌 + 成交量 > 均量1.5倍 → 強勢突破做多
-- 量比 > 1.5 + 收盤 > MA20 → 主力介入訊號
-
-**【VCP波幅收縮進場（妮可）】**
-- 3段波幅收縮（如28%→12%→5%）→ 浮動籌碼完成轉移
-- 底部逐漸墊高 + 成交量萎縮 → 強手承接確認
-- 帶量突破頸線 → 正式進場，以突破點為停損
-
-**【投本比監控（妮可）】**
-- 投信淨買超 / 成交量 > 0.01% 且連續3日 → 法人小型股建倉
-- 搭配VCP → 雙重確認，勝率大幅提升
-
-**【IBS進出場】**
-- IBS ≤ 0.2（收在日低點）→ 隔日技術性反彈，短線做多
-- IBS ≥ 0.8（收在日高點）→ 隔日容易遭獲利賣壓，謹慎
-
-**【出場條件】**
-- 布林帶寬急速擴張 + 量縮 → 動能衰退出場
-- RSI > 80 + 量比下滑 → 超買出場
-- 跌破突破點（頸線）→ 停損出場
-</div>""", unsafe_allow_html=True)
-
-    with m4:
-        st.markdown("""<div style="background:#0d1117;border:2px solid #bc8cff;border-radius:10px;padding:16px;margin:6px 0;">
-<div style="font-size:15px;font-weight:900;color:#bc8cff;margin-bottom:10px;">💼 朱家宏/MK郭俊宏 — 型態再平衡法</div>
-
-**【MK再平衡進場】**
-- 核心(ETF)+衛星(成長股)偏離目標配比 ≥ 10% → 觸發再平衡
-- 月KD < 20黃金交叉時，核心ETF加碼
-- 三角形加碼：回落10%用10%資金，回落20%用20%...
-
-**【朱家宏型態進場】**
-- 股價站上所有均線（多頭排列）→ 趨勢向上，做多
-- 型態突破：箱型整理上緣突破 + 成交量放大
-- W底確認（第二底高於第一底）→ 底部完成，進場
-
-**【RSI使用規則】**
-- RSI 50-70：強勢區間，持股不動
-- RSI < 30：超賣，逆勢小量試單
-- RSI > 80：超買，注意出場時機
-
-**【KD使用規則】**
-- 日KD黃金交叉（K>D，K<80）→ 短線強勢訊號
-- 月KD黃金交叉（K<20）→ 長線最佳買點
-- 日KD死亡交叉（K<D，K>20）→ 短線出場訊號
-
-**【停利/停損】**
-- 停利目標1：進場 +5%（先收半倉）
-- 停利目標2：進場 +10%（波段目標）
-- 停損線：進場 -5%（跌破嚴格出場）
-
-**【健康度對應】**
-- 🟢 ≥80：股價位於均線上方，趨勢做多
-- 🟡 50-79：等待突破訊號確認
-- 🔴 <50：不做多，耐心等待下一輪機會
-</div>""", unsafe_allow_html=True)
-
-    # ── 陳重銘 ──────────────────────────────────────────────
-    st.markdown("""<div style="background:#0d1117;border:2px solid #f85149;border-radius:10px;padding:16px;margin:6px 0;">
-<div style="font-size:15px;font-weight:900;color:#f85149;margin-bottom:10px;">📚 陳重銘 — 存股複利心法</div>
-
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-<div>
-<b style="color:#f85149;">【選股條件】</b><br>
-・連續10年配息，且逐年穩定<br>
-・殖利率 ≥ 5%（至少合理價）<br>
-・本業EPS（扣除業外）持續正成長<br>
-・毛利率 ≥ 20%（護城河指標）<br>
-・負債比 ≤ 50%（財務安全）
-</div>
-<div>
-<b style="color:#f85149;">【進出場】</b><br>
-・殖利率 > 6% = 大買，越跌越買<br>
-・「一張不賣，奇蹟自來」<br>
-・每年領股利 = 全部再投入加碼<br>
-・出場：公司基本面惡化（毛利率連降3年）<br>
-・個股佔總資產 ≤ 10%（分散風險）
-</div>
-<div>
-<b style="color:#f85149;">【ETF策略】</b><br>
-・月KD < 20 定期定額（加碼）<br>
-・月KD > 80 停止加碼（不賣）<br>
-・高股息ETF：著重配息穩定性<br>
-・市值型ETF：著重長期成長<br>
-・溢價 > 1% 不買，折價才買
-</div>
-</div>
-</div>""", unsafe_allow_html=True)
-
-    # ── 指標快速參考表 ──────────────────────────────────────
-    st.markdown('---')
-
-    # ── 評分標準速查（從 Tab2 移入）──────────────────────────────────
-    st.markdown(section_header('C', '📊 評分標準速查表', '📖'), unsafe_allow_html=True)
-    _sc1, _sc2, _sc3 = st.columns(3)
-    with _sc1:
-        st.markdown("""**📈 健康度評分標準**
-| 分數 | 評級 | 策略建議 |
-|------|------|--------|
-| 80~100 | 🔴優良 | 積極持有、可加碼 |
-| 50~79 | 🟡盤整 | 觀望、等突破訊號 |
-| <50 | 🟢弱勢 | 降倉保守、避免追買 |
-
-> 💡 健康度70分以下建議先觀望；停損紀律決定最終勝率。""")
-    with _sc2:
-        st.markdown("""**💰 孫慶龍 357殖利率評價**
-| 殖利率 | 位階 | 操作建議 |
-|--------|------|--------|
-| ≥7% | 🟢便宜 | 積極進場、可分批 |
-| 5~7% | 🟡合理 | 分批布局 |
-| 3~5% | 🔴昂貴 | 持有不追高 |
-| <3% | 🔴超貴 | 逢高停利出場 |
-
-> 💡 殖利率法則以「長期持有存股」為前提，短線操作請配合技術面。""")
-    with _sc3:
-        st.markdown("""**📊 技術指標訊號速查**
-| 指標 | 訊號 | 操作建議 |
-|------|------|--------|
-| RSI < 30 | 超賣 | 短線反彈機會 |
-| RSI > 70 | 超買 | 注意出場時機 |
-| 月KD < 20 黃叉 | 景氣底 | 長線最佳進場 |
-| 布林帶寬極縮 | 即將爆發 | 等方向突破再進 |
-| IBS ≤ 0.2 | 收低 | 隔日技術反彈機會 |
-| VCP收縮 | 籌碼洗淨 | 突破頸線才進場 |""")
-    st.markdown('---')
-
-
-    st.markdown('### 📊 指標快速判讀對照表')
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("""**📈 健康度評分**
-| 分數 | 評級 | 策略 |
+| 門檻 | 訊號 | 意義 |
 |------|------|------|
-| 80+ | 🟢優良 | 積極持有加碼 |
-| 50-79 | 🟡盤整 | 觀望等訊號 |
-| <50 | 🔴危險 | 降倉保守 |""")
-    with c2:
-        st.markdown("""**💰 357殖利率評價**
-| 殖利率 | 位階 | 操作 |
-|--------|------|------|
-| ≥7% | 🟢便宜 | 積極進場 |
-| 5-7% | 🟡合理 | 分批布局 |
-| 3-5% | 🔴昂貴 | 持有不追 |
-| <3% | 🔴超貴 | 停利出場 |""")
-    with c3:
-        st.markdown("""**📊 RSI + KD + 布林**
-| 指標 | 訊號 | 對應操作 |
-|------|------|----------|
-| RSI<30 | 超賣 | 短線反彈機會 |
-| RSI>70 | 超買 | 注意出場 |
-| 月KD<20黃叉 | 景氣底 | 長線最佳進場 |
-| 布林帶寬極縮 | 即爆發 | 等方向突破 |
-| IBS≤0.2 | 收低 | 隔日技術反彈 |""")
+| 合約負債 **> 股本 50%** | 🟢 龍多信號 | 訂單爆滿，未來 1–2 季業績有保證 |
+| 合約負債 **> 股本 100%** | 🔥 超強信號 | 產能供不應求，定價權在手 |
+| 合約負債持續季增 | 🔼 加分項 | 訂單持續進來，成長趨勢確認 |
 
-    st.markdown("""<div style="background:#2a0d0d;border:1px solid #f85149;border-radius:8px;
-padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
-⚠️ 本手冊整理自各大師公開課程內容，僅供學術研究與教育用途。
+**篩選口訣**：合約負債高 → 代表「客戶先給錢」，這樣的公司最不怕景氣波動。
+
+---
+
+#### 🔑 財報領先指標二：資本支出（CapEx）
+
+> **白話定義**：公司在大買機器、蓋廠房 → 代表對未來「投票」
+
+| 門檻 | 訊號 | 意義 |
+|------|------|------|
+| 資本支出 **> 股本 80%** | 🟢 擴張信號 | 大膽押注未來需求，對訂單有把握才會花這麼多 |
+| 資本支出連續 2 季增加 | 🔼 加分項 | 不是一次性，是持續擴產 |
+
+---
+
+#### 🔑 盈餘成長率：EPS 加速是關鍵
+
+- **近 4 季 EPS 年增率加速**（從 +5% → +10% → +20%）= 最強選股信號
+- 毛利率 ≥ 30% 且維持 or 提升 → 高護城河企業
+- 營業利益率提升 → 靠本業賺錢，非業外收益
+
+#### ✅ 龍多股完整篩選框架
+
+```
+合約負債 > 股本 50%  ✓
+資本支出 > 股本 80%  ✓
+近 4 季 EPS 加速成長  ✓
+月營收 YoY 加速 (3個月均線上彎)  ✓
+→ 龍多股確認，大型法人機構尚未追入前的黃金買點
+```
+""")
+
+    # ── 蔡森 ─────────────────────────────────────────────────────
+    with st.expander('📐 蔡森 — 型態學：破底翻 × 頭肩底 × 頸線突破', expanded=True):
+        st.markdown("""
+### 核心邏輯：用「型態」讀懂主力換手完畢的訊號
+
+蔡森老師認為，K線型態是「資金博弈的足跡」。主力洗盤完畢後，往往留下可辨識的底部型態。
+
+---
+
+#### 🔑 型態一：破底翻（Fake Breakdown Reversal）
+
+> 股價跌破前低 → 但**隔日收回**前低之上 → 散戶停損被洗出後主力拉抬
+
+| 步驟 | 判斷標準 |
+|------|---------|
+| ① 量縮跌破前低 | 成交量明顯萎縮（代表散戶恐慌賣壓，非主力出貨） |
+| ② 當日或隔日大量紅K | 量比 ≥ 1.5，收盤站回前低之上 |
+| ③ 連續 2 根紅K確認 | 第 2 根紅 K 收盤突破近期高點 → 破底翻確認 |
+
+**停損設定**：破底翻 K 棒低點即為硬停損，跌破即出場。
+
+---
+
+#### 🔑 型態二：頭肩底（Inverse Head & Shoulders）
+
+```
+         左肩          右肩
+          /\            /\
+         /  \    頭    /  \
+        /    \  /  \  /    \
+───────/──────\/────\/──────────  ← 頸線（Neckline）
+                底部（最低點）
+```
+
+| 要素 | 判斷標準 |
+|------|---------|
+| 左肩 | 下跌後反彈，成交量萎縮 |
+| 頭部 | 跌破左肩低點，量更小（洗盤） |
+| 右肩 | 反彈至接近左肩高點，**量比頭部大** |
+| 突破頸線 | 收盤站上頸線 + 成交量爆增 ≥ 均量 1.5 倍 → 買點 |
+
+---
+
+#### 🔑 操作細節：頸線突破買點
+
+1. **等收盤確認**：不追日內突破，等收盤穩站頸線之上
+2. **回測不破**：突破後如回測頸線不跌破 → 加碼機會
+3. **目標價**：頸線 + 頭部到頸線距離（等幅量測）
+4. **停損**：跌破右肩低點即出場
+""")
+
+    # ── 春哥 ─────────────────────────────────────────────────────
+    with st.expander('🌀 春哥（Mark Minervini）— VCP 波幅收縮與爆量突破', expanded=True):
+        st.markdown("""
+### 核心邏輯：波幅每次比上次小 → 籌碼鎖定完成 → 等爆量突破
+
+VCP（Volatility Contraction Pattern）是 Mark Minervini 的核心選股法，
+找的是「橫盤整理中能量不斷蓄積」的股票。
+
+---
+
+#### 🔑 VCP 四大關鍵條件
+
+| 條件 | 標準 | 說明 |
+|------|------|------|
+| ① **多次波幅收縮** | ≥ 3 次 | 每次高低振幅比前次縮小 ≥ 1/3 |
+| ② **成交量持續萎縮** | 量比 < 0.8 | 籌碼鎖定，浮額洗盡 |
+| ③ **不跌破關鍵均線** | 站上 MA20 | 型態不能在均線下方整理 |
+| ④ **突破需有爆量** | 量比 ≥ 2.0 | 收盤突破近期整理高點 + 巨量 = 有效突破 |
+
+---
+
+#### 🔑 VCP 示意圖
+
+```
+價格
+│    /\        /\      /\
+│   /  \      /  \    /  \  ← 波幅一次比一次小
+│  /    \    /    \  /    \___________  突破!▲▲▲ (爆量)
+│ /      \  /      \/
+│/        \/
+└─────────────────────────────── 時間
+        收縮①  收縮②  收縮③   Pivot Point(突破點)
+```
+
+---
+
+#### 🔑 進出場規則
+
+| 動作 | 標準 |
+|------|------|
+| **進場** | 突破 Pivot Point（整理高點）+ 當日收盤接近最高（收盤在當日高點 95% 以上） |
+| **加碼** | 突破後回測 Pivot 不破，再加 0.5 倍部位 |
+| **停損** | 跌破進場 K 棒低點（通常約 7–8% 以內） |
+| **停利** | 距停損 3 倍獲利（盈虧比 ≥ 3:1）先設目標；強勢股跟蹤 MA10 |
+
+> **春哥心法**：「量縮到極點就是爆發前夕。等的不是上漲，等的是籌碼。」
+""")
+
+    # ── 宏爺 ─────────────────────────────────────────────────────
+    with st.expander('💰 宏爺 — 資金動能 M1B-M2 × 均線多頭家數 × 外資期貨防守', expanded=True):
+        st.markdown("""
+### 核心邏輯：用「總體資金」判斷大盤體質，而非個股
+
+宏爺認為，股票市場是資金推動的遊戲。M1B-M2 利差是最領先的資金指標，
+比任何技術指標都早 6–9 個月看到轉折。
+
+---
+
+#### 🔑 指標一：M1B – M2 利差（資金寬鬆度）
+
+> **白話**：M1B 是活錢（活存），M2 是定存 + 活存。
+> 活錢比例上升 → 錢從定存搬出來 → 準備進股市
+
+| 利差 | 訊號 | 建議倉位 |
+|------|------|---------|
+| M1B YoY **> M2 YoY** 且擴大 | 🟢 資金寬鬆，多頭啟動 | **持股 70–100%** |
+| M1B YoY **= M2 YoY**（利差收斂） | 🟡 轉折警戒，注意方向 | **持股 50%** |
+| M1B YoY **< M2 YoY**（利差翻負） | 🔴 資金緊縮，熊市風險 | **持股 0–30%** |
+
+---
+
+#### 🔑 指標二：均線多頭排列家數
+
+> **白話**：台股 1800 支股票中，有幾支站在 240 日均線（年線）之上？
+
+| 家數比例 | 市場意義 |
+|---------|---------|
+| ≥ **60%** 站上年線 | 🟢 多頭格局強健，可積極持股 |
+| **40–60%** 站上年線 | 🟡 多空拉鋸，選股不選市 |
+| ≤ **40%** 站上年線 | 🔴 熊市格局，嚴控倉位 |
+
+搭配「大盤 vs 個股」強弱：
+- 指數創高但多頭家數不創高 → 警訊（領頭羊撐盤，底層崩潰）
+- 多頭家數先反彈 → 領先大盤底部的信號
+
+---
+
+#### 🔑 指標三：外資期貨空單防守線
+
+| 外資期貨淨部位 | 訊號 | 操作建議 |
+|--------------|------|---------|
+| 淨**多單** > 0 且擴大 | 🟢 外資看多台股 | 可積極作多 |
+| 淨多單縮減中 | 🟡 外資降低多頭暴露 | 適度降低倉位 |
+| 淨**空單** > 0 | 🔴 外資對沖台股風險 | 大盤需謹慎 |
+| 淨空單急速擴大 | 🚨 系統性風險信號 | 立即減碼至 30% 以下 |
+
+---
+
+#### ✅ 宏爺完整多空判斷矩陣
+
+| M1B-M2 | 多頭家數 | 外資期貨 | 建議倉位 |
+|--------|---------|---------|---------|
+| ✅ 寬鬆 | ✅ ≥60% | ✅ 多單 | **滿倉 80–100%** |
+| ✅ 寬鬆 | ✅ ≥60% | ❌ 空單 | **七成 70%** |
+| ✅ 寬鬆 | ❌ <40% | 任何 | **五成 50%，選股不選市** |
+| ❌ 緊縮 | 任何 | 任何 | **防守 0–30%，保留現金** |
+
+> **宏爺口訣**：「M1B-M2 翻正是起跑槍，年線家數過半是加速器，外資空單是急剎車。」
+
+---
+
+#### 📌 股匯四象限快查表（連動操作）
+
+| 象限 | 台股 | 台幣 | 外資行為 | 持股建議 |
+|------|------|------|---------|---------|
+| 🟢 股匯雙漲 | ↑ | 升值 | 匯入真實資金 | **80–100%** |
+| ⚠️ 股漲匯貶 | ↑ | 貶值 | 疑似拉高出貨 | **50%，不追高** |
+| 🔴 股匯雙殺 | ↓ | 貶值 | 大舉提款撤出 | **0–30%，嚴格防守** |
+| 🟡 股跌匯升 | ↓ | 升值 | 資金停泊台灣 | **50–70%，找錯殺股** |
+""")
+
+    st.markdown("""---
+<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;
+padding:10px 14px;font-size:11px;color:#8b949e;margin-top:8px;text-align:center;">
+⚠️ 本教學整理自各大師公開課程內容，僅供學術研究與教育用途。<br>
 投資涉及風險，任何操作均應自行判斷，盈虧自負。本系統非投資顧問，不構成買賣建議。
 </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑥: ETF 單一深度診斷
+# TAB: ETF 單一深度診斷
 # ══════════════════════════════════════════════════════════════
-with tab_etf1:
+with tab_etf:
     render_etf_single(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑦: ETF 組合配置與再平衡
+# TAB: ETF 組合配置與再平衡
 # ══════════════════════════════════════════════════════════════
-with tab_etf2:
+with _tab_etf_port:
     render_etf_portfolio(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑧: ETF 歷史回測
+# TAB: ETF 歷史回測
 # ══════════════════════════════════════════════════════════════
-with tab_etf3:
+with _tab_etf_bt:
     render_etf_backtest(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑨: ETF AI 綜合評斷（總經連動）
+# TAB: ETF AI 綜合評斷（總經連動）
 # ══════════════════════════════════════════════════════════════
-with tab_etf4:
+with _tab_etf_ai:
     render_etf_ai(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑩: 資料健診儀表板
+# TAB: 資料診斷（Raw Data only）
 # ══════════════════════════════════════════════════════════════
-with tab_health:
-    render_data_health()
+with tab_diag:
+    render_data_health_raw()
 
 # ══════════════════════════════════════════════════════════════
-# TAB ⑪: 產業熱力圖
+# TAB: 產業熱力圖
 # ══════════════════════════════════════════════════════════════
 with tab_heatmap:
     render_sector_heatmap()

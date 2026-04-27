@@ -3140,3 +3140,212 @@ def render_sector_heatmap():
             'yellow')
     else:
         _colored_box(f'✅ 全部 {total_s} 個類股資料取得完整', 'green')
+
+
+# ══════════════════════════════════════════════════════════════════
+# 資料診斷 v2：嚴格 Raw-only 版
+# ══════════════════════════════════════════════════════════════════
+def render_data_health_raw():
+    """
+    只顯示從網路 API 直接抓取的第一手原始資料。
+    絕對禁止：均線 / RSI / 乖離率 / AI 評分等任何計算值。
+    欄位：資料名稱 | 最後更新 | 狀態燈號
+    """
+    import pandas as _pd_r
+    import datetime as _dt_r
+
+    _today = _pd_r.Timestamp.now().normalize()
+
+    def _last_date(df):
+        """從 DataFrame 取最新日期字串 YYYY-MM-DD"""
+        try:
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                return None
+            if isinstance(df.index, _pd_r.DatetimeIndex):
+                v = _pd_r.Timestamp(df.index.max())
+                return v.strftime('%Y-%m-%d') if not _pd_r.isna(v) else None
+            for col in (['_date', 'date', 'Date', '日期', 'period', 'quarter', '季度標籤']
+                        if hasattr(df, 'columns') else []):
+                if col in df.columns:
+                    v = _pd_r.to_datetime(df[col], errors='coerce').max()
+                    if not _pd_r.isna(v):
+                        return v.strftime('%Y-%m-%d')
+        except Exception:
+            pass
+        return None
+
+    def _light(date_str, freq='daily'):
+        """回傳 (icon, label)；freq: daily / monthly / quarterly / yearly"""
+        if not date_str:
+            return '🔴', '未取得'
+        try:
+            age = max(0, (_today - _pd_r.Timestamp(date_str)).days)
+        except Exception:
+            return '🔴', '無法解析'
+        th = {'daily': 3, 'monthly': 45, 'quarterly': 90, 'yearly': 365}
+        limit = th.get(freq, 3)
+        if age <= limit:
+            lbl = '今天' if age == 0 else ('昨天' if age == 1 else f'{age}天前')
+            return '🟢', lbl
+        return '🔴', f'{age}天前 ⚠️'
+
+    def _row(name, date_str, freq='daily'):
+        icon, lbl = _light(date_str, freq)
+        return {'資料名稱': name, '最後更新': lbl, '狀態': icon}
+
+    def _tbl(rows):
+        if not rows:
+            st.info('尚無資料（請先觸發對應的抓取動作）')
+            return
+        st.dataframe(_pd_r.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    # ── 標題 ─────────────────────────────────────────────────────
+    st.markdown('### 🔎 原始資料健診儀表板')
+    st.caption(
+        '📌 **僅顯示從網路 API 直接抓取的第一手原始資料**。'
+        '均線、RSI、乖離率、AI 評分等計算指標**不在此列**。'
+    )
+
+    # ════ 1. 總經 Raw ════════════════════════════════════════════
+    with st.expander('🌍 總經 Raw Data', expanded=True):
+        _ma = st.session_state.get('macro_info') or {}
+        rows = []
+        for label, key, freq in [
+            ('VIX 恐慌指數（CBOE / dbnomics）',           'vix',       'daily'),
+            ('CPI 消費者物價指數（IMF / dbnomics）',        'cpi',       'monthly'),
+            ('ISM PMI / OECD CLI（dbnomics）',             'pmi',       'monthly'),
+            ('NDC 景氣燈號分數（data.gov.tw / OECD CLI）',  'ndc',       'monthly'),
+            ('台灣出口 YoY（FinMind TaiwanExportImport）',  'tw_export', 'monthly'),
+        ]:
+            item = _ma.get(key) or {}
+            date = (item.get('date') or item.get('period') or
+                    str(item.get('year', ''))[:7] or None)
+            rows.append(_row(label, str(date)[:10] if date else None, freq))
+        # M1B / M2
+        _mi = st.session_state.get('m1b_m2_info') or {}
+        _mi_date = str(_mi.get('date', '') or '')[:10] or None
+        if not _mi_date and _mi.get('m1b_yoy') is not None:
+            _mi_date = str(st.session_state.get('cl_ts', ''))[:10] or None
+        rows.append(_row('M1B / M2 貨幣供給（CBC cpx.cbc.gov.tw / FinMind）', _mi_date, 'monthly'))
+        _tbl(rows)
+        st.caption('⚠️ M1B-M2 利差、年增率為計算值，不顯示於此。')
+
+    # ════ 2. 大盤指數 & 籌碼 Raw ═════════════════════════════════
+    with st.expander('📊 大盤指數 & 籌碼 Raw Data', expanded=True):
+        _cl = st.session_state.get('cl_data') or {}
+        _cl_ts = str(st.session_state.get('cl_ts', ''))[:10] or None
+        rows = []
+        for gkey, glabel in [
+            ('intl',  '國際指數 OHLCV（yfinance：SPY/QQQ/MSCI 等）'),
+            ('tw',    '台股指數 OHLCV（yfinance：^TWII/^TWOII 等）'),
+            ('tech',  '科技股指數 OHLCV（yfinance：SOXX/SMH 等）'),
+        ]:
+            grp = _cl.get(gkey) or {}
+            dates = [_last_date(df) for df in grp.values()
+                     if isinstance(df, _pd_r.DataFrame)] if isinstance(grp, dict) else []
+            dates = [d for d in dates if d]
+            rows.append(_row(glabel, max(dates) if dates else _cl_ts, 'daily'))
+
+        for key, label in [
+            ('inst',         '三大法人現貨買賣超（TWSE BFI82U）'),
+            ('margin',       '融資餘額（TWSE MI_MARGN）'),
+            ('margin_ratio', '融資維持率%（TWSE MI_MARGN）'),
+        ]:
+            val = _cl.get(key)
+            date = (_last_date(val) if isinstance(val, _pd_r.DataFrame)
+                    else (_cl_ts if val is not None else None))
+            rows.append(_row(label, date, 'daily'))
+
+        _adl = _cl.get('adl')
+        rows.append(_row(
+            'ADL 漲跌家數（yfinance ^TWII 估算 + TWSE MI_INDEX 精確值）',
+            _last_date(_adl) if isinstance(_adl, _pd_r.DataFrame) else _cl_ts,
+            'daily'))
+        _tbl(rows)
+        st.caption('⚠️ ADL 累計值、年線乖離率為計算值，不顯示於此。')
+
+    # ════ 3. 先行指標 Raw ════════════════════════════════════════
+    with st.expander('📈 先行指標 Raw Data', expanded=False):
+        _li = st.session_state.get('li_latest')
+        _li_date = _last_date(_li) if isinstance(_li, _pd_r.DataFrame) else None
+        rows = [
+            _row('外資期貨留倉（FinMind TaiwanFuturesInstitutionalInvestors TX+MTX）',
+                 _li_date, 'daily'),
+            _row('選擇權法人部位（FinMind TaiwanOptionInstitutionalInvestors TXO）',
+                 _li_date, 'daily'),
+            _row('三大法人現貨（FinMind TaiwanStockTotalInstitutionalInvestors）',
+                 _li_date, 'daily'),
+        ]
+        _tbl(rows)
+        st.caption('⚠️ PCR 比率、外資期貨淨額（多−空×0.25）為計算值，不顯示於此。')
+
+    # ════ 4. 個股 Raw ════════════════════════════════════════════
+    with st.expander('🔬 個股 Raw Data', expanded=True):
+        _t2 = st.session_state.get('t2_data') or {}
+        if not _t2:
+            st.info('尚未載入個股。前往「🔬 個股」Tab 輸入代碼並點擊「載入完整分析」')
+        else:
+            sid2 = _t2.get('sid', '')
+            name2 = _t2.get('name', sid2)
+            st.markdown(f'**當前個股：{name2}（{sid2}）**')
+            rows = []
+            rows.append(_row(f'K線 OHLCV（FinMind / yfinance）',
+                             _last_date(_t2.get('df')), 'daily'))
+            rows.append(_row(f'月營收（FinMind TaiwanStockMonthRevenue）',
+                             _last_date(_t2.get('rev')), 'monthly'))
+            rows.append(_row(f'季損益表 EPS/毛利率/利益率（FinMind TaiwanStockFinancialStatement）',
+                             _last_date(_t2.get('qtr')), 'quarterly'))
+            rows.append(_row(f'季 BS+CF 時序 存貨/合約負債/CapEx（FinMind）',
+                             _last_date(_t2.get('qtr_extra')), 'quarterly'))
+            # 合約負債（純 raw 值，非時序）
+            _cl2 = _t2.get('cl')
+            _cl2_date = (_last_date(_cl2) if isinstance(_cl2, _pd_r.DataFrame)
+                         else (str(_dt_r.date.today()) if _cl2 is not None else None))
+            rows.append(_row(f'合約負債（FinMind TaiwanStockBalanceSheet）',
+                             _cl2_date, 'quarterly'))
+            # 股利
+            _yr = _t2.get('yearly') or []
+            _yr_date = None
+            if _yr:
+                _yr_raw = str(_yr[-1].get('year', ''))[:4]
+                _yr_date = f'{_yr_raw}-12-31' if _yr_raw.isdigit() else None
+            rows.append(_row(f'股利歷史（FinMind TaiwanStockDividend）', _yr_date, 'yearly'))
+            # MJ 體檢財報
+            _fh2 = st.session_state.get(f'_fh_{sid2}')
+            _fh2_date = (str(_dt_r.date.today())
+                         if _fh2 and not _fh2.get('error') else None)
+            rows.append(_row(f'MJ體檢財報原始 BS+CF+IS（FinMind 3 datasets）',
+                             _fh2_date, 'quarterly'))
+            _tbl(rows)
+            st.caption('⚠️ RSI / KD / 布林帶 / 健康度評分 / FGMS / SQ 等由 K線/財報計算，不顯示於此。')
+
+    # ════ 5. ETF Raw ═════════════════════════════════════════════
+    with st.expander('🏦 ETF Raw Data', expanded=True):
+        _e1 = st.session_state.get('etf_single_data') or {}
+        if not _e1.get('ticker'):
+            st.info('尚未載入 ETF。前往「🏦 ETF」Tab 輸入代號並診斷。')
+        else:
+            tk = _e1.get('ticker', '')
+            nm = _e1.get('name', tk)
+            st.markdown(f'**當前 ETF：{nm}（{tk}）**')
+            rows = []
+            _pdf = _e1.get('price_df')
+            rows.append(_row(f'ETF K線 OHLCV {tk}（yfinance auto_adjust=True）',
+                             _last_date(_pdf), 'daily'))
+            # AUM / Beta / 費用率：原始 yfinance .info 欄位
+            _has_info = bool(_e1.get('aum') or _e1.get('beta') or _e1.get('expense'))
+            rows.append(_row(f'ETF 基本資訊 AUM/Beta/費用率（yfinance .info）',
+                             str(_dt_r.date.today()) if _has_info else None, 'daily'))
+            # NAV 淨值
+            _prem = _e1.get('premium') or {}
+            _nav_ok = _prem.get('nav') is not None
+            rows.append(_row(f'NAV 淨值（FinMind TaiwanETFNetAssetValue / TWSE OpenAPI）',
+                             str(_dt_r.date.today()) if _nav_ok else None, 'daily'))
+            # ETF 組合：多標的 K線
+            _ep = st.session_state.get('etf_portfolio_data') or {}
+            _tickers_p = [r.get('ticker') for r in (_ep.get('rows') or [])]
+            if _tickers_p:
+                rows.append(_row(f'ETF 組合 K線 {_tickers_p}（yfinance）',
+                                 str(_dt_r.date.today()), 'daily'))
+            _tbl(rows)
+            st.caption('⚠️ 殖利率、追蹤誤差、CAGR、Sharpe、折溢價率為計算值，不顯示於此。')
