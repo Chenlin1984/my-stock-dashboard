@@ -6,7 +6,15 @@ daily_checklist.py v4 — 完全無需Token版
 """
 import requests, pandas as pd, datetime, os, time
 import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-_TWSE_CK = requests.Session(); _TWSE_CK.verify = False  # TWSE SSL fix (Python 3.14)
+
+def _bps():
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _b
+        return _b()
+    except Exception:
+        s = requests.Session(); s.verify = False; return s
+
+_TWSE_CK = _bps()
 import streamlit as st
 import plotly.graph_objects as go
 
@@ -147,10 +155,10 @@ def fetch_institutional(date_str=None):
         start = (datetime.date.today()-datetime.timedelta(days=7)).strftime('%Y-%m-%d')
         _fm_p2 = {"dataset":"TaiwanStockTotalInstitutionalInvestors","start_date":start}
         if FINMIND_TOKEN: _fm_p2["token"] = FINMIND_TOKEN
-        r2 = requests.get("https://api.finmindtrade.com/api/v4/data",
-                          params=_fm_p2,
-                          headers={"Authorization":f"Bearer {FINMIND_TOKEN}"} if FINMIND_TOKEN else {},
-                          timeout=20)
+        r2 = _bps().get("https://api.finmindtrade.com/api/v4/data",
+                        params=_fm_p2,
+                        headers={"Authorization":f"Bearer {FINMIND_TOKEN}"} if FINMIND_TOKEN else {},
+                        timeout=20)
         j2 = r2.json()
         if j2.get("status")==200 and j2.get("data"):
             df = pd.DataFrame(j2["data"]); last = df["date"].max()
@@ -262,7 +270,7 @@ def fetch_margin_balance(date_str=None):
     if _fm_tok:
         try:
             start = (today - datetime.timedelta(days=10)).strftime('%Y-%m-%d')
-            r2 = requests.get(
+            r2 = _bps().get(
                 'https://api.finmindtrade.com/api/v4/data',
                 params={'dataset': 'TaiwanStockTotalMarginPurchaseShortSale',
                         'start_date': start, 'token': _fm_tok},
@@ -437,7 +445,7 @@ def _fetch_otc_via_finmind(token=""):
     if not FINMIND_TOKEN: return None
     try:
         start=(datetime.date.today()-datetime.timedelta(days=90)).strftime('%Y-%m-%d')
-        r=requests.get("https://api.finmindtrade.com/api/v4/data",
+        r=_bps().get("https://api.finmindtrade.com/api/v4/data",
                        params={"dataset":"TaiwanStockDaily","data_id":"OTC","start_date":start},
                        headers={"Authorization":f"Bearer {FINMIND_TOKEN}"},timeout=20)
         j=r.json()

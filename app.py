@@ -7,6 +7,13 @@ import datetime, os, re, time, requests, json, pickle, hashlib
 _TW_TZ = datetime.timezone(datetime.timedelta(hours=8))
 def _tw_now(): return datetime.datetime.now(_TW_TZ)
 def _tw_now_str(): return _tw_now().strftime('%Y-%m-%d %H:%M')
+
+def _bps():
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _b
+        return _b()
+    except Exception:
+        return requests.Session()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import yfinance as yf
 
@@ -202,7 +209,7 @@ def fetch_dividend_data(sid):
             except Exception: pass
         end = datetime.date.today()
         # First try REST API with proper auth
-        _div_resp = requests.get('https://api.finmindtrade.com/api/v4/data',
+        _div_resp = _bps().get('https://api.finmindtrade.com/api/v4/data',
             params={'dataset':'TaiwanStockDividend','data_id':sid,
                     'start_date':(end-datetime.timedelta(days=365*6)).strftime('%Y-%m-%d')},
             headers={'Authorization':f'Bearer {_get_fm_token()}'},timeout=20)
@@ -251,7 +258,7 @@ def fetch_dividend_data(sid):
             _tw_div_url = 'https://www.twse.com.tw/rwd/zh/exRight/TWT49U'
             _start_dt_div = (datetime.date.today()-datetime.timedelta(days=365*6)).strftime('%Y%m%d')
             _end_dt_div   = datetime.date.today().strftime('%Y%m%d')
-            _tw_div_r = requests.get(
+            _tw_div_r = _bps().get(
                 _tw_div_url,
                 params={'response': 'json', 'strDate': _start_dt_div,
                         'endDate': _end_dt_div, 'stockNo': sid},
@@ -284,7 +291,7 @@ def fetch_dividend_data(sid):
     if avg_div == 0:
         try:
             _gi_hdr_d = {'User-Agent':'Mozilla/5.0','Referer':'https://goodinfo.tw/tw/index.asp'}
-            _gi_div_r = requests.get(
+            _gi_div_r = _bps().get(
                 f'https://goodinfo.tw/tw/StockDividendHistory.asp?STOCK_ID={sid}',
                 headers=_gi_hdr_d, timeout=20)
             _gi_div_r.encoding = 'utf-8'
@@ -2101,7 +2108,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 try:
                     _fm_t = _get_fm_token()
                     _start_i = (datetime.date.today()-datetime.timedelta(days=5)).strftime('%Y-%m-%d')
-                    _ri = requests.get('https://api.finmindtrade.com/api/v4/data',
+                    _ri = _bps().get('https://api.finmindtrade.com/api/v4/data',
                         params={'dataset':'TaiwanStockTotalInstitutionalInvestors',
                                 'start_date':_start_i,'token':_fm_t},
                         headers={'Authorization':f'Bearer {_fm_t}'}, timeout=15)
@@ -2573,6 +2580,22 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception:
                         import requests as _rq2; return _rq2.Session()
 
+                def _dbn_px(session, series_id, limit=400):
+                    import pandas as _pddbn
+                    url = f'https://api.db.nomics.world/v22/series/{series_id}'
+                    _rd = session.get(url, params={'observations': 1, 'limit': limit},
+                                      timeout=15, verify=False,
+                                      headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+                    _rd.raise_for_status()
+                    _jd = _rd.json()
+                    _docs = ((_jd.get('series') or {}).get('docs') or [])
+                    if not _docs: return None
+                    _doc = _docs[0]
+                    _pds = _doc.get('period_start_day') or []
+                    _vals = _doc.get('value') or []
+                    if not _pds or not _vals: return None
+                    return _pddbn.DataFrame({'period': _pddbn.to_datetime(_pds, errors='coerce'), 'value': _vals})
+
                 # ── 1. VIX ──────────────────────────────────────────────────────────
                 def _fetch_vix():
                     _s = _mk_s()
@@ -2653,11 +2676,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     return {'us_core_cpi': {'yoy': _yoy, 'date': str(_df['date'].iloc[-1]), 'source': _src}}
                         except Exception as _e: print(f'[Macro/CPI/{_src}] ❌ {_e}')
                     try:
-                        from dbnomics import fetch_series as _dbn_c
                         import pandas as _pd3
                         for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:
                             try:
-                                _d = _dbn_c(_cs)
+                                _d = _dbn_px(_s, _cs)
                                 if _d is not None and len(_d) >= 13:
                                     _cv = _pd3.to_numeric(_d['value'], errors='coerce').dropna()
                                     if len(_cv) >= 13:
@@ -2668,50 +2690,45 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
                     return {}
 
-                # ── 3. PMI（跳過 FRED — Streamlit Cloud 封鎖，直接 dbnomics OECD）───────
+                # ── 3. PMI（跳過 FRED — Streamlit Cloud 封鎖，直接走 proxy→dbnomics API）──
                 def _fetch_pmi():
                     import pandas as _pd4
-                    try:
-                        from dbnomics import fetch_series as _dbn_p
-                        for _pms in ['OECD/MEI_BTS_COS/USA.MNFCTRPMI.ST.M',
-                                     'OECD/MEI/USA.MNFCTRPMI.ST.M']:
-                            try:
-                                _d = _dbn_p(_pms)
-                                if _d is None or len(_d) < 5: continue
-                                _d = _d.copy()
-                                _d['_v'] = _pd4.to_numeric(_d['value'], errors='coerce')
-                                _d = _d.dropna(subset=['_v'])
-                                if len(_d) == 0: continue
-                                _t24 = _d.tail(24)
-                                print(f'[Macro/PMI/OECD] ✅ PMI={float(_d["_v"].iloc[-1]):.1f} date={str(_d["period"].iloc[-1])[:10]}')
-                                return {'ism_pmi': {
-                                    'value': round(float(_d['_v'].iloc[-1]), 1),
-                                    'date': str(_d['period'].iloc[-1])[:10],
-                                    'dates': [str(p)[:10] for p in _t24['period']],
-                                    'values': [round(float(v), 1) for v in _t24['_v']],
-                                    'label': 'OECD Mfg PMI',
-                                }}
-                            except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_pms}: {_e}')
-                    except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_e}')
-                    try:
-                        from dbnomics import fetch_series as _dbn_cli
-                        import pandas as _pd5
-                        for _ps in ['OECD/MEI_CLI/LOLITOAA.USA.M', 'OECD/MEI_CLI/LOLITONO.USA.M']:
-                            try:
-                                _d2 = _dbn_cli(_ps)
-                                if _d2 is not None and len(_d2) > 5:
-                                    _pv = _pd5.to_numeric(_d2['value'], errors='coerce').dropna()
-                                    if len(_pv) > 0:
-                                        print(f'[Macro/PMI/DBN] ✅ OECD CLI={float(_pv.iloc[-1]):.1f} ({_ps})')
-                                        return {'ism_pmi': {
-                                            'value': round(float(_pv.iloc[-1]), 1),
-                                            'date': str(_d2['period'].iloc[-1]),
-                                            'dates': [str(d)[:10] for d in _d2['period'].iloc[-24:]],
-                                            'values': [round(float(v), 1) for v in _pv.values[-24:]],
-                                            'is_oecd_cli': True,
-                                        }}
-                            except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
-                    except Exception as _e: print(f'[Macro/PMI/DBN] ❌ {_e}')
+                    _s_p = _mk_s()
+                    for _pms in ['OECD/MEI_BTS_COS/USA.MNFCTRPMI.ST.M',
+                                 'OECD/MEI/USA.MNFCTRPMI.ST.M']:
+                        try:
+                            _d = _dbn_px(_s_p, _pms)
+                            if _d is None or len(_d) < 5: continue
+                            _d = _d.copy()
+                            _d['_v'] = _pd4.to_numeric(_d['value'], errors='coerce')
+                            _d = _d.dropna(subset=['_v'])
+                            if len(_d) == 0: continue
+                            _t24 = _d.tail(24)
+                            print(f'[Macro/PMI/OECD] ✅ PMI={float(_d["_v"].iloc[-1]):.1f} date={str(_d["period"].iloc[-1])[:10]}')
+                            return {'ism_pmi': {
+                                'value': round(float(_d['_v'].iloc[-1]), 1),
+                                'date': str(_d['period'].iloc[-1])[:10],
+                                'dates': [str(p)[:10] for p in _t24['period']],
+                                'values': [round(float(v), 1) for v in _t24['_v']],
+                                'label': 'OECD Mfg PMI',
+                            }}
+                        except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_pms}: {_e}')
+                    for _ps in ['OECD/MEI_CLI/LOLITOAA.USA.M', 'OECD/MEI_CLI/LOLITONO.USA.M']:
+                        try:
+                            import pandas as _pd5
+                            _d2 = _dbn_px(_s_p, _ps)
+                            if _d2 is not None and len(_d2) > 5:
+                                _pv = _pd5.to_numeric(_d2['value'], errors='coerce').dropna()
+                                if len(_pv) > 0:
+                                    print(f'[Macro/PMI/DBN] ✅ OECD CLI={float(_pv.iloc[-1]):.1f} ({_ps})')
+                                    return {'ism_pmi': {
+                                        'value': round(float(_pv.iloc[-1]), 1),
+                                        'date': str(_d2['period'].iloc[-1]),
+                                        'dates': [str(d)[:10] for d in _d2['period'].iloc[-24:]],
+                                        'values': [round(float(v), 1) for v in _pv.values[-24:]],
+                                        'is_oecd_cli': True,
+                                    }}
+                        except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     return {}
 
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
@@ -2781,26 +2798,24 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         except Exception as _e: print(f'[Macro/NDC/Gov] ❌ {_res[:8]}: {_e}')
                     return {}
 
-                # ── 5. 台灣出口 YoY（OECD dbnomics）─────────────────────────────
+                # ── 5. 台灣出口 YoY（proxy → dbnomics API）────────────────────
                 def _fetch_export():
                     import pandas as _pd7
-                    try:
-                        from dbnomics import fetch_series as _dbn_ex
-                        for _exs in ['OECD/MEI/TWN.XTEXVA01.CXML.M',
-                                     'OECD/MEI/TWN.XTEXVA01.CXML.Q',
-                                     'IMF/IFS/M.TW.TXG_FOB_USD']:
-                            try:
-                                _d = _dbn_ex(_exs)
-                                if _d is None or len(_d) < 14: continue
-                                _ev = _pd7.to_numeric(_d['value'], errors='coerce').dropna()
-                                _step = 4 if '.Q' in _exs else 12
-                                if len(_ev) < _step + 1: continue
-                                _yoy = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
-                                _date = str(_d['period'].iloc[-1])[:7]
-                                print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_yoy:.2f}% date={_date}')
-                                return {'tw_export': {'yoy': _yoy, 'date': _date, 'source': 'OECD'}}
-                            except Exception as _e: print(f'[Macro/Export/DBN] ❌ {_exs}: {_e}')
-                    except Exception as _e: print(f'[Macro/Export/DBN] ❌ {_e}')
+                    _s_ex = _mk_s()
+                    for _exs in ['OECD/MEI/TWN.XTEXVA01.CXML.M',
+                                 'OECD/MEI/TWN.XTEXVA01.CXML.Q',
+                                 'IMF/IFS/M.TW.TXG_FOB_USD']:
+                        try:
+                            _d = _dbn_px(_s_ex, _exs)
+                            if _d is None or len(_d) < 14: continue
+                            _ev = _pd7.to_numeric(_d['value'], errors='coerce').dropna()
+                            _step = 4 if '.Q' in _exs else 12
+                            if len(_ev) < _step + 1: continue
+                            _yoy = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
+                            _date = str(_d['period'].iloc[-1])[:7]
+                            print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_yoy:.2f}% date={_date}')
+                            return {'tw_export': {'yoy': _yoy, 'date': _date, 'source': 'OECD'}}
+                        except Exception as _e: print(f'[Macro/Export/DBN] ❌ {_exs}: {_e}')
                     return {}
 
                 # ── 並行執行（5 個獨立資料源同時跑，總時間 = max 而非 sum）──────
@@ -4338,7 +4353,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             for _tp in ['MS', '', 'ALL']:
                 _prm = {'response':'json','date':_today_ds}
                 if _tp: _prm['type'] = _tp
-                _mir = requests.get('https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX',
+                _mir = _bps().get('https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX',
                                     params=_prm, headers={'User-Agent':'Mozilla/5.0','Referer':'https://www.twse.com.tw/'}, timeout=8)
                 if _mir.status_code == 200:
                     _mij = _mir.json()

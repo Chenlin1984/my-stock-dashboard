@@ -22,9 +22,15 @@ import pandas as pd
 import requests
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-# TWSE SSL 憑證在 Python 3.14 驗證失敗（Missing Subject Key Identifier）→ 關閉驗證
-_TWSE_S = requests.Session()
-_TWSE_S.verify = False
+
+def _bps():
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _b
+        return _b()
+    except Exception:
+        s = requests.Session(); s.verify = False; return s
+
+_TWSE_S = _bps()
 from bs4 import BeautifulSoup
 from io import StringIO
 from datetime import datetime, timedelta, date
@@ -699,8 +705,8 @@ def taifex_large_trader(date_ymd):
     today_ymd = date.today().strftime("%Y%m%d")
     if date_ymd == today_ymd:
         try:
-            r = requests.get("https://www.taifex.com.tw/cht/3/largeTraderFutQryTbl",
-                             headers=TAIFEX_HDR, timeout=15)
+            r = _bps().get("https://www.taifex.com.tw/cht/3/largeTraderFutQryTbl",
+                           headers=TAIFEX_HDR, timeout=15)
             r.encoding = "utf-8"
             if len(r.text) > 200: html = r.text
         except: pass
@@ -1147,8 +1153,8 @@ def build_leading_fast(days=7, token=""):
     # ── TAIFEX 可達性探測（最先執行，1秒超時，失敗則跳過所有 TAIFEX）
     _taifex_reachable = False
     try:
-        _probe = requests.get("https://www.taifex.com.tw",
-                               headers=TAIFEX_HDR, timeout=2)
+        _probe = _bps().get("https://www.taifex.com.tw",
+                             headers=TAIFEX_HDR, timeout=2)
         _taifex_reachable = (_probe.status_code == 200)
         print(f"[TAIFEX] 連線測試 {'✅ 可達' if _taifex_reachable else '❌ 不通'}")
     except Exception as _probe_err:

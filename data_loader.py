@@ -19,7 +19,15 @@ import streamlit as st
 import requests as _req_dl
 import urllib3 as _urllib3_dl
 _urllib3_dl.disable_warnings(_urllib3_dl.exceptions.InsecureRequestWarning)
-_TWSE_DL = _req_dl.Session(); _TWSE_DL.verify = False  # TWSE SSL fix (Python 3.14)
+
+def _bps_dl():
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _b
+        return _b()
+    except Exception:
+        s = _req_dl.Session(); s.verify = False; return s
+
+_TWSE_DL = _bps_dl()
 from stock_names import get_stock_name
 
 
@@ -105,7 +113,7 @@ def _get_tpex_day(ds: str) -> dict:
         dt = datetime.date(int(ds[:4]), int(ds[4:6]), int(ds[6:8]))
         roc_year = dt.year - 1911
         roc_date = f'{roc_year}/{dt.month:02d}/{dt.day:02d}'
-        r = _req_dl.get(
+        r = _bps_dl().get(
             'https://www.tpex.org.tw/web/stock/3insti/daily_report/3itrade_hedge_result.php',
             params={'l': 'zh-tw', 'se': 'EW', 't': 'D', 'd': roc_date, 'o': 'json'},
             headers=HDR, timeout=5, verify=False)
@@ -243,7 +251,7 @@ def _fetch_finmind_inst_raw(stock_id: str, df: pd.DataFrame, start_str: str) -> 
                    'data_id': stock_id, 'start_date': start_str, 'end_date': _end_str}
         if _token:
             _params['token'] = _token
-        _r = _req_dl.get(
+        _r = _bps_dl().get(
             'https://api.finmindtrade.com/api/v4/data',
             params=_params,
             headers={'Authorization': f'Bearer {_token}'} if _token else {},
