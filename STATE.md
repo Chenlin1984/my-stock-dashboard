@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.30 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.31 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
 - **✅ PR #61 已 merge**（2026-04-26）— Proxy + 診斷修正進入 main
 
@@ -22,6 +22,47 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.31，commits `0f34d0a`–`5da3870`）
+
+### 全面 Proxy 修復 + 資料新鮮度改善（app.py / daily_checklist.py / data_loader.py / leading_indicators.py）
+
+| 問題 | 根本原因 | 修正 |
+|------|---------|------|
+| **yfinance `proxy=` TypeError** | 新版 yfinance 不接受 `proxy=` 關鍵字參數 | 改用 `os.environ` 注入 `HTTPS_PROXY`/`HTTP_PROXY`，try/finally 還原 |
+| **TWSE SSLCertVerificationError** | `build_proxy_session()` 回傳 `verify=True`；Missing Subject Key Identifier | 所有 `_bps()`/`_bps_dl()` 建立 session 後強制 `s.verify = False` |
+| **FRED CPI 超時浪費 30s** | Streamlit Cloud 封鎖 FRED，每次 15s×2=30s 白費 | 完整移除 FRED CPI 直連；dbnomics IMF 備援已可正常運作 |
+| **大盤指標 40→1 項** | `fetch_single()` 裸呼叫 yfinance 無 proxy；DataRegistry 在抓取失敗時不重建大盤項目 | `fetch_single()` 加 `os.environ` 注入；Registry Patch 補建大盤區塊 |
+| **NDC 景氣 878天** | `dbnomics.fetch_series()` 不走 proxy；Series ID 格式錯誤 | 改用 `_dbn_px()`；ID 修正為 `OECD/MEI_CLI/TWN.LOLITOAA.ST.M` |
+| **出口 391天** | OECD 資料有 12 個月延遲 | 新增 FinMind `TaiwanExportImportTotal`/`TaiwanExportByIndustry` 為優先來源（1 個月延遲） |
+| **個股資料完全失敗** | `data_loader.py` 中多處裸 `yf.download()`/`requests.get()` 無 proxy | 新增 `_yf_dl()` helper（env 注入）；所有 `requests.get()` 改為 `_bps_dl().get()` |
+| **SyntaxWarning `\>`** | `app.py:8476` raw string 中使用 `\>` | 修正為 `>` |
+| **ADL timeout** | timeout 30s 不夠 | 調升至 55s；錯誤訊息更新 |
+
+**關鍵程式碼模式：**
+```python
+# yfinance proxy 注入（相容新舊版本）
+_ek = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
+_bak = {k: os.environ.get(k) for k in _ek}
+if _px_url:
+    for k in _ek: os.environ[k] = _px_url
+try:
+    return yf.download(symbol, **kwargs)  # 或 yf.Ticker().history()
+finally:
+    for k, v in _bak.items():
+        if v is None: os.environ.pop(k, None)
+        else: os.environ[k] = v
+
+# requests session（verify=False 強制）
+def _bps():
+    try:
+        from tw_stock_data_fetcher import build_proxy_session as _b
+        s = _b()
+    except Exception:
+        s = requests.Session()
+    s.verify = False  # ← 必須，TWSE SSL 問題
+    return s
+```
 
 ## ✅ 最新異動（v10.30，commit `3d8bf30`）
 
