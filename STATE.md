@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.34 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.35 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #73 已 merge**（2026-04-27）— 修復失效的總經/籌碼/個股財報 API 管線
+- **✅ PR #74 已 merge**（2026-04-27）— 破解快取陷阱 + NDC精確比對 + 合約負債DataFrame提取
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,21 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.35，commit `75194a3`，PR #74）
+
+### 破解快取陷阱 + NDC精確比對 + 合約負債DataFrame提取（app.py + data_loader.py + daily_checklist.py）
+
+| 項目 | 修復內容 |
+|------|---------|
+| **快取強制清除** | `app.py` session 首次執行 `st.cache_data.clear()`（`_cache_cleared_v10_35` 旗標防重複）；`fetch_quarterly` `_ver` 3→4；`fetch_quarterly_extra` 新增 `_ver=2` |
+| **TTL 統一** | `fetch_quarterly` ttl 1800→3600 |
+| **NDC 精確比對** | `_fetch_ndc` 改用 `indicator=='景氣對策信號(分)'` 精確比對，備援 `str.contains('景氣對策信號')`；新增 debug 印出 FinMind 所有 indicator 清單 |
+| **CPI 清理** | 移除 dbnomics IMF 備援路徑（保留 FRED 主路徑 + BLS 次路徑） |
+| **PMI 清理** | 移除 dbnomics OECD PMI + CLI 所有備援路徑（FRED 唯一路徑） |
+| **融資維持率** | `daily_checklist` 新增方案 3：TWSE MI_MARGN CSV + regex 提取 |
+| **合約負債 DataFrame 提取** | `get_quarterly_bs_cf` 先建 `_bs_df_raw`（sort 降冪）；以 `type.str.contains('合約負債')` 加總（涵蓋 ASCII/全形/em dash 所有變體）；失敗才降級 `_val()` + dict fuzzy |
+| **test_fetchers.py** | 新增離線單元測試（Part A 全通過：A1 date欄位 / A2 CL提取 / A3 NDC比對）+ 線上整合測試（Part B，供 Streamlit Cloud 環境） |
 
 ## ✅ 最新異動（v10.34，commit `54a7132`，PR #73）
 
