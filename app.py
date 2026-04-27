@@ -2050,7 +2050,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 'inst': 25,
                 'margin': 25,
                 'margin_ratio': 20,
-                'adl': 30,
+                'adl': 55,
             }
             # [BUG FIX] as_completed global timeout 從 50s 改為 110s
             # 原因：li job 內部 thread join(timeout=80)，50 < 80 導致 TimeoutError 崩潰
@@ -2138,7 +2138,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             margin_ratio = _results.get('margin_ratio')
             df_adl_raw   = _results.get('adl')
             if df_adl_raw is None:
-                st.session_state['adl_debug_msg'] = '三個來源均無回應，詳見 Colab [ADL] 輸出'
+                st.session_state['adl_debug_msg'] = '來源均無回應（yfinance + TWSE MI_INDEX），詳見 Colab [ADL] 輸出'
             else:
                 st.session_state.pop('adl_debug_msg', None)
             # [v8] 先行指標：強制 reload + UI 進度顯示

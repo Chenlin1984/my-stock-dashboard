@@ -526,9 +526,16 @@ def fetch_adl(days=60, token=None):
     _alog('[ADL-①] yfinance ^TWII 估算...')
     try:
         import yfinance as _yf_adl
+        try:
+            from tw_stock_data_fetcher import _load_proxy_config as _lpc_adl
+            _yf_px = (_lpc_adl() or {})
+            _yf_px = _yf_px.get('https') or _yf_px.get('http') or None
+        except Exception:
+            _yf_px = None
         _twii = _yf_adl.download(
             '^TWII', start=s_dash, end=e_dash,
-            progress=False, auto_adjust=True
+            progress=False, auto_adjust=True,
+            **({"proxy": _yf_px} if _yf_px else {})
         )
         if not _twii.empty:
             # [Fix] yfinance 新版可能回傳 MultiIndex columns，需先攤平
