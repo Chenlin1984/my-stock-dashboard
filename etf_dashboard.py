@@ -2186,6 +2186,30 @@ def render_data_health():
         ]:
             _reg[f'{_spfx} | {_lbl}'] = _live(_t2.get(_key), "個股", _fr)
         _reg[f'{_spfx} | 合約負債/資本支出'] = _live_df(_t2.get("qtr_extra"), "個股", "quarterly")
+        # ── 衍生財務指標（從 qtr/rev 計算，不額外呼叫 API）──────
+        _qtr_df2  = _t2.get("qtr")
+        _qtr_date2 = _df_date(_qtr_df2) if (_qtr_df2 is not None and not _qtr_df2.empty) else None
+        def _has_col2(_df, *names):
+            if _df is None or _df.empty: return False
+            return any(
+                n in _df.columns and
+                not _pd_dh.to_numeric(_df[n].dropna(), errors='coerce').dropna().empty
+                for n in names)
+        for _fl2, _cols2 in [
+            ('EPS',       ('EPS', 'eps', '每股盈餘')),
+            ('稅後淨利率', ('稅後淨利率', '淨利率', '稅後淨利')),
+            ('營業利益率', ('營業利益率', '營益率', '營業利益')),
+        ]:
+            if _qtr_date2 and _has_col2(_qtr_df2, *_cols2):
+                _reg[f'{_spfx} | {_fl2}'] = {"last_updated": _qtr_date2, "category": "個股", "frequency": "quarterly"}
+            else:
+                _reg[f'{_spfx} | {_fl2}'] = {"last_updated": "N/A", "category": "個股", "frequency": "quarterly", "missing": True}
+        _rev_df2   = _t2.get("rev")
+        _rev_date2 = _df_date(_rev_df2) if (_rev_df2 is not None and not _rev_df2.empty) else None
+        if _rev_date2 and len(_rev_df2) >= 2:
+            _reg[f'{_spfx} | 營收季增'] = {"last_updated": _rev_date2, "category": "個股", "frequency": "monthly"}
+        else:
+            _reg[f'{_spfx} | 營收季增'] = {"last_updated": "N/A", "category": "個股", "frequency": "monthly", "missing": True}
     else:
         _spfx0 = '[個股] — 尚未搜尋'
         for _lbl0, _f0 in [
@@ -2194,6 +2218,8 @@ def render_data_health():
             ('健康度評分','daily'), ('RSI','daily'), ('KD (K值)','daily'),
             ('IBS 內部強弱','daily'), ('量比 VR','daily'), ('布林帶','daily'),
             ('VCP 波幅收縮','daily'), ('合約負債/資本支出','quarterly'),
+            ('EPS','quarterly'), ('稅後淨利率','quarterly'), ('營業利益率','quarterly'),
+            ('營收季增','monthly'),
         ]:
             _reg[f'{_spfx0} | {_lbl0}'] = {
                 "last_updated": "N/A", "category": "個股", "frequency": _f0, "missing": True}
@@ -2417,19 +2443,32 @@ def render_data_health():
                 f'{_CAT_ICON.get(c, "")}{c} {d["miss"]}筆'
                 for c, d in _summary_b.items() if d['miss']
             )
+            _miss_names = [dn for dn, v in _all_items if v.get('missing')]
+            _miss_detail = '、'.join(_miss_names[:10]) + ('…' if len(_miss_names) > 10 else '')
             _blines.append(f'⚫ **{_n_miss}筆缺失** ← {_md}')
+            _blines.append(f'　　缺失：{_miss_detail}')
         if _n_stale:
             _sd = ' / '.join(
                 f'{_CAT_ICON.get(c, "")}{c} {d["stale"]}筆'
                 for c, d in _summary_b.items() if d['stale']
             )
+            _stale_names = [dn for dn, v in _all_items
+                            if not v.get('missing') and
+                            _freshness(v.get('last_updated', ''), v.get('frequency', 'daily'))[0] == '🔴']
+            _stale_detail = '、'.join(_stale_names[:10]) + ('…' if len(_stale_names) > 10 else '')
             _blines.append(f'🔴 **{_n_stale}筆過期** ← {_sd}')
+            _blines.append(f'　　過期：{_stale_detail}')
         if _n_yellow:
             _yd = ' / '.join(
                 f'{_CAT_ICON.get(c, "")}{c} {d["yellow"]}筆'
                 for c, d in _summary_b.items() if d['yellow']
             )
+            _yellow_names = [dn for dn, v in _all_items
+                             if not v.get('missing') and
+                             _freshness(v.get('last_updated', ''), v.get('frequency', 'daily'))[0] == '🟡']
+            _yellow_detail = '、'.join(_yellow_names[:10]) + ('…' if len(_yellow_names) > 10 else '')
             _blines.append(f'🟡 **{_n_yellow}筆略舊** ← {_yd}')
+            _blines.append(f'　　略舊：{_yellow_detail}')
         # 針對性建議
         if _summary_b.get('大盤', {}).get('stale', 0) > 0 or _summary_b.get('大盤', {}).get('yellow', 0) > 0:
             _blines.append('💡 **大盤過期/略舊** → 點擊上方「🔄 更新全部總經數據」按鈕')
