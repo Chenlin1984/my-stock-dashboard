@@ -1451,6 +1451,15 @@ class StockDataLoader:
                           '出售不動產、廠房及設備收入',
                           '處分固定資產收入']
 
+            # 建立 DataFrame 供合約負債模糊比對（str.contains 最可靠）
+            _bs_df_raw = pd.DataFrame(_bs_rows) if _bs_rows else pd.DataFrame()
+            _has_bs_df = (not _bs_df_raw.empty and
+                          'type' in _bs_df_raw.columns and
+                          'date' in _bs_df_raw.columns and
+                          'value' in _bs_df_raw.columns)
+            if _has_bs_df:
+                _bs_df_raw = _bs_df_raw.sort_values('date', ascending=False)
+
             _records = []
             for _d in _all_dates:
                 try:
@@ -1458,18 +1467,31 @@ class StockDataLoader:
                     _yr = _ts.year; _qt = ((_ts.month - 1) // 3) + 1
                     _lbl = f'{_yr}Q{_qt}'
                 except: continue
-                _cl   = _val(_bs_map, _d, _CL_KEYS)
-                # 模糊加總：涵蓋「合約負債-流動」+「合約負債-非流動」等細分科目
-                if float('nan') == _cl or (isinstance(_cl, float) and _cl != _cl):
-                    _slot = _bs_map.get(_d, {})
-                    _parts = []
-                    for _k, _v in _slot.items():
-                        if '合約負債' in str(_k) and isinstance(_v, dict):
-                            try:
-                                _pv = float(str(_v.get('value', 0)).replace(',', '') or 0)
-                                if _pv != 0: _parts.append(abs(_pv))
-                            except Exception: pass
-                    if _parts: _cl = sum(_parts)
+
+                # ── 合約負債：DataFrame str.contains（最可靠，涵蓋所有 dash 變體）──
+                _cl = float('nan')
+                if _has_bs_df:
+                    _cl_rows = _bs_df_raw[(_bs_df_raw['date'] == _d) &
+                                          _bs_df_raw['type'].str.contains('合約負債', na=False)]
+                    if len(_cl_rows) > 0:
+                        _cl_vals = pd.to_numeric(
+                            _cl_rows['value'].astype(str).str.replace(',', '', regex=False),
+                            errors='coerce').abs()
+                        _cl_vals = _cl_vals[_cl_vals > 0]
+                        if len(_cl_vals) > 0:
+                            _cl = float(_cl_vals.sum())
+                            print(f'[BS/CF] {stock_id} {_d} CL={_cl:.0f} ({len(_cl_rows)} rows via contains)')
+                # 備援：精確 key 查找 + dict fuzzy
+                if isinstance(_cl, float) and _cl != _cl:  # isnan
+                    _cl = _val(_bs_map, _d, _CL_KEYS)
+                    if isinstance(_cl, float) and _cl != _cl:
+                        _slot = _bs_map.get(_d, {})
+                        _parts = [abs(float(str(_v.get('value', 0)).replace(',', '') or 0))
+                                  for _k, _v in _slot.items()
+                                  if '合約負債' in str(_k) and isinstance(_v, dict)]
+                        _parts = [p for p in _parts if p > 0]
+                        if _parts: _cl = sum(_parts)
+
                 _inv  = _val(_bs_map, _d, _INV_KEYS)
                 _cx   = _val(_cf_map, _d, _CX_KEYS)
                 _disp = _val(_cf_map, _d, _DISP_KEYS)
