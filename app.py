@@ -475,8 +475,8 @@ def fetch_revenue(sid):
         print(f"[fetch_revenue] {e}")
         return None, str(e)
 
-@st.cache_data(ttl=1800)
-def fetch_quarterly(sid, _ver=3):   # _ver 改變即清除舊快取
+@st.cache_data(ttl=3600)
+def fetch_quarterly(sid, _ver=4):   # _ver 改變即清除舊快取
     try:
         loader = _get_loader()
         result = loader.get_quarterly_data(sid)
@@ -488,7 +488,7 @@ def fetch_quarterly(sid, _ver=3):   # _ver 改變即清除舊快取
         return None, str(e)
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_quarterly_extra(sid):
+def fetch_quarterly_extra(sid, _ver=2):   # _ver 改變即清除舊快取
     """取得近 12 季資產負債表 + 現金流量時序（合約負債、存貨、資本支出），用於前瞻動能分數"""
     try:
         loader = _get_loader()
@@ -1700,6 +1700,11 @@ border-radius:12px;padding:14px;text-align:center;">
         except Exception:
             _cache_fresh = False
 
+    # ── 單次快取清理（每個 session 首次執行，強制讀到最新 API 回傳）──────
+    if not st.session_state.get('_cache_cleared_v10_35'):
+        st.cache_data.clear()
+        st.session_state['_cache_cleared_v10_35'] = True
+
     # 刷新進行中時隱藏舊資料（避免更新期間顯示過期結論）
     _is_refreshing = st.session_state.get('_is_refreshing', False)
     _show_market_data = _cache_fresh and not _is_refreshing
@@ -2694,20 +2699,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     print(f'[Macro/CPI/BLS] ✅ YoY={_yoy:.2f}% date={_date}')
                                     return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'BLS'}}
                     except Exception as _e: print(f'[Macro/CPI/BLS] ❌ {_e}')
-                    # ── 方案3: dbnomics IMF（備援）──────────────────────────────────
-                    try:
-                        import pandas as _pd3
-                        for _cs in ['IMF/IFS/M.US.PCPI_IX', 'IMF/IFS/M.US.PCPIE_IX']:
-                            try:
-                                _d = _dbn_px(_s, _cs)
-                                if _d is not None and len(_d) >= 13:
-                                    _cv = _pd3.to_numeric(_d['value'], errors='coerce').dropna()
-                                    if len(_cv) >= 13:
-                                        _yoy = round((_cv.iloc[-1]/_cv.iloc[-13]-1)*100, 2)
-                                        print(f'[Macro/CPI/DBN] ✅ {_cs} YoY={_yoy:.2f}%')
-                                        return {'us_core_cpi': {'yoy': _yoy, 'date': str(_d['period'].iloc[-1])}}
-                            except Exception as _ce: print(f'[Macro/CPI/DBN] ❌ {_cs}: {_ce}')
-                    except Exception as _e: print(f'[Macro/CPI/DBN] ❌ {_e}')
                     return {}
 
                 # ── 3. PMI ────────────────────────────────────────────────────────
@@ -2769,22 +2760,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 'label': 'OECD Mfg PMI',
                             }}
                         except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_pms}: {_e}')
-                    # ── 方案3: dbnomics OECD CLI（最終備援）─────────────────────
-                    for _ps in ['OECD/MEI_CLI/LOLITOAA.USA.M', 'OECD/MEI_CLI/LOLITONO.USA.M']:
-                        try:
-                            _d2 = _dbn_px(_s_p, _ps)
-                            if _d2 is not None and len(_d2) > 5:
-                                _pv = _pd4.to_numeric(_d2['value'], errors='coerce').dropna()
-                                if len(_pv) > 0:
-                                    print(f'[Macro/PMI/DBN] ✅ OECD CLI={float(_pv.iloc[-1]):.1f} ({_ps})')
-                                    return {'ism_pmi': {
-                                        'value': round(float(_pv.iloc[-1]), 1),
-                                        'date': str(_d2['period'].iloc[-1]),
-                                        'dates': [str(d)[:10] for d in _d2['period'].iloc[-24:]],
-                                        'values': [round(float(v), 1) for v in _pv.values[-24:]],
-                                        'is_oecd_cli': True,
-                                    }}
-                        except Exception as _pe: print(f'[Macro/PMI/DBN] ❌ {_ps}: {_pe}')
                     return {}
 
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
@@ -2807,11 +2782,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         print(f'[Macro/NDC/FM] status={_j_n.get("status")} rows={len(_j_n.get("data",[]))}')
                         if _j_n.get('status') == 200 and _j_n.get('data'):
                             _df_n = _pd6.DataFrame(_j_n['data'])
-                            # 過濾景氣對策信號欄位
+                            print(f'[Macro/NDC/FM] columns={list(_df_n.columns)[:6]} indicators={list(_df_n.get("indicator", _pd6.Series()).unique()[:10]) if "indicator" in _df_n.columns else []}')
+                            # 精確比對景氣對策信號分數欄位
                             if 'indicator' in _df_n.columns and 'value' in _df_n.columns:
-                                _kw = ['景氣', '對策', '燈號', 'composite', 'leading', 'coincident']
-                                _mask = _df_n['indicator'].str.contains('|'.join(_kw), case=False, na=False)
-                                _sub = _df_n[_mask].copy()
+                                _sub = _df_n[_df_n['indicator'] == '景氣對策信號(分)'].copy()
+                                if len(_sub) == 0:
+                                    # 備援：contains 比對（應對 FinMind 欄位名稱微調）
+                                    _sub = _df_n[_df_n['indicator'].str.contains('景氣對策信號', na=False)].copy()
                                 if len(_sub) > 0:
                                     _sub = _sub.sort_values('date').dropna(subset=['value'])
                                     _sub['_v'] = _pd6.to_numeric(_sub['value'], errors='coerce')

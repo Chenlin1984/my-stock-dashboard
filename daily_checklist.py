@@ -389,6 +389,28 @@ def fetch_margin_maintenance_ratio():
         except Exception as _e2:
             print(f'[維持率/TWT93U/{ds}] {_e2}')
 
+    # ── 方案 3: TWSE MI_MARGN CSV 原始文字 + Regex ───────────────────────
+    import re as _re_mr3
+    for _d in candidates[:5]:
+        ds = _d.strftime('%Y%m%d')
+        try:
+            r3 = _TWSE_CK.get(
+                'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                params={'date': ds, 'selectType': 'MS', 'response': 'csv'},
+                headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
+                timeout=12)
+            if r3.status_code == 200:
+                _text = r3.text
+                # Search for 維持率 pattern: 維持率 followed by digits
+                _m3 = _re_mr3.search(r'維持率[^0-9]*([0-9]{2,4}(?:\.[0-9]+)?)', _text)
+                if _m3:
+                    v3 = _parse_ratio(_m3.group(1))
+                    if v3:
+                        print(f'[維持率/CSV-Regex/{ds}] ✅ {v3}%')
+                        return v3
+        except Exception as _e3:
+            print(f'[維持率/CSV-Regex/{ds}] {_e3}')
+
     print('[維持率] 所有來源均無資料')
     return None
 
