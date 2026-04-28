@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.42 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.43 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
 - **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
 
@@ -22,6 +22,15 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.43）
+
+### cnyes 死亡端點清除 + 三大法人柱狀圖改 st.bar_chart
+
+| 項目 | 修復內容 |
+|------|---------|
+| **cnyes 軟404清除** | `daily_checklist.py fetch_margin_maintenance_ratio()` 方案2 cnyes 整塊移除（HTTP 200 但回傳「頁面不存在」HTML，爬蟲無用）；改為直接 print 端點失效提示後 return None |
+| **三大法人柱狀圖空白** | `app.py:3884` 改用 `st.bar_chart()`（Plotly 在 Streamlit Cloud 渲染異常）；DataFrame 以 `外資/投信/自營商` 三欄建立，index 為日期字串，呼叫前 `.astype(float)` 確保型別正確 |
 
 ## ✅ 最新異動（v10.42）
 

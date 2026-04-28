@@ -353,59 +353,8 @@ def fetch_margin_maintenance_ratio():
     except Exception as _e1:
         print(f'[維持率/openapi] ❌ {type(_e1).__name__}: {_e1}')
 
-    # ── 方案 2: 鉅亨網（cnyes）─────────────────────────────────────────
-    # cnyes 是 Next.js SPA；頁面 HTML 裡的數據藏在 <script id="__NEXT_DATA__"> 的 JSON 中
-    try:
-        _r2 = _TWSE_CK.get(
-            'https://www.cnyes.com/twstock/margin-trading/',
-            headers={**HDR, 'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-                     'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8'},
-            timeout=15)
-        print(f'[維持率/cnyes] status={_r2.status_code}')
-        if _r2.status_code == 200:
-            _soup2 = BeautifulSoup(_r2.text, 'html.parser')
-
-            # ① 優先：__NEXT_DATA__ 包含 SSR 初始狀態（最穩定）
-            _nd_tag = _soup2.find('script', id='__NEXT_DATA__')
-            if _nd_tag:
-                import json as _json_mr
-                try:
-                    _nd = _json_mr.loads(_nd_tag.string or '{}')
-                    _nd_text = str(_nd)
-                    _m_nd = _re_mr.search(r'維持率[^0-9]{0,10}?(\d{3,4}(?:\.\d{1,2})?)', _nd_text)
-                    if not _m_nd:
-                        _m_nd = _re_mr.search(r'maintenanceRatio["\s:]+(\d{3,4}(?:\.\d{1,2})?)', _nd_text)
-                    if _m_nd:
-                        _val_nd = _parse_ratio(_m_nd.group(1))
-                        if _val_nd:
-                            print(f'[維持率/cnyes-NEXT_DATA] ✅ {_val_nd}%')
-                            return _val_nd
-                except Exception as _je:
-                    print(f'[維持率/cnyes-NEXT_DATA] JSON parse failed: {_je}')
-
-            # ② 備援：全文 regex（維持率後接數字）
-            _text2 = _soup2.get_text(' ', strip=True)
-            _m2 = _re_mr.search(r'維持率[^0-9]{0,10}?(\d{3,4}(?:\.\d{1,2})?)', _text2)
-            if _m2:
-                _val2 = _parse_ratio(_m2.group(1))
-                if _val2:
-                    print(f'[維持率/cnyes-text] ✅ {_val2}%')
-                    return _val2
-
-            # ③ 備援：找獨立的「XXX.XX」特徵數字（維持率通常 130~300）
-            for _tag in _soup2.find_all(['td', 'span', 'div', 'p']):
-                _t = _tag.get_text(strip=True)
-                _m2b = _re_mr.match(r'^(\d{3,4}\.\d{1,2})$', _t)
-                if _m2b:
-                    _val2b = _parse_ratio(_m2b.group(1))
-                    if _val2b:
-                        print(f'[維持率/cnyes-tag] ✅ {_val2b}%')
-                        return _val2b
-
-            # ④ Debug：SPA 頁面若仍無法解析，印出前 500 字元供排查
-            print(f'[維持率/cnyes] ❌ 無法解析，HTML head={_r2.text[:500]!r}')
-    except Exception as _e2:
-        print(f'[維持率/cnyes] ❌ {type(_e2).__name__}: {_e2}')
+    # ── 方案 2: cnyes 端點已失效（HTTP 200 但回傳「頁面不存在」HTML）─────
+    print('[維持率/cnyes] ⛔ 端點已失效，跳過（需更新爬蟲目標）')
 
     # www.twse.com.tw 方案 3 / 4 已因持續 JSONDecodeError（TWSE bot 封鎖）而廢棄
     print('[維持率] ⚠️ 所有方案均失敗，回傳 None')

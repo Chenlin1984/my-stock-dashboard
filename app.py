@@ -3881,10 +3881,15 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
         if _tn3 > 5:
             st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
-        # 堆疊柱狀圖：三大法人今日買賣超（fillna(0) 防止 NaN 造成空白）
-        _inst_clean = {k: {'net': float(v.get('net', 0) or 0)} for k, v in inst.items() if isinstance(v, dict)}
-        st.plotly_chart(bar_chart_institutional(_inst_clean), width='stretch',
-                        config={'displayModeBar': False})
+        # 三大法人買賣超柱狀圖（Plotly 在 Streamlit Cloud 渲染異常，改用 st.bar_chart）
+        _zk3 = next((k for k in inst if '自營' in k), None)
+        _bc_df = pd.DataFrame({
+            '外資': [float(_fn3 or 0)],
+            '投信': [float(_tn3 or 0)],
+            '自營商': [float((inst.get(_zk3) or {}).get('net', 0) or 0)],
+        }, index=[str(st.session_state.get('_last_inst_date') or '今日')[:10]])
+        _bc_df[['外資', '投信', '自營商']] = _bc_df[['外資', '投信', '自營商']].astype(float)
+        st.bar_chart(_bc_df)
     if margin:
         if margin >= 3400:
             _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
