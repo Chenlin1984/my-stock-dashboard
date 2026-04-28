@@ -1909,7 +1909,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             ('外資方向', f'{"買超" if (_wr_fnet or 0)>0 else "賣超"} {abs(_wr_fnet or 0):.0f}億' if _wr_fnet is not None else '未知',
              (_wr_fnet or 0) > 0, '外資買超=跟著走'),
             ('融資維持率',
-             f'{_wr_margin_ratio:.0f}%' if _wr_margin_ratio else (f'{_wr_margin:.0f}億' if _wr_margin else '未知'),
+             f'{_wr_margin_ratio:.0f}%' if _wr_margin_ratio else '未取得 (N/A)',
              not _wr_margin_ratio or _wr_margin_ratio >= 160,
              '<160%危險，<130%斷頭邊緣'),
             ('年線位置', f'乖離{_wr_bias.get("bias_240",0):+.1f}%' if _wr_bias else '未知',

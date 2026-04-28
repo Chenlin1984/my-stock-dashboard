@@ -311,21 +311,15 @@ def fetch_margin_balance(date_str=None):
 
 def fetch_margin_maintenance_ratio():
     """
-    全市場融資維持率(%)。
-    方案1: TWSE MI_MARGN JSON（data + totalData + notes）
-    方案2: TWSE TWT93U（信用交易概況）
-    方案3: 回傳 None
+    全市場融資維持率(%)
+    方案1: TWSE openapi.twse.com.tw（乾淨 JSON，不同 domain 較無 SSL 問題）
+    方案2: BeautifulSoup 爬取 鉅亨網 cnyes.com（第三方已算好的數字）
+    方案3: TWSE www.twse.com.tw MI_MARGN JSON（原有路徑，仍保留）
+    方案4: TWSE TWT93U JSON
+    失敗時 return None，不拋出 Exception
     """
     import re as _re_mr
-    today = _tw_today_dl()
-    candidates = []
-    d = today
-    for _ in range(15):
-        if d.weekday() < 5:
-            candidates.append(d)
-        d -= datetime.timedelta(days=1)
-        if len(candidates) >= 10:
-            break
+    from bs4 import BeautifulSoup
 
     def _parse_ratio(raw):
         try:
@@ -334,84 +328,118 @@ def fetch_margin_maintenance_ratio():
         except Exception: pass
         return None
 
-    # ── 方案 1: TWSE MI_MARGN JSON（data + totalData + notes 三層搜尋）──
-    for _d in candidates:
+    today = _tw_today_dl()
+    candidates = [today - datetime.timedelta(days=i)
+                  for i in range(14) if (today - datetime.timedelta(days=i)).weekday() < 5][:7]
+
+    # ── 方案 1: TWSE openapi（乾淨 JSON，無需日期參數）─────────────────
+    try:
+        _r1 = _TWSE_CK.get(
+            'https://openapi.twse.com.tw/v1/marginTrading/MI_MARGN',
+            headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'},
+            timeout=12)
+        print(f'[維持率/openapi] status={_r1.status_code}')
+        if _r1.status_code == 200:
+            _d1 = _r1.json()
+            _rows = _d1 if isinstance(_d1, list) else (_d1.get('data') or [])
+            # openapi 回傳最新一天全股票列表；取最後合計列
+            for _row in reversed(_rows):
+                for _k, _v in ((_row.items()) if isinstance(_row, dict) else []):
+                    if '維持率' in str(_k):
+                        _val = _parse_ratio(_v)
+                        if _val:
+                            print(f'[維持率/openapi] ✅ {_val}%  key={_k}')
+                            return _val
+    except Exception as _e1:
+        print(f'[維持率/openapi] ❌ {type(_e1).__name__}: {_e1}')
+
+    # ── 方案 2: 鉅亨網 BeautifulSoup（第三方已計算的市場維持率）──────────
+    # 目標頁面：https://www.cnyes.com/twstock/margin-trading/
+    try:
+        _r2 = _TWSE_CK.get(
+            'https://www.cnyes.com/twstock/margin-trading/',
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                     'Accept-Language': 'zh-TW,zh;q=0.9'},
+            timeout=12)
+        print(f'[維持率/cnyes] status={_r2.status_code}')
+        if _r2.status_code == 200:
+            _soup2 = BeautifulSoup(_r2.text, 'html.parser')
+            # 搜尋含「維持率」關鍵字的文字節點周邊數字
+            _text2 = _soup2.get_text(' ', strip=True)
+            _m2 = _re_mr.search(r'維持率[^0-9]{0,10}?(\d{3,4}(?:\.\d{1,2})?)', _text2)
+            if _m2:
+                _val2 = _parse_ratio(_m2.group(1))
+                if _val2:
+                    print(f'[維持率/cnyes] ✅ {_val2}%')
+                    return _val2
+            # 備援：直接找 100~300 範圍的小數數字（維持率特徵值）
+            for _tag in _soup2.find_all(['td', 'span', 'div', 'p']):
+                _t = _tag.get_text(strip=True)
+                _m2b = _re_mr.match(r'^(\d{3,4}\.\d{1,2})$', _t)
+                if _m2b:
+                    _val2b = _parse_ratio(_m2b.group(1))
+                    if _val2b:
+                        print(f'[維持率/cnyes-tag] ✅ {_val2b}%')
+                        return _val2b
+    except Exception as _e2:
+        print(f'[維持率/cnyes] ❌ {type(_e2).__name__}: {_e2}')
+
+    # ── 方案 3: TWSE www MI_MARGN JSON（date 逐日回溯）─────────────────
+    for _d in candidates[:5]:
         ds = _d.strftime('%Y%m%d')
-        for _sel in ['MS', 'ALL', 'ALLBUT0999']:
+        for _sel in ['MS', 'ALL']:
             try:
-                r = _TWSE_CK.get(
+                _r3 = _TWSE_CK.get(
                     'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
                     params={'date': ds, 'selectType': _sel, 'response': 'json'},
                     headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
-                    timeout=15)
-                j = r.json()
-                if j.get('stat') != 'OK': continue
-                fields = [str(f) for f in j.get('fields', [])]
-                ratio_col = next((i for i, f in enumerate(fields) if '維持率' in f), None)
-                if ratio_col is None: continue
-                for _pool in [j.get('data', []), j.get('totalData', [])]:
-                    for row in reversed(_pool if isinstance(_pool, list) else []):
-                        if isinstance(row, list) and len(row) > ratio_col:
-                            v = _parse_ratio(row[ratio_col])
-                            if v:
-                                print(f'[維持率/MI_MARGN/{_sel}/{ds}] ✅ {v}%')
-                                return v
-                for note in (j.get('notes', []) or []):
-                    m = _re_mr.search(r'維持率[^0-9]*([0-9]{2,4}\.?[0-9]*)', str(note))
-                    if m:
-                        v = _parse_ratio(m.group(1))
-                        if v:
-                            print(f'[維持率/MI_MARGN/notes/{ds}] ✅ {v}%')
-                            return v
-            except Exception as _e:
-                print(f'[維持率/MI_MARGN/{_sel}/{ds}] {_e}')
+                    timeout=12)
+                _j3 = _r3.json()
+                if _j3.get('stat') != 'OK': continue
+                _fields3 = [str(f) for f in _j3.get('fields', [])]
+                _rc3 = next((i for i, f in enumerate(_fields3) if '維持率' in f), None)
+                if _rc3 is None: continue
+                for _pool in [_j3.get('totalData', []), _j3.get('data', [])]:
+                    for _row3 in reversed(_pool if isinstance(_pool, list) else []):
+                        if isinstance(_row3, list) and len(_row3) > _rc3:
+                            _v3 = _parse_ratio(_row3[_rc3])
+                            if _v3:
+                                print(f'[維持率/www-JSON/{_sel}/{ds}] ✅ {_v3}%')
+                                return _v3
+                for _note in (_j3.get('notes', []) or []):
+                    _mn = _re_mr.search(r'維持率[^0-9]*(\d{3,4}(?:\.\d+)?)', str(_note))
+                    if _mn:
+                        _vn = _parse_ratio(_mn.group(1))
+                        if _vn:
+                            print(f'[維持率/www-notes/{ds}] ✅ {_vn}%')
+                            return _vn
+            except Exception as _e3:
+                print(f'[維持率/www-JSON/{_sel}/{ds}] ❌ {type(_e3).__name__}: {_e3}')
 
-    # ── 方案 2: TWSE TWT93U（全體信用交易概況）────────────────────────
-    for _d in candidates[:5]:
+    # ── 方案 4: TWSE TWT93U ──────────────────────────────────────────
+    for _d in candidates[:3]:
         ds = _d.strftime('%Y%m%d')
         try:
-            r2 = _TWSE_CK.get(
+            _r4 = _TWSE_CK.get(
                 'https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U',
                 params={'date': ds, 'response': 'json'},
                 headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/tWT93U.html'},
-                timeout=12)
-            j2 = r2.json()
-            if j2.get('stat') == 'OK':
-                fields2 = [str(f) for f in j2.get('fields', [])]
-                ratio_col2 = next((i for i, f in enumerate(fields2) if '維持率' in f), None)
-                if ratio_col2 is not None:
-                    for row in reversed(j2.get('data', [])):
-                        if len(row) > ratio_col2:
-                            v = _parse_ratio(row[ratio_col2])
-                            if v:
-                                print(f'[維持率/TWT93U/{ds}] ✅ {v}%')
-                                return v
-        except Exception as _e2:
-            print(f'[維持率/TWT93U/{ds}] {_e2}')
+                timeout=10)
+            _j4 = _r4.json()
+            if _j4.get('stat') == 'OK':
+                _fields4 = [str(f) for f in _j4.get('fields', [])]
+                _rc4 = next((i for i, f in enumerate(_fields4) if '維持率' in f), None)
+                if _rc4 is not None:
+                    for _row4 in reversed(_j4.get('data', [])):
+                        if len(_row4) > _rc4:
+                            _v4 = _parse_ratio(_row4[_rc4])
+                            if _v4:
+                                print(f'[維持率/TWT93U/{ds}] ✅ {_v4}%')
+                                return _v4
+        except Exception as _e4:
+            print(f'[維持率/TWT93U/{ds}] ❌ {type(_e4).__name__}: {_e4}')
 
-    # ── 方案 3: TWSE MI_MARGN CSV 原始文字 + Regex ───────────────────────
-    import re as _re_mr3
-    for _d in candidates[:5]:
-        ds = _d.strftime('%Y%m%d')
-        try:
-            r3 = _TWSE_CK.get(
-                'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
-                params={'date': ds, 'selectType': 'MS', 'response': 'csv'},
-                headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
-                timeout=12)
-            if r3.status_code == 200:
-                _text = r3.text
-                # Search for 維持率 pattern: 維持率 followed by digits
-                _m3 = _re_mr3.search(r'維持率[^0-9]*([0-9]{2,4}(?:\.[0-9]+)?)', _text)
-                if _m3:
-                    v3 = _parse_ratio(_m3.group(1))
-                    if v3:
-                        print(f'[維持率/CSV-Regex/{ds}] ✅ {v3}%')
-                        return v3
-        except Exception as _e3:
-            print(f'[維持率/CSV-Regex/{ds}] {_e3}')
-
-    print('[維持率] 所有來源均無資料')
+    print('[維持率] ⚠️ 所有方案均失敗，回傳 None')
     return None
 
 
