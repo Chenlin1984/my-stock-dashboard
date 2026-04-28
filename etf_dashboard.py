@@ -3195,12 +3195,15 @@ def render_data_health_raw():
             return '🟢', lbl
         return '🔴', f'{age}天前 ⚠️'
 
+    _FREQ_LBL = {'daily': '日頻', 'monthly': '月頻', 'quarterly': '季頻', 'yearly': '不定期'}
+
     def _row(name, date_str, freq='daily', error_msg=None):
+        _fl = _FREQ_LBL.get(freq, freq)
         if not date_str and error_msg:
             short = str(error_msg)[:55]
-            return {'資料名稱': name, '最後更新': f'❌ {short}', '狀態': '🔴'}
+            return {'資料名稱': name, '頻率': _fl, '最後更新': f'❌ {short}', '狀態': '🔴'}
         icon, lbl = _light(date_str, freq)
-        return {'資料名稱': name, '最後更新': lbl, '狀態': icon}
+        return {'資料名稱': name, '頻率': _fl, '最後更新': lbl, '狀態': icon}
 
     def _tbl(rows):
         if not rows:

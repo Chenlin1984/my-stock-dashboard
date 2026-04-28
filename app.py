@@ -2648,31 +2648,27 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 2. CPI ──────────────────────────────────────────────────────────
                 def _fetch_cpi():
-                    import pandas as _pd2, datetime as _dt_cpi
+                    import pandas as _pd2, datetime as _dt_cpi, io as _io_cpi
                     _s = _mk_s()
                     _cpi_errs = []
-                    # ── 方案1: pandas_datareader FRED（CPIAUCSL 全CPI；proxy env注入）──
+                    # ── 方案1: FRED CSV 直連（無需 API Key / pandas_datareader）──
                     try:
-                        import pandas_datareader.data as _web_cpi
-                        _ek_c = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
-                        _bak_c = {k: os.environ.get(k) for k in _ek_c}
-                        if _px_url:
-                            for k in _ek_c: os.environ[k] = _px_url
-                        try:
-                            _end_c = _dt_cpi.date.today()
-                            _start_c = _end_c.replace(year=_end_c.year - 3)
-                            _df_c = _web_cpi.DataReader('CPIAUCSL', 'fred', _start_c, _end_c)
-                            _df_c = _df_c.dropna()
+                        _rc1 = _s.get(
+                            'https://fred.stlouisfed.org/graph/fredgraph.csv',
+                            params={'id': 'CPIAUCSL'},
+                            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                            timeout=12, verify=False)
+                        print(f'[Macro/CPI/FRED] status={_rc1.status_code}')
+                        if _rc1.status_code == 200:
+                            _df_c = _pd2.read_csv(_io_cpi.StringIO(_rc1.text),
+                                                  parse_dates=['DATE'], index_col='DATE').dropna()
                             if len(_df_c) >= 13:
-                                _vals_c = _df_c['CPIAUCSL'].values
+                                _col_c = _df_c.columns[0]
+                                _vals_c = _df_c[_col_c].values
                                 _yoy = round((_vals_c[-1] / _vals_c[-13] - 1) * 100, 2)
                                 _date = str(_df_c.index[-1])[:10]
                                 print(f'[Macro/CPI/FRED] ✅ YoY={_yoy:.2f}% date={_date}')
-                                return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED/pdr'}}
-                        finally:
-                            for k, v in _bak_c.items():
-                                if v is None: os.environ.pop(k, None)
-                                else: os.environ[k] = v
+                                return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED'}}
                     except Exception as _e:
                         _cpi_errs.append(f'FRED:{type(_e).__name__}')
                         print(f'[Macro/CPI/FRED] ❌ {_e}')
@@ -2711,43 +2707,38 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 3. PMI ────────────────────────────────────────────────────────
                 def _fetch_pmi():
-                    import pandas as _pd4, datetime as _dt_pmi
+                    import pandas as _pd4, datetime as _dt_pmi, io as _io_pmi
                     _s_p = _mk_s()
                     _pmi_errs = []
-                    # ── 方案1: pandas_datareader FRED（NAPM=ISM PMI；降級 MANEMP）──
+                    # ── 方案1: FRED CSV 直連（無需 API Key）──
                     try:
-                        import pandas_datareader.data as _web_pmi
-                        _ek_p = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
-                        _bak_p = {k: os.environ.get(k) for k in _ek_p}
-                        if _px_url:
-                            for k in _ek_p: os.environ[k] = _px_url
-                        try:
-                            _end_p = _dt_pmi.date.today()
-                            _start_p = _end_p.replace(year=_end_p.year - 3)
-                            for _fred_s, _lbl_p in [
-                                ('NAPM',   'ISM Mfg PMI'),
-                                ('MANEMP', 'Mfg Employment (k)'),
-                                ('INDPRO', 'Industrial Production'),
-                            ]:
-                                try:
-                                    _df_p = _web_pmi.DataReader(_fred_s, 'fred', _start_p, _end_p).dropna()
-                                    if len(_df_p) < 5: continue
-                                    _t24p = _df_p.tail(24)
-                                    _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
-                                    _dates_p = [str(d)[:10] for d in _t24p.index]
-                                    print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
-                                    return {'ism_pmi': {
-                                        'value': _vals_p[-1],
-                                        'date': _dates_p[-1],
-                                        'dates': _dates_p,
-                                        'values': _vals_p,
-                                        'label': f'FRED {_lbl_p}',
-                                    }}
-                                except Exception as _fp: print(f'[Macro/PMI/FRED/{_fred_s}] ❌ {_fp}')
-                        finally:
-                            for k, v in _bak_p.items():
-                                if v is None: os.environ.pop(k, None)
-                                else: os.environ[k] = v
+                        for _fred_s, _lbl_p in [
+                            ('NAPM',   'ISM Mfg PMI'),
+                            ('MANEMP', 'Mfg Employment (k)'),
+                            ('INDPRO', 'Industrial Production'),
+                        ]:
+                            try:
+                                _rp1 = _s_p.get(
+                                    'https://fred.stlouisfed.org/graph/fredgraph.csv',
+                                    params={'id': _fred_s},
+                                    headers={'User-Agent': 'Mozilla/5.0'},
+                                    timeout=10, verify=False)
+                                if _rp1.status_code != 200: continue
+                                _df_p = _pd4.read_csv(_io_pmi.StringIO(_rp1.text),
+                                                      parse_dates=['DATE'], index_col='DATE').dropna()
+                                if len(_df_p) < 5: continue
+                                _t24p = _df_p.tail(24)
+                                _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
+                                _dates_p = [str(d)[:10] for d in _t24p.index]
+                                print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
+                                return {'ism_pmi': {
+                                    'value': _vals_p[-1],
+                                    'date': _dates_p[-1],
+                                    'dates': _dates_p,
+                                    'values': _vals_p,
+                                    'label': f'FRED {_lbl_p}',
+                                }}
+                            except Exception as _fp: print(f'[Macro/PMI/FRED/{_fred_s}] ❌ {_fp}')
                     except Exception as _e:
                         _pmi_errs.append(f'FRED:{type(_e).__name__}')
                         print(f'[Macro/PMI/PDR] ❌ {_e}')
