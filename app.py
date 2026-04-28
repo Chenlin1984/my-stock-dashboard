@@ -2631,7 +2631,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 if not _rs: continue
                                 _ts = _rs[0].get('timestamp', [])
                                 _cl = ((_rs[0].get('indicators') or {}).get('quote') or [{}])[0].get('close', [])
-                                _ok = [(str(_dt_v.datetime.utcfromtimestamp(t).date()), round(float(c), 1))
+                                _ok = [(str(_dt_v.datetime.fromtimestamp(t, _dt_v.timezone.utc).date()), round(float(c), 1))
                                        for t, c in zip(_ts, _cl) if c is not None and 5.0 <= c <= 90.0]
                                 print(f'[Macro/VIX] pairs={len(_ok)} last={_ok[-1] if _ok else "?"}')
                                 if len(_ok) >= 3:
@@ -2659,16 +2659,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             'https://fred.stlouisfed.org/graph/fredgraph.csv',
                             params={'id': 'CPIAUCSL'},
                             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                            timeout=12, verify=False)
+                            timeout=15, verify=False)
                         print(f'[Macro/CPI/FRED] status={_rc1.status_code}')
                         if _rc1.status_code == 200:
+                            # 用欄位索引而非名稱，避免 BOM 前綴 ('﻿DATE') 造成 Missing column
                             _df_c = _pd2.read_csv(_io_cpi.StringIO(_rc1.text),
-                                                  parse_dates=['DATE'], index_col='DATE').dropna()
+                                                  parse_dates=[0], header=0).dropna()
+                            _df_c.columns = [str(c).strip().replace('﻿', '') for c in _df_c.columns]
+                            _df_c.rename(columns={_df_c.columns[0]: 'DATE', _df_c.columns[-1]: 'VALUE'}, inplace=True)
+                            _df_c = _df_c.sort_values('DATE').reset_index(drop=True)
                             if len(_df_c) >= 13:
-                                _col_c = _df_c.columns[0]
-                                _vals_c = _df_c[_col_c].values
+                                _vals_c = _df_c['VALUE'].values
                                 _yoy = round((_vals_c[-1] / _vals_c[-13] - 1) * 100, 2)
-                                _date = str(_df_c.index[-1])[:10]
+                                _date = str(_df_c['DATE'].iloc[-1])[:10]
                                 print(f'[Macro/CPI/FRED] ✅ YoY={_yoy:.2f}% date={_date}')
                                 return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED'}}
                     except Exception as _e:
@@ -2723,15 +2726,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 _rp1 = _s_p.get(
                                     'https://fred.stlouisfed.org/graph/fredgraph.csv',
                                     params={'id': _fred_s},
-                                    headers={'User-Agent': 'Mozilla/5.0'},
-                                    timeout=10, verify=False)
+                                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                                    timeout=15, verify=False)
                                 if _rp1.status_code != 200: continue
                                 _df_p = _pd4.read_csv(_io_pmi.StringIO(_rp1.text),
-                                                      parse_dates=['DATE'], index_col='DATE').dropna()
+                                                      parse_dates=[0], header=0).dropna()
+                                _df_p.columns = [str(c).strip().replace('﻿', '') for c in _df_p.columns]
+                                _df_p.rename(columns={_df_p.columns[0]: 'DATE', _df_p.columns[-1]: 'VALUE'}, inplace=True)
+                                _df_p = _df_p.sort_values('DATE').reset_index(drop=True)
                                 if len(_df_p) < 5: continue
                                 _t24p = _df_p.tail(24)
-                                _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
-                                _dates_p = [str(d)[:10] for d in _t24p.index]
+                                _vals_p = [round(float(v), 1) for v in _t24p['VALUE']]
+                                _dates_p = [str(d)[:10] for d in _t24p['DATE']]
                                 print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
                                 return {'ism_pmi': {
                                     'value': _vals_p[-1],
@@ -2865,13 +2871,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
 
                     def _fm_get7(ds):
+                        # start_date 必填，否則 FinMind 常回傳空值或 status=None
                         _p = {'dataset': ds, 'start_date': '2020-01-01'}
                         if _fm_tok7: _p['token'] = _fm_tok7
                         _r = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
                                         params=_p, headers=_hdrs7, timeout=20, verify=False)
                         _j = _r.json()
-                        print(f'[Export/FM/{ds}] status={_j.get("status")} rows={len(_j.get("data",[]))}')
-                        if _j.get('status') == 200 and _j.get('data'):
+                        _st = _j.get('status')
+                        print(f'[Export/FM/{ds}] status={_st} rows={len(_j.get("data",[]))}')
+                        # status=None 表示 FinMind 回傳格式異常（限速/proxy）；只要 data 存在即接受
+                        # 明確排除已知錯誤碼 (402 rate-limit, 403 forbidden, 429 too-many, 5xx)
+                        _is_error = isinstance(_st, int) and _st not in (200,) and _st >= 400
+                        if not _is_error and _j.get('data'):
                             _df = _pd7.DataFrame(_j['data'])
                             _df.columns = [str(c).lower() for c in _df.columns]
                             return _df
@@ -3870,6 +3881,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
         if _tn3 > 5:
             st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
+        # 堆疊柱狀圖：三大法人今日買賣超（fillna(0) 防止 NaN 造成空白）
+        _inst_clean = {k: {'net': float(v.get('net', 0) or 0)} for k, v in inst.items() if isinstance(v, dict)}
+        st.plotly_chart(bar_chart_institutional(_inst_clean), width='stretch',
+                        config={'displayModeBar': False})
     if margin:
         if margin >= 3400:
             _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
@@ -7089,7 +7104,7 @@ padding:12px 16px;margin:8px 0;">
                             margin=dict(l=20, r=20, t=20, b=20),
                             showlegend=False,
                         )
-                        st.plotly_chart(_fig_fh, use_container_width=True)
+                        st.plotly_chart(_fig_fh, width='stretch')
                     else:
                         st.warning('無法取得五力評分資料')
 
@@ -8210,7 +8225,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                         showlegend=False, height=280,
                         margin=dict(l=40, r=40, t=20, b=20),
                     )
-                    st.plotly_chart(_fig_f, use_container_width=True,
+                    st.plotly_chart(_fig_f, width='stretch',
                                     key=f'radar_t3_{_sid_f}')
 
                 # DNA + OPM
