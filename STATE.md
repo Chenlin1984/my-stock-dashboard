@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.35 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.36 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #74 已 merge**（2026-04-27）— 破解快取陷阱 + NDC精確比對 + 合約負債DataFrame提取
+- **✅ PR #76 已 merge**（2026-04-28）— 新鮮度容忍升級 + UI來源名稱全面更新 + 殘餘dbnomics清理
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,21 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.36，commit `640c869`，PR #76）
+
+### 新鮮度容忍升級 + UI來源名稱全面更新 + 殘餘dbnomics清理
+
+| 項目 | 修復內容 |
+|------|---------|
+| **_freshness() yearly** | 有資料即 🟢（股利 848天前正確顯示，消除誤判🔴） |
+| **_freshness() quarterly** | 90天→**150**天為 🟢（覆蓋 Q3→Q4 四個月財報空窗；117天前 = 🟢） |
+| **_freshness() monthly** | 45天→**60**天為 🟢（覆蓋次月底延遲公佈） |
+| **_freshness() daily** | 3天→**5**天為 🟢（覆蓋連假） |
+| **UI 來源名稱清理** | `render_data_health_raw()` / macro info table / KPI卡片 / LLM context 全面移除 dbnomics / IMF / OECD CLI / data.gov.tw / TaiwanExportImport 字眼，統一顯示 FRED / FinMind Macro |
+| **_fetch_pmi 殘餘dbnomics** | 方案2 dbnomics OECD PMI block 完整刪除（PR#74 漏刪） |
+| **_fetch_export 殘餘dbnomics** | 方案3 dbnomics OECD/IMF block 完整刪除 |
+| **test_fetch.py** | 新增 FRED CPI + FinMind NDC 快速驗證腳本 |
 
 ## ✅ 最新異動（v10.35，commit `75194a3`，PR #74）
 
