@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.37 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.38 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ v10.37 commits pushed**（2026-04-28）— 融資維持率 UI fix + 4-method fetcher + API錯誤透明化 + final_check.py
+- **✅ v10.38 commits pushed**（2026-04-28）— FRED CSV fix + 頻率欄位 + pandas-datareader 移除
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.38，commit `d891f88`）
+
+### pandas_datareader 移除 + FRED CSV 直連 + 頻率欄位
+
+| 項目 | 修復內容 |
+|------|---------|
+| **requirements.txt** | 移除 `pandas-datareader`（與 pandas 3.0+ 不相容，import 即 TypeError） |
+| **CPI 抓取** | `_fetch_cpi()` 改用 `requests.get(fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL)` 純 CSV，無需 API Key |
+| **PMI 抓取** | `_fetch_pmi()` 同上，NAPM→MANEMP→INDPRO 三級降級鏈 |
+| **診斷 UI 頻率欄** | `render_data_health_raw._row()` 新增「頻率」欄：日頻/月頻/季頻/不定期 |
+| **final_check.py** | CHECK1 改用 FRED CSV pure requests |
 
 ## ✅ 最新異動（v10.37，commits `f21cf6e` + `2ef5b0b`）
 

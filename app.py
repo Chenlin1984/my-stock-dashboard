@@ -2648,31 +2648,27 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 2. CPI ──────────────────────────────────────────────────────────
                 def _fetch_cpi():
-                    import pandas as _pd2, datetime as _dt_cpi
+                    import pandas as _pd2, datetime as _dt_cpi, io as _io_cpi
                     _s = _mk_s()
                     _cpi_errs = []
-                    # ── 方案1: pandas_datareader FRED（CPIAUCSL 全CPI；proxy env注入）──
+                    # ── 方案1: FRED CSV 直連（無需 API Key / pandas_datareader）──
                     try:
-                        import pandas_datareader.data as _web_cpi
-                        _ek_c = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
-                        _bak_c = {k: os.environ.get(k) for k in _ek_c}
-                        if _px_url:
-                            for k in _ek_c: os.environ[k] = _px_url
-                        try:
-                            _end_c = _dt_cpi.date.today()
-                            _start_c = _end_c.replace(year=_end_c.year - 3)
-                            _df_c = _web_cpi.DataReader('CPIAUCSL', 'fred', _start_c, _end_c)
-                            _df_c = _df_c.dropna()
+                        _rc1 = _s.get(
+                            'https://fred.stlouisfed.org/graph/fredgraph.csv',
+                            params={'id': 'CPIAUCSL'},
+                            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                            timeout=12, verify=False)
+                        print(f'[Macro/CPI/FRED] status={_rc1.status_code}')
+                        if _rc1.status_code == 200:
+                            _df_c = _pd2.read_csv(_io_cpi.StringIO(_rc1.text),
+                                                  parse_dates=['DATE'], index_col='DATE').dropna()
                             if len(_df_c) >= 13:
-                                _vals_c = _df_c['CPIAUCSL'].values
+                                _col_c = _df_c.columns[0]
+                                _vals_c = _df_c[_col_c].values
                                 _yoy = round((_vals_c[-1] / _vals_c[-13] - 1) * 100, 2)
                                 _date = str(_df_c.index[-1])[:10]
                                 print(f'[Macro/CPI/FRED] ✅ YoY={_yoy:.2f}% date={_date}')
-                                return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED/pdr'}}
-                        finally:
-                            for k, v in _bak_c.items():
-                                if v is None: os.environ.pop(k, None)
-                                else: os.environ[k] = v
+                                return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED'}}
                     except Exception as _e:
                         _cpi_errs.append(f'FRED:{type(_e).__name__}')
                         print(f'[Macro/CPI/FRED] ❌ {_e}')
@@ -2711,43 +2707,38 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
                 # ── 3. PMI ────────────────────────────────────────────────────────
                 def _fetch_pmi():
-                    import pandas as _pd4, datetime as _dt_pmi
+                    import pandas as _pd4, datetime as _dt_pmi, io as _io_pmi
                     _s_p = _mk_s()
                     _pmi_errs = []
-                    # ── 方案1: pandas_datareader FRED（NAPM=ISM PMI；降級 MANEMP）──
+                    # ── 方案1: FRED CSV 直連（無需 API Key）──
                     try:
-                        import pandas_datareader.data as _web_pmi
-                        _ek_p = ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')
-                        _bak_p = {k: os.environ.get(k) for k in _ek_p}
-                        if _px_url:
-                            for k in _ek_p: os.environ[k] = _px_url
-                        try:
-                            _end_p = _dt_pmi.date.today()
-                            _start_p = _end_p.replace(year=_end_p.year - 3)
-                            for _fred_s, _lbl_p in [
-                                ('NAPM',   'ISM Mfg PMI'),
-                                ('MANEMP', 'Mfg Employment (k)'),
-                                ('INDPRO', 'Industrial Production'),
-                            ]:
-                                try:
-                                    _df_p = _web_pmi.DataReader(_fred_s, 'fred', _start_p, _end_p).dropna()
-                                    if len(_df_p) < 5: continue
-                                    _t24p = _df_p.tail(24)
-                                    _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
-                                    _dates_p = [str(d)[:10] for d in _t24p.index]
-                                    print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
-                                    return {'ism_pmi': {
-                                        'value': _vals_p[-1],
-                                        'date': _dates_p[-1],
-                                        'dates': _dates_p,
-                                        'values': _vals_p,
-                                        'label': f'FRED {_lbl_p}',
-                                    }}
-                                except Exception as _fp: print(f'[Macro/PMI/FRED/{_fred_s}] ❌ {_fp}')
-                        finally:
-                            for k, v in _bak_p.items():
-                                if v is None: os.environ.pop(k, None)
-                                else: os.environ[k] = v
+                        for _fred_s, _lbl_p in [
+                            ('NAPM',   'ISM Mfg PMI'),
+                            ('MANEMP', 'Mfg Employment (k)'),
+                            ('INDPRO', 'Industrial Production'),
+                        ]:
+                            try:
+                                _rp1 = _s_p.get(
+                                    'https://fred.stlouisfed.org/graph/fredgraph.csv',
+                                    params={'id': _fred_s},
+                                    headers={'User-Agent': 'Mozilla/5.0'},
+                                    timeout=10, verify=False)
+                                if _rp1.status_code != 200: continue
+                                _df_p = _pd4.read_csv(_io_pmi.StringIO(_rp1.text),
+                                                      parse_dates=['DATE'], index_col='DATE').dropna()
+                                if len(_df_p) < 5: continue
+                                _t24p = _df_p.tail(24)
+                                _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
+                                _dates_p = [str(d)[:10] for d in _t24p.index]
+                                print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
+                                return {'ism_pmi': {
+                                    'value': _vals_p[-1],
+                                    'date': _dates_p[-1],
+                                    'dates': _dates_p,
+                                    'values': _vals_p,
+                                    'label': f'FRED {_lbl_p}',
+                                }}
+                            except Exception as _fp: print(f'[Macro/PMI/FRED/{_fred_s}] ❌ {_fp}')
                     except Exception as _e:
                         _pmi_errs.append(f'FRED:{type(_e).__name__}')
                         print(f'[Macro/PMI/PDR] ❌ {_e}')
@@ -2764,23 +2755,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     # ── 方案1: FinMind TaiwanMacroEconomics（景氣對策信號）──────────
                     try:
                         _fm_tok_n = _get_fm_token()
-                        _start_n = (_dt_ndc.date.today() - _dt_ndc.timedelta(days=365*3)).strftime('%Y-%m-%d')
-                        _p_n = {'dataset': 'TaiwanMacroEconomics', 'start_date': _start_n}
+                        # 固定 start_date 確保有足夠月份資料計算同比
+                        _p_n = {'dataset': 'TaiwanMacroEconomics', 'start_date': '2020-01-01'}
                         if _fm_tok_n: _p_n['token'] = _fm_tok_n
                         _r_n = _s.get('https://api.finmindtrade.com/api/v4/data',
-                                       params=_p_n, timeout=15, verify=False,
+                                       params=_p_n, timeout=20, verify=False,
                                        headers={'Authorization': f'Bearer {_fm_tok_n}'} if _fm_tok_n else {})
                         _j_n = _r_n.json()
                         print(f'[Macro/NDC/FM] status={_j_n.get("status")} rows={len(_j_n.get("data",[]))}')
                         if _j_n.get('status') == 200 and _j_n.get('data'):
                             _df_n = _pd6.DataFrame(_j_n['data'])
-                            print(f'[Macro/NDC/FM] columns={list(_df_n.columns)[:6]} indicators={list(_df_n.get("indicator", _pd6.Series()).unique()[:10]) if "indicator" in _df_n.columns else []}')
-                            # 精確比對景氣對策信號分數欄位
+                            # 正規化欄位名（防 Indicator 大寫 / indicator 小寫不一致）
+                            _df_n.columns = [str(c).lower() for c in _df_n.columns]
+                            print(f'[Macro/NDC/FM] columns={list(_df_n.columns)[:8]}')
+                            if 'indicator' in _df_n.columns:
+                                print(f'[Macro/NDC/FM] indicators={list(_df_n["indicator"].unique()[:15])}')
                             if 'indicator' in _df_n.columns and 'value' in _df_n.columns:
                                 _sub = _df_n[_df_n['indicator'] == '景氣對策信號(分)'].copy()
                                 if len(_sub) == 0:
-                                    # 備援：contains 比對（應對 FinMind 欄位名稱微調）
                                     _sub = _df_n[_df_n['indicator'].str.contains('景氣對策信號', na=False)].copy()
+                                    print(f'[Macro/NDC/FM] contains fallback rows={len(_sub)}')
                                 if len(_sub) > 0:
                                     _sub = _sub.sort_values('date').dropna(subset=['value'])
                                     _sub['_v'] = _pd6.to_numeric(_sub['value'], errors='coerce')
@@ -2792,6 +2786,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                         if 9.0 <= _sc_n <= 45.0:
                                             print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
                                             return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
+                                        else:
+                                            print(f'[Macro/NDC/FM] ⚠️ score={_sc_n} 不在 9-45 範圍')
+                                else:
+                                    print(f'[Macro/NDC/FM] ⚠️ 找不到景氣對策信號欄位')
                     except Exception as _e_n:
                         _ndc_errs.append(f'FinMind:{type(_e_n).__name__}')
                         print(f'[Macro/NDC/FM] ❌ {_e_n}')
@@ -2856,59 +2854,72 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             print(f'[Macro/NDC/Gov] ❌ {_res[:8]}: {_e}')
                     return {'_err_ndc': ' | '.join(_ndc_errs) or 'all failed'}
 
-                # ── 5. 台灣出口 YoY（proxy → dbnomics API）────────────────────
+                # ── 5. 台灣出口 YoY ────────────────────────────────────────────
                 def _fetch_export():
-                    import pandas as _pd7, datetime as _dt7
+                    import pandas as _pd7
                     _s_ex = _mk_s()
                     _exp_errs = []
                     _fm_tok7 = _get_fm_token()
-                    _start7 = (_dt7.date.today() - _dt7.timedelta(days=365*3)).strftime('%Y-%m-%d')
                     _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
 
-                    def _fm_get(ds, extra_params=None):
-                        _p = {'dataset': ds, 'start_date': _start7}
+                    def _fm_get7(ds):
+                        _p = {'dataset': ds, 'start_date': '2020-01-01'}
                         if _fm_tok7: _p['token'] = _fm_tok7
-                        if extra_params: _p.update(extra_params)
                         _r = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
-                                        params=_p, headers=_hdrs7, timeout=15, verify=False)
+                                        params=_p, headers=_hdrs7, timeout=20, verify=False)
                         _j = _r.json()
                         print(f'[Export/FM/{ds}] status={_j.get("status")} rows={len(_j.get("data",[]))}')
-                        return _pd7.DataFrame(_j['data']) if _j.get('status') == 200 and _j.get('data') else None
+                        if _j.get('status') == 200 and _j.get('data'):
+                            _df = _pd7.DataFrame(_j['data'])
+                            _df.columns = [str(c).lower() for c in _df.columns]
+                            return _df
+                        return None
 
-                    # ── 方案1: FinMind TaiwanMacroEconomics（出口總值）──────────────
+                    # ── 方案1: TaiwanMacroEconomics '出口-總值' + pct_change(12) ──
                     try:
-                        _df_me = _fm_get('TaiwanMacroEconomics')
+                        _df_me = _fm_get7('TaiwanMacroEconomics')
                         if _df_me is not None and 'indicator' in _df_me.columns:
-                            _exp_kw = ['出口', 'export', 'Export']
-                            _mask = _df_me['indicator'].str.contains('|'.join(_exp_kw), case=False, na=False)
-                            _sub_e = _df_me[_mask].copy()
+                            print(f'[Export/FM] indicators sample={list(_df_me["indicator"].unique()[:20])}')
+                            # 精確比對出口-總值；備援 contains '出口'
+                            _sub_e = _df_me[_df_me['indicator'] == '出口-總值'].copy()
+                            if len(_sub_e) == 0:
+                                _sub_e = _df_me[_df_me['indicator'].str.contains('出口', na=False)].copy()
+                                # 若多個 indicator 混入，只取第一個（依 indicator 分組取最多行的）
+                                if len(_sub_e) > 0:
+                                    _best = _sub_e.groupby('indicator').size().idxmax()
+                                    _sub_e = _sub_e[_sub_e['indicator'] == _best].copy()
+                                    print(f'[Export/FM] contains fallback indicator={_best} rows={len(_sub_e)}')
                             if len(_sub_e) >= 13:
-                                _sub_e = _sub_e.sort_values('date')
+                                _sub_e = _sub_e.sort_values('date').dropna(subset=['value'])
                                 _sub_e['_v'] = _pd7.to_numeric(_sub_e['value'], errors='coerce')
-                                _sub_e = _sub_e.dropna(subset=['_v'])
-                                if len(_sub_e) >= 13:
-                                    _yoy_me = round((_sub_e['_v'].iloc[-1] / _sub_e['_v'].iloc[-13] - 1) * 100, 2)
-                                    _date_me = str(_sub_e['date'].iloc[-1])[:7]
+                                _sub_e = _sub_e.dropna(subset=['_v']).reset_index(drop=True)
+                                _sub_e['_yoy'] = _sub_e['_v'].pct_change(12) * 100
+                                _valid = _sub_e.dropna(subset=['_yoy'])
+                                if len(_valid) > 0:
+                                    _yoy_me = round(float(_valid['_yoy'].iloc[-1]), 2)
+                                    _date_me = str(_valid['date'].iloc[-1])[:7]
                                     print(f'[Macro/Export/FM-ME] ✅ YoY={_yoy_me:.2f}% date={_date_me}')
                                     return {'tw_export': {'yoy': _yoy_me, 'date': _date_me, 'source': 'FinMind-ME'}}
                     except Exception as _e_me:
                         _exp_errs.append(f'FM-ME:{type(_e_me).__name__}')
                         print(f'[Macro/Export/FM-ME] ❌ {_e_me}')
 
-                    # ── 方案2: FinMind TaiwanExportImportTotal / TaiwanExportByIndustry ──
+                    # ── 方案2: TaiwanExportImportTotal / TaiwanExportByIndustry ──
                     for _fm_ds7 in ['TaiwanExportImportTotal', 'TaiwanExportByIndustry']:
                         try:
-                            _df7 = _fm_get(_fm_ds7)
+                            _df7 = _fm_get7(_fm_ds7)
                             if _df7 is None: continue
                             _exp_col = next((c for c in _df7.columns
-                                             if any(k in str(c) for k in ['export', 'Export', '出口'])), None)
+                                             if any(k in str(c) for k in ['export', '出口'])), None)
                             if _exp_col and 'date' in _df7.columns:
-                                _df7 = _df7.sort_values('date').dropna(subset=[_exp_col])
+                                _df7 = _df7.sort_values('date')
                                 _df7[_exp_col] = _pd7.to_numeric(_df7[_exp_col], errors='coerce')
-                                _df7 = _df7.dropna(subset=[_exp_col])
-                                if len(_df7) >= 13:
-                                    _yoy7 = round((_df7[_exp_col].iloc[-1] / _df7[_exp_col].iloc[-13] - 1) * 100, 2)
-                                    _date7 = str(_df7['date'].iloc[-1])[:7]
+                                _df7 = _df7.dropna(subset=[_exp_col]).reset_index(drop=True)
+                                _df7['_yoy'] = _df7[_exp_col].pct_change(12) * 100
+                                _valid7 = _df7.dropna(subset=['_yoy'])
+                                if len(_valid7) > 0:
+                                    _yoy7 = round(float(_valid7['_yoy'].iloc[-1]), 2)
+                                    _date7 = str(_valid7['date'].iloc[-1])[:7]
                                     print(f'[Macro/Export/FM] ✅ {_fm_ds7} YoY={_yoy7:.2f}% date={_date7}')
                                     return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
                         except Exception as _e7:

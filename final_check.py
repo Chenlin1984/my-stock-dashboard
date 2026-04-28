@@ -36,23 +36,29 @@ print('=' * 55)
 print('CHECK 1: CPI 最新日期')
 print('=' * 55)
 _cpi_ok = False
-# 方案1: pandas_datareader FRED
+# 方案1: FRED CSV 直連（純 requests，無需 API Key）
 try:
-    import pandas_datareader.data as web
-    _end = datetime.date.today()
-    _start = _end.replace(year=_end.year - 2)
-    _df = web.DataReader('CPIAUCSL', 'fred', _start, _end).dropna()
-    if len(_df) >= 2:
-        _date = str(_df.index[-1])[:10]
-        _age  = (datetime.date.today() - datetime.date.fromisoformat(_date)).days
-        print(f'  ✅ 來源: FRED (pandas_datareader)')
-        print(f'  CPI 最新日期 = {_date}（{_age}天前）')
-        print(f'  狀態 = {"🟢 近期" if _age <= 60 else "🔴 過舊"}')
-        _cpi_ok = True
+    import io as _io_fc
+    _rc = s.get('https://fred.stlouisfed.org/graph/fredgraph.csv',
+                params={'id': 'CPIAUCSL'},
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                timeout=12)
+    print(f'  FRED HTTP = {_rc.status_code}')
+    if _rc.status_code == 200:
+        _df = pd.read_csv(_io_fc.StringIO(_rc.text), parse_dates=['DATE'], index_col='DATE').dropna()
+        if len(_df) >= 2:
+            _date = str(_df.index[-1])[:10]
+            _age  = (datetime.date.today() - datetime.date.fromisoformat(_date)).days
+            print(f'  ✅ 來源: FRED CSV（pure requests）')
+            print(f'  CPI 最新日期 = {_date}（{_age}天前）')
+            print(f'  狀態 = {"🟢 近期" if _age <= 60 else "🔴 過舊"}')
+            _cpi_ok = True
+        else:
+            print(f'  ⚠️  FRED 資料不足: {len(_df)} 筆')
     else:
-        print(f'  ⚠️  FRED 資料不足: {len(_df)} 筆')
+        print(f'  ⚠️  FRED HTTP {_rc.status_code}')
 except Exception as _e:
-    print(f'  ❌ FRED/pdr 失敗: {type(_e).__name__}: {_e}')
+    print(f'  ❌ FRED CSV 失敗: {type(_e).__name__}: {_e}')
 
 # 方案2: BLS API（FRED 失敗時備援）
 if not _cpi_ok:
