@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.36 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.37 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #76 已 merge**（2026-04-28）— 新鮮度容忍升級 + UI來源名稱全面更新 + 殘餘dbnomics清理
+- **✅ v10.37 commits pushed**（2026-04-28）— 融資維持率 UI fix + 4-method fetcher + API錯誤透明化 + final_check.py
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.37，commits `f21cf6e` + `2ef5b0b`）
+
+### 融資維持率修復 + API錯誤透明化 + final_check.py
+
+| 項目 | 修復內容 |
+|------|---------|
+| **融資維持率 UI fallback** | `app.py:1912` 由「顯示融資餘額億數」改為「未取得 (N/A)」，防止數值誤導 |
+| **fetch_margin_maintenance_ratio 重寫** | 4-method 瀑布：openapi.twse → cnyes BeautifulSoup → www MI_MARGN JSON（7日回溯）→ TWT93U；每方案明確 print 錯誤類型 |
+| **API 錯誤透明化** | `_fetch_vix/cpi/pmi/ndc/export` 失敗時返回 `{'_err_xxx': 'FRED:ConnectTimeout | BLS:HTTPError'}` 存入 `macro_info`；診斷 UI `_row()` 顯示錯誤原因（而非只顯示「未取得」） |
+| **_light() 閾值對齊** | `render_data_health_raw._light()` 更新：daily=5d, monthly=60d, quarterly=150d, yearly=always🟢（與 `_freshness()` 一致） |
+| **final_check.py（新）** | 三項健診：CHECK1 CPI日期（FRED→BLS），CHECK2 2330季報日期，CHECK3 2330合約負債值（str.contains） |
 
 ## ✅ 最新異動（v10.36，commit `640c869`，PR #76）
 

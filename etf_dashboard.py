@@ -3185,14 +3185,20 @@ def render_data_health_raw():
             age = max(0, (_today - _pd_r.Timestamp(date_str)).days)
         except Exception:
             return '🔴', '無法解析'
-        th = {'daily': 3, 'monthly': 45, 'quarterly': 90, 'yearly': 365}
-        limit = th.get(freq, 3)
+        # 與 _freshness() 保持一致的容忍閾值
+        if freq == 'yearly':
+            return '🟢', f'{age}天前'
+        th = {'daily': 5, 'monthly': 60, 'quarterly': 150}
+        limit = th.get(freq, 5)
         if age <= limit:
             lbl = '今天' if age == 0 else ('昨天' if age == 1 else f'{age}天前')
             return '🟢', lbl
         return '🔴', f'{age}天前 ⚠️'
 
-    def _row(name, date_str, freq='daily'):
+    def _row(name, date_str, freq='daily', error_msg=None):
+        if not date_str and error_msg:
+            short = str(error_msg)[:55]
+            return {'資料名稱': name, '最後更新': f'❌ {short}', '狀態': '🔴'}
         icon, lbl = _light(date_str, freq)
         return {'資料名稱': name, '最後更新': lbl, '狀態': icon}
 
@@ -3213,17 +3219,18 @@ def render_data_health_raw():
     with st.expander('🌍 總經 Raw Data', expanded=True):
         _ma = st.session_state.get('macro_info') or {}
         rows = []
-        for label, key, freq in [
-            ('VIX 恐慌指數（CBOE）',           'vix',         'daily'),
-            ('CPI 消費者物價指數（FRED）',        'us_core_cpi', 'monthly'),
-            ('ISM PMI（FRED）',                 'ism_pmi',     'monthly'),
-            ('NDC 景氣燈號分數（FinMind Macro）', 'ndc_signal',  'monthly'),
-            ('台灣出口 YoY（FinMind Macro）',     'tw_export',   'monthly'),
+        for label, key, freq, err_key in [
+            ('VIX 恐慌指數（CBOE）',           'vix',         'daily',   '_err_vix'),
+            ('CPI 消費者物價指數（FRED）',        'us_core_cpi', 'monthly', '_err_cpi'),
+            ('ISM PMI（FRED）',                 'ism_pmi',     'monthly', '_err_pmi'),
+            ('NDC 景氣燈號分數（FinMind Macro）', 'ndc_signal',  'monthly', '_err_ndc'),
+            ('台灣出口 YoY（FinMind Macro）',     'tw_export',   'monthly', '_err_export'),
         ]:
             item = _ma.get(key) or {}
             date = (item.get('date') or item.get('period') or
                     str(item.get('year', ''))[:7] or None)
-            rows.append(_row(label, str(date)[:10] if date else None, freq))
+            err = _ma.get(err_key) if not date else None
+            rows.append(_row(label, str(date)[:10] if date else None, freq, error_msg=err))
         # M1B / M2（無獨立 date 欄位，以 cl_ts 代理）
         _mi = st.session_state.get('m1b_m2_info') or {}
         _mi_date = None

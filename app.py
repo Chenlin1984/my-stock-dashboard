@@ -1909,7 +1909,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             ('外資方向', f'{"買超" if (_wr_fnet or 0)>0 else "賣超"} {abs(_wr_fnet or 0):.0f}億' if _wr_fnet is not None else '未知',
              (_wr_fnet or 0) > 0, '外資買超=跟著走'),
             ('融資維持率',
-             f'{_wr_margin_ratio:.0f}%' if _wr_margin_ratio else (f'{_wr_margin:.0f}億' if _wr_margin else '未知'),
+             f'{_wr_margin_ratio:.0f}%' if _wr_margin_ratio else '未取得 (N/A)',
              not _wr_margin_ratio or _wr_margin_ratio >= 160,
              '<160%危險，<130%斷頭邊緣'),
             ('年線位置', f'乖離{_wr_bias.get("bias_240",0):+.1f}%' if _wr_bias else '未知',
@@ -2613,6 +2613,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 def _fetch_vix():
                     _s = _mk_s()
                     import datetime as _dt_v
+                    _vix_errs = []
                     try:
                         _hdrs = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                                  'Accept': 'application/json,*/*'}
@@ -2637,14 +2638,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     print(f'[Macro/VIX] ✅ current={_vv[-1]}')
                                     return {'vix': {'current': _vv[-1], 'ma20': round(sum(_s20)/len(_s20), 1),
                                                     'dates': _vd[-60:], 'values': _vv[-60:], 'date': _vd[-1]}}
-                            except Exception as _e: print(f'[Macro/VIX] {_host} ❌ {_e}')
-                    except Exception as _e: print(f'[Macro/VIX] ❌ {_e}')
-                    return {}
+                            except Exception as _e:
+                                _vix_errs.append(f'{_host[:12]}:{type(_e).__name__}')
+                                print(f'[Macro/VIX] {_host} ❌ {_e}')
+                    except Exception as _e:
+                        _vix_errs.append(f'outer:{type(_e).__name__}')
+                        print(f'[Macro/VIX] ❌ {_e}')
+                    return {'_err_vix': ' | '.join(_vix_errs) or 'all failed'}
 
                 # ── 2. CPI ──────────────────────────────────────────────────────────
                 def _fetch_cpi():
                     import pandas as _pd2, datetime as _dt_cpi
                     _s = _mk_s()
+                    _cpi_errs = []
                     # ── 方案1: pandas_datareader FRED（CPIAUCSL 全CPI；proxy env注入）──
                     try:
                         import pandas_datareader.data as _web_cpi
@@ -2667,7 +2673,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             for k, v in _bak_c.items():
                                 if v is None: os.environ.pop(k, None)
                                 else: os.environ[k] = v
-                    except Exception as _e: print(f'[Macro/CPI/FRED] ❌ {_e}')
+                    except Exception as _e:
+                        _cpi_errs.append(f'FRED:{type(_e).__name__}')
+                        print(f'[Macro/CPI/FRED] ❌ {_e}')
                     # ── 方案2: BLS API（CUSR0000SA0L1E 核心CPI）──────────────────────
                     try:
                         _rc = _s.post('https://api.bls.gov/publicAPI/v2/timeseries/data/',
@@ -2696,13 +2704,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _date = f"{_last['year']}-{int(_last['period'][1:]):02d}-01"
                                     print(f'[Macro/CPI/BLS] ✅ YoY={_yoy:.2f}% date={_date}')
                                     return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'BLS'}}
-                    except Exception as _e: print(f'[Macro/CPI/BLS] ❌ {_e}')
-                    return {}
+                    except Exception as _e:
+                        _cpi_errs.append(f'BLS:{type(_e).__name__}')
+                        print(f'[Macro/CPI/BLS] ❌ {_e}')
+                    return {'_err_cpi': ' | '.join(_cpi_errs) or 'all failed'}
 
                 # ── 3. PMI ────────────────────────────────────────────────────────
                 def _fetch_pmi():
                     import pandas as _pd4, datetime as _dt_pmi
                     _s_p = _mk_s()
+                    _pmi_errs = []
                     # ── 方案1: pandas_datareader FRED（NAPM=ISM PMI；降級 MANEMP）──
                     try:
                         import pandas_datareader.data as _web_pmi
@@ -2737,8 +2748,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             for k, v in _bak_p.items():
                                 if v is None: os.environ.pop(k, None)
                                 else: os.environ[k] = v
-                    except Exception as _e: print(f'[Macro/PMI/PDR] ❌ {_e}')
-                    return {}
+                    except Exception as _e:
+                        _pmi_errs.append(f'FRED:{type(_e).__name__}')
+                        print(f'[Macro/PMI/PDR] ❌ {_e}')
+                    return {'_err_pmi': ' | '.join(_pmi_errs) or 'all failed'}
 
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
                 def _fetch_ndc():
@@ -2746,6 +2759,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     import pandas as _pd6, datetime as _dt_ndc, re as _re_ndc
                     _NDC_SCORE_KEYS = ('composite_index', 'judgment_score', 'score',
                                        '綜合判斷分數', '景氣對策信號值', '分數')
+                    _ndc_errs = []
 
                     # ── 方案1: FinMind TaiwanMacroEconomics（景氣對策信號）──────────
                     try:
@@ -2778,7 +2792,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                         if 9.0 <= _sc_n <= 45.0:
                                             print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
                                             return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
-                    except Exception as _e_n: print(f'[Macro/NDC/FM] ❌ {_e_n}')
+                    except Exception as _e_n:
+                        _ndc_errs.append(f'FinMind:{type(_e_n).__name__}')
+                        print(f'[Macro/NDC/FM] ❌ {_e_n}')
 
                     # ── 方案2: data.gov.tw（動態 resource_id 搜尋）──────────────────
                     _ng_res_ids = [
@@ -2835,13 +2851,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 _date = f'{_nm.group(1)}-{_nm.group(2)}-01' if _nm else _raw[:10]
                                 print(f'[Macro/NDC/Gov] ✅ score={_sc}')
                                 return {'ndc_signal': {'score': _sc, 'signal': None, 'date': _date}}
-                        except Exception as _e: print(f'[Macro/NDC/Gov] ❌ {_res[:8]}: {_e}')
-                    return {}
+                        except Exception as _e:
+                            _ndc_errs.append(f'Gov:{type(_e).__name__}')
+                            print(f'[Macro/NDC/Gov] ❌ {_res[:8]}: {_e}')
+                    return {'_err_ndc': ' | '.join(_ndc_errs) or 'all failed'}
 
                 # ── 5. 台灣出口 YoY（proxy → dbnomics API）────────────────────
                 def _fetch_export():
                     import pandas as _pd7, datetime as _dt7
                     _s_ex = _mk_s()
+                    _exp_errs = []
                     _fm_tok7 = _get_fm_token()
                     _start7 = (_dt7.date.today() - _dt7.timedelta(days=365*3)).strftime('%Y-%m-%d')
                     _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
@@ -2872,7 +2891,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _date_me = str(_sub_e['date'].iloc[-1])[:7]
                                     print(f'[Macro/Export/FM-ME] ✅ YoY={_yoy_me:.2f}% date={_date_me}')
                                     return {'tw_export': {'yoy': _yoy_me, 'date': _date_me, 'source': 'FinMind-ME'}}
-                    except Exception as _e_me: print(f'[Macro/Export/FM-ME] ❌ {_e_me}')
+                    except Exception as _e_me:
+                        _exp_errs.append(f'FM-ME:{type(_e_me).__name__}')
+                        print(f'[Macro/Export/FM-ME] ❌ {_e_me}')
 
                     # ── 方案2: FinMind TaiwanExportImportTotal / TaiwanExportByIndustry ──
                     for _fm_ds7 in ['TaiwanExportImportTotal', 'TaiwanExportByIndustry']:
@@ -2890,9 +2911,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     _date7 = str(_df7['date'].iloc[-1])[:7]
                                     print(f'[Macro/Export/FM] ✅ {_fm_ds7} YoY={_yoy7:.2f}% date={_date7}')
                                     return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
-                        except Exception as _e7: print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
+                        except Exception as _e7:
+                            _exp_errs.append(f'{_fm_ds7[:10]}:{type(_e7).__name__}')
+                            print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
 
-                    return {}
+                    return {'_err_export': ' | '.join(_exp_errs) or 'all failed'}
 
                 # ── 並行執行（5 個獨立資料源同時跑，總時間 = max 而非 sum）──────
                 _r = {}
