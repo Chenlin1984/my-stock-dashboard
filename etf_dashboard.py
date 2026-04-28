@@ -2249,22 +2249,25 @@ def render_data_health():
         except Exception:
             return '⚪', '無法解析'
         if frequency == 'yearly':
-            if _age <= 365:   return '🟢', f'{_age}天前'
-            elif _age <= 548: return '🟡', f'{_age}天前'
-            else:             return '🔴', f'{_age}天前 ⚠️'
+            # 年頻/不定期（如股利）：有資料就是最新，只有 NaN 才缺失
+            if _age <= 548:   return '🟢', f'{_age}天前'
+            else:             return '🟢', f'{_age}天前（歷史）'
         elif frequency == 'quarterly':
-            if _age <= 90:    return '🟢', f'{_age}天前'
-            elif _age <= 180: return '🟡', f'{_age}天前'
+            # 季報空窗期最長 ~4.5 個月（Q3→Q4）；150天內均視為最新
+            if _age <= 150:   return '🟢', f'{_age}天前'
+            elif _age <= 210: return '🟡', f'{_age}天前'
             else:             return '🔴', f'{_age}天前 ⚠️'
         elif frequency == 'monthly':
-            if _age <= 45:    return '🟢', f'{_age}天前'
-            elif _age <= 75:  return '🟡', f'{_age}天前'
+            # 月頻：次月 10 日或月底才公佈，60天內均視為最新
+            if _age <= 60:    return '🟢', f'{_age}天前'
+            elif _age <= 90:  return '🟡', f'{_age}天前'
             else:             return '🔴', f'{_age}天前 ⚠️'
         else:  # daily
+            # 日頻：含週末+長假，5天內均視為最新
             if _age == 0:     return '🟢', '今天'
             elif _age == 1:   return '🟢', '昨天'
-            elif _age <= 3:   return '🟢', f'{_age}天前'
-            elif _age <= 5:   return '🟡', f'{_age}天前'
+            elif _age <= 5:   return '🟢', f'{_age}天前'
+            elif _age <= 8:   return '🟡', f'{_age}天前'
             else:             return '🔴', f'{_age}天前 ⚠️'
 
     def _build_table(items):
@@ -2673,15 +2676,15 @@ def render_data_health():
                 {'指標': '美國核心 CPI YoY',
                  '數值': f'{_cpi["yoy"]:+.1f}%' if _cpi.get('yoy') is not None else '-',
                  '日期': str(_cpi.get('date', '-')),
-                 '來源': 'FRED / DB.nomics'},
-                {'指標': 'ISM PMI / OECD CLI',
+                 '來源': str(_cpi.get('source', 'FRED'))},
+                {'指標': 'ISM PMI',
                  '數值': str(_pmi.get('value', '-')),
                  '日期': str(_pmi.get('date', '-')),
-                 '來源': 'OECD CLI' if _pmi.get('is_oecd_cli') else 'FRED ISM'},
+                 '來源': 'FRED'},
                 {'指標': 'NDC 景氣燈號分數',
                  '數值': f'{_ndc["score"]:.0f}/45' if _ndc.get('score') is not None else '-',
                  '日期': str(_ndc.get('date', '-')),
-                 '來源': 'OECD代理估算' if _ndc.get('_is_proxy') else 'data.gov.tw'},
+                 '來源': 'FinMind Macro'},
                 {'指標': '台灣外銷訂單 YoY',
                  '數值': f'{_exp["yoy"]:+.1f}%' if _exp.get('yoy') is not None else '-',
                  '日期': str(_exp.get('date', '-')),
@@ -3211,11 +3214,11 @@ def render_data_health_raw():
         _ma = st.session_state.get('macro_info') or {}
         rows = []
         for label, key, freq in [
-            ('VIX 恐慌指數（CBOE / dbnomics）',           'vix',         'daily'),
-            ('CPI 消費者物價指數（IMF / dbnomics）',        'us_core_cpi', 'monthly'),
-            ('ISM PMI / OECD CLI（dbnomics）',             'ism_pmi',     'monthly'),
-            ('NDC 景氣燈號分數（data.gov.tw / OECD CLI）',  'ndc_signal',  'monthly'),
-            ('台灣出口 YoY（FinMind TaiwanExportImport）',  'tw_export',   'monthly'),
+            ('VIX 恐慌指數（CBOE）',           'vix',         'daily'),
+            ('CPI 消費者物價指數（FRED）',        'us_core_cpi', 'monthly'),
+            ('ISM PMI（FRED）',                 'ism_pmi',     'monthly'),
+            ('NDC 景氣燈號分數（FinMind Macro）', 'ndc_signal',  'monthly'),
+            ('台灣出口 YoY（FinMind Macro）',     'tw_export',   'monthly'),
         ]:
             item = _ma.get(key) or {}
             date = (item.get('date') or item.get('period') or
@@ -3226,7 +3229,7 @@ def render_data_health_raw():
         _mi_date = None
         if _mi.get('m1b_yoy') is not None:
             _mi_date = str(st.session_state.get('cl_ts', ''))[:10] or str(_dt_r.date.today())
-        rows.append(_row('M1B / M2 貨幣供給（CBC cpx.cbc.gov.tw / FinMind）', _mi_date, 'monthly'))
+        rows.append(_row('M1B / M2 貨幣供給（CBC / FinMind）', _mi_date, 'monthly'))
         _tbl(rows)
         st.caption('⚠️ M1B-M2 利差、年增率為計算值，不顯示於此。')
 
