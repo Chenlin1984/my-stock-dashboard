@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.38 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.39 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ v10.38 commits pushed**（2026-04-28）— FRED CSV fix + 頻率欄位 + pandas-datareader 移除
+- **✅ PR #79 merged**（2026-04-28）— FinMind 欄位大小寫正規化 + 出口精確 indicator
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.39，commit `ed4ea55`，PR #79）
+
+### FinMind 欄位大小寫正規化 + 出口精確 indicator
+
+| 項目 | 修復內容 |
+|------|---------|
+| **欄位正規化** | `_fetch_ndc()` / `_fetch_export()` 加入 `df.columns = [c.lower()]`；防 FinMind 回傳 `Indicator`（大寫）時整個 if 判斷靜默跳過 |
+| **出口精確比對** | `indicator == '出口-總值'` 取代 `str.contains('出口')`；備援改為 groupby 取最多行的單一 indicator |
+| **YoY 計算** | `.pct_change(12) * 100` 取代手算 `iloc[-1]/iloc[-13]` |
+| **start_date 固定** | 兩函數均改為 `'2020-01-01'`，確保有足夠 12 個月計算同比 |
+| **debug print** | 印出 FinMind 回傳的 indicator 清單，方便後續排查 |
 
 ## ✅ 最新異動（v10.38，commit `d891f88`）
 
