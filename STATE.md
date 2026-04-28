@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.40 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.41 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #80 merged**（2026-04-28）— Python 3.14 escape fix + TWSE UA + DX=F→DX-Y.NYB
+- **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,17 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.41）
+
+### 死亡迴圈斬斷 + FRED parse_dates 根因修復 + FinMind status=None 防禦
+
+| 項目 | 修復內容 |
+|------|---------|
+| **TWSE 死亡迴圈** | `fetch_margin_maintenance_ratio` 方案3/4 從 5/3 天縮為 **2 天**（max_retries=2）；方案3加 `_m3_json_fails` 計數器，連續 JSONDecodeError ≥2 次立即 `break`，阻斷 TWSE 封鎖觸發的無限重試 |
+| **FRED Missing column** | `_fetch_cpi()` / `_fetch_pmi()` 移除 `index_col='DATE'`（與 `parse_dates=['DATE']` 同用在 pandas 2.x 引發 ValueError）；改為 `parse_dates=['DATE']` + `reset_index(drop=True)`；下游存取改用 `_df['DATE'].iloc[-1]` 與 `[c for c in cols if c != 'DATE'][0]` |
+| **FinMind status=None** | `_fm_get7()` 改為「排除已知錯誤碼 (≥400)，data 存在即接受」邏輯；修復 FinMind 在 proxy 環境下回傳無 status key 導致整個 export 放棄的問題 |
+| **效能改善** | 最壞情況阻塞從 120s (5天×2×12s) 降至 ~4s（2次 JSONDecodeError < 1s 即判定封鎖並中斷） |
 
 ## ✅ 最新異動（v10.40）
 
