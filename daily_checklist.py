@@ -384,8 +384,9 @@ def fetch_margin_maintenance_ratio():
     except Exception as _e2:
         print(f'[維持率/cnyes] ❌ {type(_e2).__name__}: {_e2}')
 
-    # ── 方案 3: TWSE www MI_MARGN JSON（date 逐日回溯）─────────────────
-    for _d in candidates[:5]:
+    # ── 方案 3: TWSE www MI_MARGN JSON（date 逐日回溯，最多 2 天）────────
+    _m3_json_fails = 0  # 連續 JSONDecodeError 計數器，達 2 次立刻中斷
+    for _d in candidates[:2]:   # max_retries=2，絕不往前無限重試
         ds = _d.strftime('%Y%m%d')
         for _sel in ['MS', 'ALL']:
             try:
@@ -395,6 +396,7 @@ def fetch_margin_maintenance_ratio():
                     headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
                     timeout=12)
                 _j3 = _r3.json()
+                _m3_json_fails = 0  # 成功解析 JSON，重設計數器
                 if _j3.get('stat') != 'OK': continue
                 _fields3 = [str(f) for f in _j3.get('fields', [])]
                 _rc3 = next((i for i, f in enumerate(_fields3) if '維持率' in f), None)
@@ -413,11 +415,21 @@ def fetch_margin_maintenance_ratio():
                         if _vn:
                             print(f'[維持率/www-notes/{ds}] ✅ {_vn}%')
                             return _vn
+            except ValueError as _e3:
+                # JSONDecodeError 是 ValueError 子類：TWSE 回傳 HTML → 封鎖確認，立刻中斷
+                _m3_json_fails += 1
+                print(f'[維持率/www-JSON/{_sel}/{ds}] ❌ JSONDecodeError (連續{_m3_json_fails}次)，TWSE 封鎖')
+                if _m3_json_fails >= 2:
+                    print('[維持率/www-JSON] ⛔ 連續 2 次 JSONDecodeError，中斷方案3')
+                    break
             except Exception as _e3:
                 print(f'[維持率/www-JSON/{_sel}/{ds}] ❌ {type(_e3).__name__}: {_e3}')
+        else:
+            continue
+        break  # 內層 break 傳遞給外層
 
-    # ── 方案 4: TWSE TWT93U ──────────────────────────────────────────
-    for _d in candidates[:3]:
+    # ── 方案 4: TWSE TWT93U（最多 2 天）──────────────────────────────
+    for _d in candidates[:2]:   # max_retries=2
         ds = _d.strftime('%Y%m%d')
         try:
             _r4 = _TWSE_CK.get(

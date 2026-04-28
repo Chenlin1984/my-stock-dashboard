@@ -2662,13 +2662,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             timeout=12, verify=False)
                         print(f'[Macro/CPI/FRED] status={_rc1.status_code}')
                         if _rc1.status_code == 200:
+                            # parse_dates=['DATE'] 不能與 index_col='DATE' 同用（pandas 2.x ValueError）
+                            # 改為只用 parse_dates，DATE 保留為普通欄位，reset_index 確保整數索引
                             _df_c = _pd2.read_csv(_io_cpi.StringIO(_rc1.text),
-                                                  parse_dates=['DATE'], index_col='DATE').dropna()
+                                                  parse_dates=['DATE']).dropna()
+                            _df_c = _df_c.reset_index(drop=True)
                             if len(_df_c) >= 13:
-                                _col_c = _df_c.columns[0]
+                                _col_c = [c for c in _df_c.columns if c != 'DATE'][0]
                                 _vals_c = _df_c[_col_c].values
                                 _yoy = round((_vals_c[-1] / _vals_c[-13] - 1) * 100, 2)
-                                _date = str(_df_c.index[-1])[:10]
+                                _date = str(_df_c['DATE'].iloc[-1])[:10]
                                 print(f'[Macro/CPI/FRED] ✅ YoY={_yoy:.2f}% date={_date}')
                                 return {'us_core_cpi': {'yoy': _yoy, 'date': _date, 'source': 'FRED'}}
                     except Exception as _e:
@@ -2727,11 +2730,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     timeout=10, verify=False)
                                 if _rp1.status_code != 200: continue
                                 _df_p = _pd4.read_csv(_io_pmi.StringIO(_rp1.text),
-                                                      parse_dates=['DATE'], index_col='DATE').dropna()
+                                                      parse_dates=['DATE']).dropna()
+                                _df_p = _df_p.reset_index(drop=True)
                                 if len(_df_p) < 5: continue
                                 _t24p = _df_p.tail(24)
-                                _vals_p = [round(float(v), 1) for v in _t24p.iloc[:, 0]]
-                                _dates_p = [str(d)[:10] for d in _t24p.index]
+                                _val_col_p = [c for c in _t24p.columns if c != 'DATE'][0]
+                                _vals_p = [round(float(v), 1) for v in _t24p[_val_col_p]]
+                                _dates_p = [str(d)[:10] for d in _t24p['DATE']]
                                 print(f'[Macro/PMI/FRED] ✅ {_fred_s}={_vals_p[-1]} date={_dates_p[-1]}')
                                 return {'ism_pmi': {
                                     'value': _vals_p[-1],
@@ -2865,13 +2870,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
 
                     def _fm_get7(ds):
+                        # start_date 必填，否則 FinMind 常回傳空值或 status=None
                         _p = {'dataset': ds, 'start_date': '2020-01-01'}
                         if _fm_tok7: _p['token'] = _fm_tok7
                         _r = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
                                         params=_p, headers=_hdrs7, timeout=20, verify=False)
                         _j = _r.json()
-                        print(f'[Export/FM/{ds}] status={_j.get("status")} rows={len(_j.get("data",[]))}')
-                        if _j.get('status') == 200 and _j.get('data'):
+                        _st = _j.get('status')
+                        print(f'[Export/FM/{ds}] status={_st} rows={len(_j.get("data",[]))}')
+                        # status=None 表示 FinMind 回傳格式異常（限速/proxy）；只要 data 存在即接受
+                        # 明確排除已知錯誤碼 (402 rate-limit, 403 forbidden, 429 too-many, 5xx)
+                        _is_error = isinstance(_st, int) and _st not in (200,) and _st >= 400
+                        if not _is_error and _j.get('data'):
                             _df = _pd7.DataFrame(_j['data'])
                             _df.columns = [str(c).lower() for c in _df.columns]
                             return _df
