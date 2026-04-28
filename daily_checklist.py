@@ -29,7 +29,7 @@ HDR = {
     "X-Requested-With": "XMLHttpRequest",
 }
 COLORS_7 = ["#58a6ff","#3fb950","#ffd700","#f85149","#bc8cff","#79c0ff","#ff9f43"]
-INTL_MAP = {"道瓊工業 DJI":"^DJI","納斯達克 IXIC":"^IXIC","費城半導體 SOX":"^SOX","10Y公債殖利率":"^TNX","美元指數 DXY":"DX=F"}
+INTL_MAP = {"道瓊工業 DJI":"^DJI","納斯達克 IXIC":"^IXIC","費城半導體 SOX":"^SOX","10Y公債殖利率":"^TNX","美元指數 DXY":"DX-Y.NYB"}
 INTL_UNIT = {k:("%" if "殖利率" in k else "指數") for k in INTL_MAP}
 TW_MAP   = {"台股加權指數":"^TWII","新台幣匯率":"TWD=X"}
 TW_UNIT  = {"台股加權指數":"pts","新台幣匯率":"TWD/USD"}
@@ -129,7 +129,7 @@ def fetch_institutional(date_str=None):
     try:
         _r_oa = _TWSE_CK.get(
             'https://openapi.twse.com.tw/v1/fund/BFI82U',
-            headers={'Accept':'application/json','User-Agent':'Mozilla/5.0'}, timeout=10)
+            headers={**HDR, 'Accept': 'application/json'}, timeout=10)
         if _r_oa.status_code == 200:
             _j_oa = _r_oa.json()
             if isinstance(_j_oa, list) and _j_oa:
@@ -336,7 +336,7 @@ def fetch_margin_maintenance_ratio():
     try:
         _r1 = _TWSE_CK.get(
             'https://openapi.twse.com.tw/v1/marginTrading/MI_MARGN',
-            headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'},
+            headers={**HDR, 'Accept': 'application/json'},
             timeout=12)
         print(f'[維持率/openapi] status={_r1.status_code}')
         if _r1.status_code == 200:
@@ -503,7 +503,7 @@ def fetch_single(symbol, period="60d"):
     # 美元指數備援 symbol 清單
     _sym_list = [symbol]
     if symbol in ('DX-Y.NYB', 'DX=F'):
-        _sym_list = ['DX=F', 'DX-Y.NYB', 'UUP']  # 期貨→NYB→ETF
+        _sym_list = ['DX-Y.NYB', 'DX=F', 'UUP']  # NYB→期貨→ETF
     # proxy 環境注入
     try:
         from tw_stock_data_fetcher import _load_proxy_config as _lpc_fs
@@ -689,7 +689,7 @@ def fetch_adl(days=60, token=None):
             _r = _TWSE_CK.get(
                 'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX',
                 params={'response': 'json', 'date': date_ymd},
-                headers={'User-Agent': 'Mozilla/5.0'},
+                headers=HDR,
                 timeout=12
             )
             # Edge Case 1: HTTP 非 200

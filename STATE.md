@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.39 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.40 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #79 merged**（2026-04-28）— FinMind 欄位大小寫正規化 + 出口精確 indicator
+- **✅ PR #80 merged**（2026-04-28）— Python 3.14 escape fix + TWSE UA + DX=F→DX-Y.NYB
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.40）
+
+### Python 3.14 相容性 + TWSE 爬蟲防護 + DX-Y.NYB 修復
+
+| 項目 | 修復內容 |
+|------|---------|
+| **Python 3.14 SyntaxWarning** | `app.py` 蔡森/春哥 ASCII art `st.markdown("""` → `st.markdown(r"""` 消除 `\ ` invalid escape |
+| **DX=F → DX-Y.NYB** | `daily_checklist.py` INTL_MAP 美元指數 DXY 主 symbol 改為 `DX-Y.NYB`；`_sym_list` 順序改為 `['DX-Y.NYB', 'DX=F', 'UUP']` |
+| **TWSE Chrome UA** | `daily_checklist.py:692` MI_INDEX 抓取 `headers=HDR`（Chrome/120 完整 UA）；`daily_checklist.py:339` MI_MARGN openapi `headers={**HDR,'Accept':'application/json'}` |
+| **TWSE Chrome UA (app.py)** | `app.py:275` TWT49U 除權息 + `app.py:4497` MI_INDEX 上漲下跌家數 → 全升級為完整 Chrome UA，防 TWSE JSONDecodeError |
+| **連線測試 UA** | `app.py:1189` sidebar 連線測試 TWSE 探測也升級為 Chrome/120 UA |
 
 ## ✅ 最新異動（v10.39，commit `ed4ea55`，PR #79）
 

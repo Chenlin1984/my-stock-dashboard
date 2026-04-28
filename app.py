@@ -279,9 +279,11 @@ def fetch_dividend_data(sid):
                 _tw_div_url,
                 params={'response': 'json', 'strDate': _start_dt_div,
                         'endDate': _end_dt_div, 'stockNo': sid},
-                headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                          'Referer':'https://www.twse.com.tw/',
-                         'Accept':'application/json, text/javascript, */*'},
+                         'Accept':'application/json, text/javascript, */*; q=0.01',
+                         'Accept-Language':'zh-TW,zh;q=0.9,en;q=0.8',
+                         'X-Requested-With':'XMLHttpRequest'},
                 timeout=15)
             _tw_div_j = _tw_div_r.json()
             if _tw_div_j.get('stat') == 'OK' and _tw_div_j.get('data'):
@@ -1184,7 +1186,7 @@ with st.sidebar:
         for _tn, _tu, _skip_ssl in _test_targets:
             try:
                 _tr = _rq_sb.get(_tu, timeout=6, verify=not _skip_ssl,
-                                  headers={'User-Agent': 'Mozilla/5.0'})
+                                  headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
                 _conn_res.append((_tn, _tr.status_code, _tr.status_code < 400))
             except Exception as _te:
                 _conn_res.append((_tn, type(_te).__name__, False))
@@ -4494,7 +4496,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 _prm = {'response':'json','date':_today_ds}
                 if _tp: _prm['type'] = _tp
                 _mir = _bps().get('https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX',
-                                    params=_prm, headers={'User-Agent':'Mozilla/5.0','Referer':'https://www.twse.com.tw/'}, timeout=8)
+                                    params=_prm, headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36','Referer':'https://www.twse.com.tw/','Accept':'application/json, text/javascript, */*; q=0.01','X-Requested-With':'XMLHttpRequest'}, timeout=8)
                 if _mir.status_code == 200:
                     _mij = _mir.json()
                     if _mij.get('stat') == 'OK':
@@ -8658,7 +8660,7 @@ with tab_edu:
 
     # ── 蔡森 ─────────────────────────────────────────────────────
     with st.expander('📐 蔡森 — 型態學：破底翻 × 頭肩底 × 頸線突破', expanded=True):
-        st.markdown("""
+        st.markdown(r"""
 ### 核心邏輯：用「型態」讀懂主力換手完畢的訊號
 
 蔡森老師認為，K線型態是「資金博弈的足跡」。主力洗盤完畢後，往往留下可辨識的底部型態。
@@ -8709,7 +8711,7 @@ with tab_edu:
 
     # ── 春哥 ─────────────────────────────────────────────────────
     with st.expander('🌀 春哥（Mark Minervini）— VCP 波幅收縮與爆量突破', expanded=True):
-        st.markdown("""
+        st.markdown(r"""
 ### 核心邏輯：波幅每次比上次小 → 籌碼鎖定完成 → 等爆量突破
 
 VCP（Volatility Contraction Pattern）是 Mark Minervini 的核心選股法，
