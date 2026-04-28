@@ -1442,13 +1442,11 @@ def _build_llm_context(macro_info: dict) -> str:
     if _exp.get('yoy') is not None:
         _lines.append(f'• 台灣外銷訂單 YoY：{_exp["yoy"]:+.1f}%  ({_exp.get("date","")})')
     if _pmi.get('value') is not None:
-        _lbl = 'OECD CLI' if _pmi.get('is_oecd_cli') else 'ISM PMI'
-        _lines.append(f'• {_lbl}：{_pmi["value"]}  ({_pmi.get("date","")})')
+        _lines.append(f'• ISM PMI：{_pmi["value"]}  ({_pmi.get("date","")})')
     if _cpi.get('yoy') is not None:
         _lines.append(f'• 美國核心 CPI YoY：{_cpi["yoy"]:+.1f}%  ({_cpi.get("date","")})')
     if _ndc.get('score') is not None:
-        _proxy_lbl = '（OECD CLI 代理估算）' if _ndc.get('_is_proxy') else ''
-        _lines.append(f'• NDC 景氣燈號分數：{_ndc["score"]:.0f}/45{_proxy_lbl}')
+        _lines.append(f'• NDC 景氣燈號分數：{_ndc["score"]:.0f}/45')
     if _mi.get('m1b_yoy') is not None and _mi.get('m2_yoy') is not None:
         _gap = round(float(_mi['m1b_yoy']) - float(_mi['m2_yoy']), 2)
         _lines.append(f'• 台灣 M1B={_mi["m1b_yoy"]:.1f}%  M2={_mi["m2_yoy"]:.1f}%  Gap={_gap:+.2f}%')
@@ -2740,26 +2738,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 if v is None: os.environ.pop(k, None)
                                 else: os.environ[k] = v
                     except Exception as _e: print(f'[Macro/PMI/PDR] ❌ {_e}')
-                    # ── 方案2: dbnomics OECD PMI ──────────────────────────────────
-                    for _pms in ['OECD/MEI_BTS_COS/USA.MNFCTRPMI.ST.M',
-                                 'OECD/MEI/USA.MNFCTRPMI.ST.M']:
-                        try:
-                            _d = _dbn_px(_s_p, _pms)
-                            if _d is None or len(_d) < 5: continue
-                            _d = _d.copy()
-                            _d['_v'] = _pd4.to_numeric(_d['value'], errors='coerce')
-                            _d = _d.dropna(subset=['_v'])
-                            if len(_d) == 0: continue
-                            _t24 = _d.tail(24)
-                            print(f'[Macro/PMI/OECD] ✅ PMI={float(_d["_v"].iloc[-1]):.1f} date={str(_d["period"].iloc[-1])[:10]}')
-                            return {'ism_pmi': {
-                                'value': round(float(_d['_v'].iloc[-1]), 1),
-                                'date': str(_d['period'].iloc[-1])[:10],
-                                'dates': [str(p)[:10] for p in _t24['period']],
-                                'values': [round(float(v), 1) for v in _t24['_v']],
-                                'label': 'OECD Mfg PMI',
-                            }}
-                        except Exception as _e: print(f'[Macro/PMI/OECD] ❌ {_pms}: {_e}')
                     return {}
 
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
@@ -2914,21 +2892,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     return {'tw_export': {'yoy': _yoy7, 'date': _date7, 'source': 'FinMind'}}
                         except Exception as _e7: print(f'[Macro/Export/FM] ❌ {_fm_ds7}: {_e7}')
 
-                    # ── 方案3: dbnomics OECD/IMF（最終備援）────────────────────────
-                    for _exs in ['OECD/MEI/TWN.XTEXVA01.CXML.M',
-                                 'OECD/MEI/TWN.XTEXVA01.CXML.Q',
-                                 'IMF/IFS/M.TW.TXG_FOB_USD']:
-                        try:
-                            _d = _dbn_px(_s_ex, _exs)
-                            if _d is None or len(_d) < 14: continue
-                            _ev = _pd7.to_numeric(_d['value'], errors='coerce').dropna()
-                            _step = 4 if '.Q' in _exs else 12
-                            if len(_ev) < _step + 1: continue
-                            _yoy = round((_ev.iloc[-1] / _ev.iloc[-(_step+1)] - 1) * 100, 2)
-                            _date = str(_d['period'].iloc[-1])[:7]
-                            print(f'[Macro/Export/DBN] ✅ {_exs} YoY={_yoy:.2f}% date={_date}')
-                            return {'tw_export': {'yoy': _yoy, 'date': _date, 'source': 'OECD'}}
-                        except Exception as _e: print(f'[Macro/Export/DBN] ❌ {_exs}: {_e}')
                     return {}
 
                 # ── 並行執行（5 個獨立資料源同時跑，總時間 = max 而非 sum）──────
@@ -4691,8 +4654,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _nl8   = ('🔴 紅燈 過熱' if _sc8 >= 38 else '🟡 黃紅燈 繁榮' if _sc8 >= 32 else
                       '🟢 綠燈 穩定' if _sc8 >= 23 else '🔵 黃藍燈 趨緩' if _sc8 >= 17 else '🔵 藍燈 衰退')
             _nd8   = f" ({_m8_ndc.get('date','')})" if _m8_ndc.get('date') else ''
-            _proxy8 = _m8_ndc.get('_is_proxy', False)
-            _ndc_title8 = 'NDC 景氣燈號 (OECD CLI代理)' if _proxy8 else 'NDC 景氣燈號'
+            _ndc_title8 = 'NDC 景氣燈號'
             st.markdown(kpi(_ndc_title8, f'{_sc8:.0f} 分', f'{_nl8}{_nd8}', _nc8, '#0d1117'), unsafe_allow_html=True)
         else:
             st.markdown(kpi('NDC 景氣燈號', '待取得', '9分藍燈→45分紅燈', '#484f58', '#0d1117'), unsafe_allow_html=True)
@@ -4710,9 +4672,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     with _s8c1[2]:
         if _m8_pmi:
             _pv8 = _m8_pmi.get('value', 50)
-            _is_cli = _m8_pmi.get('is_oecd_cli', False)
-            _pmi_title = 'OECD CLI (US)' if _is_cli else 'US ISM PMI'
-            _pmi_榮枯 = 100 if _is_cli else 50
+            _pmi_title = 'US ISM PMI'
+            _pmi_榮枯 = 50
             _pc8 = '#3fb950' if _pv8 >= _pmi_榮枯 else ('#d29922' if _pv8 >= (_pmi_榮枯-3) else '#f85149')
             _pl8 = ('✅ 擴張' if _pv8 >= _pmi_榮枯 else
                     ('⚠️ 輕微收縮，留意終端需求' if _pv8 >= (_pmi_榮枯-3) else '🔴 嚴重收縮，台股電子股承壓'))
