@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.41 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.42 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
 - **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
 
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.42）
+
+### FRED BOM 修復 + cnyes Next.js + DeprecationWarning 清除 + 法人圖表接入
+
+| 項目 | 修復內容 |
+|------|---------|
+| **FRED `Missing column 'DATE'`** | 改用 `parse_dates=[0]` 位置索引 + BOM strip，根治 FRED CSV 欄名含 `﻿` 前綴的解析失敗；CPI/PMI timeout 12s→15s |
+| **cnyes Next.js SPA** | 升級為 `__NEXT_DATA__` JSON 提取（SSR初始狀態）+ 全文 regex + 標籤特徵數字 + debug HTML 印出；移除 `www.twse.com.tw` 方案3/4（永遠 JSONDecodeError） |
+| **utcfromtimestamp** | `app.py:2634` 改為 `fromtimestamp(t, timezone.utc)`，消除 Python 3.14 DeprecationWarning |
+| **use_container_width** | `st.plotly_chart` 兩處改為 `width='stretch'`（只替換 chart element，保留 dataframe/button 原有參數） |
+| **三大法人空白圖表** | `bar_chart_institutional` 補 `_all_zero` 佔位 bar + 提示 annotation；在 app.py 三大法人 section 接入 `st.plotly_chart(bar_chart_institutional(...))` |
 
 ## ✅ 最新異動（v10.41）
 
