@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.48 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.48.1 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #83 merged**（2026-04-28）— histock維持率 + analyze_20d_chips
+- **✅ PR #89 merged**（2026-04-29）— DSO N/A修復 + MJ新聞整合
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.48.1）
+
+### 融資維持率爬蟲強制重寫 + NDC/Export 總經函數精簡
+
+| 項目 | 修復內容 |
+|------|---------|
+| **融資維持率強制重寫** | `daily_checklist.py fetch_margin_maintenance_ratio()` 全部替換：方案1 TWSE `MI_MARGN?response=json` + regex `整體市場維持率.*?(\d{3,4})` 取值；方案2 HiStock BeautifulSoup 備援；移除原 openapi+_TWSE_CK 依賴與 7天日期回溯迴圈 |
+| **NDC 死亡迴圈消滅** | `app.py _fetch_ndc()` 移除 data.gov.tw 三層嵌套迴圈（package_search + 3 resource_ids × 2 API）；改為單次 FinMind `TaiwanMacroEconomics data_id=景氣對策信號(分)` 精準查詢；從 7379 字元削至 2450 字元 |
+| **Export 函數精簡** | `app.py _fetch_export()` 移除 TaiwanExportImportTotal / TaiwanExportByIndustry 備援迴圈；改為單次 `data_id=出口-總值` 直取；最壞情況從 60s 降至 20s |
+| **回傳格式相容** | 兩函數回傳格式維持 `{ndc_signal:{score,signal,date}}` / `{tw_export:{yoy,date,source}}`，上游 session_state 無需修改 |
+| **Bug 修正** | 原始指令 URL Markdown 格式錯誤、函數名稱 fetch_margin_ratio → fetch_margin_maintenance_ratio、DataLoader 回傳格式不相容等 3 項 bug 均已修正 |
 
 ## ✅ 最新異動（v10.48）
 
