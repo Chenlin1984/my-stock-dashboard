@@ -1735,6 +1735,30 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         if ar > 0:
             print(f"[fetch_fin] {stock_id} ar 模糊比對: {ar:.0f}千")
 
+    # ── FinMind 原始列 str.contains 兜底（非標準科目命名，如力積電等）──
+    if ar == 0 and _bs_rows:
+        try:
+            import pandas as _pd_ar_sc
+            _bs_df_sc = _pd_ar_sc.DataFrame(_bs_rows)
+            if not _bs_df_sc.empty and 'date' in _bs_df_sc.columns and 'type' in _bs_df_sc.columns:
+                _lat_sc = _bs_df_sc[_bs_df_sc['date'] == _lat].copy()
+                _excl_kw = '利息|所得稅|員工|遞延|退稅'
+                _on_col = (_lat_sc['origin_name'] if 'origin_name' in _lat_sc.columns
+                           else _pd_ar_sc.Series([''] * len(_lat_sc), index=_lat_sc.index))
+                _ar_mask = (
+                    (_lat_sc['type'].str.contains('應收帳款', na=False) |
+                     _on_col.str.contains('應收帳款', na=False)) &
+                    ~_lat_sc['type'].str.contains(_excl_kw, na=False)
+                )
+                _ar_match_sc = _lat_sc[_ar_mask]
+                if not _ar_match_sc.empty:
+                    ar = float(_ar_match_sc['value'].max() or 0)
+                    if ar > 0:
+                        print(f"[fetch_fin] {stock_id} ar str.contains兜底: {ar:.0f}千 "
+                              f"types={list(_ar_match_sc['type'].values)[:3]}")
+        except Exception as _e_ar_sc:
+            print(f"[fetch_fin] {stock_id} ar str.contains兜底異常: {_e_ar_sc}")
+
     # ── yfinance 備援：對仍為零的關鍵欄位嘗試補值 ────────────────────────
     if ar == 0 or liab == 0 or assets == 0:
         try:
