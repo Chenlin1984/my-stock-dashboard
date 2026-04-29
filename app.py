@@ -7111,7 +7111,14 @@ padding:12px 16px;margin:8px 0;">
                                 _fin_raw['b_item_5y'] = fetch_5_years_cash_flow(sid2, FINMIND_TOKEN)
                             except Exception:
                                 pass  # fallback 到 1Q 估算
-                            _fh_out = analyze_financial_health(api_key, sid2, _fin_raw)
+                            # 近期新聞：供 MJ 體檢 AI insight 結合市場情緒
+                            _mj_news = _fetch_stock_news(sid2, name2, 3)
+                            _mj_news_str = '\n'.join(
+                                f'- {_n["title"]}（{_n.get("source","RSS")} · {_n.get("published","")}）'
+                                for _n in _mj_news
+                            ) if _mj_news else '（暫無近期個股新聞）'
+                            _fh_out = analyze_financial_health(api_key, sid2, _fin_raw,
+                                                               news_context=_mj_news_str)
                             st.session_state[_fh_key2] = _fh_out
                     except Exception as _fh_exc:
                         st.session_state[_fh_key2] = {'error': True, 'ai_insight': f'財報體檢發生例外：{_fh_exc}'}

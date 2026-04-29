@@ -224,6 +224,11 @@ _PROMPT_TEMPLATE = """\
 {financial_data_json}
 </Financial_Data>
 
+# Recent News Context (RSS 即時，僅供輔助研判)
+<近期新聞>
+{news_context}
+</近期新聞>
+
 # Output Protocol
 直接輸出以下 JSON（禁止 Markdown 包裝）：
 {{
@@ -246,7 +251,7 @@ _PROMPT_TEMPLATE = """\
     "receivable_days": 數字,
     "advantage": true或false
   }},
-  "ai_insight": "結合DuPont+盈餘品質的150字白話診斷，說明現況與潛在風險（語氣冷靜客觀）",
+  "ai_insight": "結合DuPont+盈餘品質的150字白話診斷，說明現況與潛在風險（語氣冷靜客觀）。請結合上述提供的<近期新聞>，分析市場情緒與未來潛在的催化劑。",
   "red_flags": "若有①應收帳款增速>營收增速②存貨大增③OCF持續負④負債急升，請說明。若無異常填 None"
 }}"""
 
@@ -1035,10 +1040,11 @@ def analyze_advanced_diagnostic_module(api_key: str, stock_id: str, fin_data: di
 
 
 # ── 公開入口 ────────────────────────────────────────────────
-def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dict:
+def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict,
+                             news_context: str = "") -> dict:
     """
-    從 fin_data 直接計算所有 MJ 財報體檢指標（純數學，零 AI 呼叫）。
-    AI 分析只在使用者點擊「生成 AI 首席顧問戰略評估報告」按鈕時才觸發。
+    從 fin_data 直接計算所有 MJ 財報體檢指標（純數學）。
+    若提供 api_key 與 news_context，則額外呼叫 Gemini 生成結合新聞的 ai_insight。
     """
     if not fin_data or fin_data.get("error"):
         fs = _FAIL_SAFE.copy()
@@ -1056,6 +1062,23 @@ def analyze_financial_health(api_key: str, stock_id: str, fin_data: dict) -> dic
     result["financial_structure_module"] = _no_ai_financial_structure(fin_data).get("Financial_Structure_Module", {})
     result["solvency_module"]           = _no_ai_solvency(fin_data).get("Solvency_Module", {})
     result["advanced_diagnostic_module"] = _no_ai_advanced_diagnostic(fin_data).get("Advanced_Diagnostic_Module", {})
+
+    # 若有 api_key 與 news_context，呼叫 Gemini 生成含新聞情緒的 ai_insight
+    if api_key and news_context:
+        try:
+            _news_prompt = _PROMPT_TEMPLATE.format(
+                financial_data_json=json.dumps(fin_data, ensure_ascii=False, indent=2),
+                news_context=news_context,
+            )
+            _raw_mj = _gemini_call(_news_prompt, api_key)
+            _parsed_mj = _extract_json(_raw_mj)
+            if _parsed_mj.get("ai_insight"):
+                result["ai_insight"] = _parsed_mj["ai_insight"]
+            if _parsed_mj.get("red_flags"):
+                result["red_flags"] = _parsed_mj["red_flags"]
+            print(f"[FinHealth] ✅ {stock_id} MJ+新聞 AI insight 生成完成")
+        except Exception as _e_mj:
+            print(f"[FinHealth] {stock_id} MJ AI insight生成失敗: {_e_mj}")
 
     print(f"[FinHealth] ✅ {stock_id} 純計算完成 DNA={result.get('business_model_dna','?')}")
     return result
