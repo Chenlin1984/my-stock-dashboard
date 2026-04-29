@@ -191,11 +191,15 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
     return r
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.DataFrame":
+def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.DataFrame":
     """ETF 歷史淨值及折溢價（最近 N 個交易日）
     資料來源優先順序：
       1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
-      2. TWSE OpenAPI v1/ETF/TaiwanStockPremiumDiscountRatio（僅最新一日）
+      2. goodinfo.tw StockDetail（不受 TWSE IP 封鎖）
+      3. TWSE OpenAPI（僅 NAS Proxy 環境）
+      4. MoneyDJ BeautifulSoup
+      5. yfinance navPrice
+      6. FinMind 過舊資料兜底
     回傳欄位：date / price / nav / premium / premium_pct
     """
     import os, datetime as _dt, requests as _rq_etfnav
@@ -218,7 +222,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
             _j = _r.json()
             _jstatus = _j.get('status')
             _jdata   = _j.get('data')
-            if _jstatus == 200 and _jdata:
+            # 接受 status=200 / status=None（部分 proxy 環境）；排除已知錯誤碼
+            _status_ok = str(_jstatus) not in ('400', '401', '402', '403', '404', '500')
+            if _jdata and _status_ok:
                 _df = _pd_etfnav.DataFrame(_jdata)
                 # 自動偵測 NAV 欄位名稱（FinMind 兩個版本欄位名不同）
                 _nav_field = next((f for f in ['nav', 'base_unit_net_value', 'NavPrice', 'netAssetValue']
@@ -246,11 +252,62 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
         except Exception as _e1:
             print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
-    # ── 2. 過舊 FinMind 備援（< 30d）→ 比後續爬蟲更可靠；不必等 TWSE 連線失敗 ──
-    # TWSE openapi 在 Streamlit Cloud 永遠被 IP 封鎖，提前使用 FinMind 過舊資料
-    if _df_stale is not None and not _df_stale.empty and _days_stale < 30:
-        print(f'[ETF NAV] {code} 使用 FinMind 過舊資料({_days_stale}d)備援，跳過 TWSE')
-        return _df_stale
+    # ── 2. goodinfo.tw — 不受 TWSE IP 封鎖，抓取 ETF 淨值 ───────────────────
+    try:
+        from bs4 import BeautifulSoup as _BS4_gi
+        import re as _re_gi
+        _url_gi = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={code}'
+        _hdrs_gi = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'zh-TW,zh;q=0.9', 'Referer': 'https://goodinfo.tw/tw/'}
+        try:
+            from curl_cffi import requests as _cffi_gi
+            _r_gi = _cffi_gi.get(_url_gi, impersonate='chrome124', timeout=12)
+        except Exception:
+            _r_gi = _rq_etfnav.get(_url_gi, headers=_hdrs_gi, timeout=12, verify=False)
+        if _r_gi.status_code == 200:
+            _soup_gi = _BS4_gi(_r_gi.text, 'lxml')
+            _nav_gi, _prem_gi = None, None
+            # 策略1：在 <td> 中找「淨值」標籤，取下一格數字
+            for _td_gi in _soup_gi.find_all('td'):
+                _txt_gi = _td_gi.get_text(strip=True)
+                if _txt_gi in ('淨值', '每單位淨值', 'NAV'):
+                    _sib_gi = _td_gi.find_next_sibling('td')
+                    if _sib_gi:
+                        try:
+                            _nav_gi = float(_sib_gi.get_text(strip=True).replace(',', ''))
+                            if not (0.5 < _nav_gi < 100000): _nav_gi = None
+                        except: pass
+                    if _nav_gi: break
+            # 策略2：regex 掃全文
+            if not _nav_gi:
+                _m_gi = _re_gi.search(r'淨值[^\d<]{0,30}?(\d{1,5}\.\d{2,6})', _r_gi.text)
+                if _m_gi:
+                    try:
+                        _nav_gi = float(_m_gi.group(1))
+                        if not (0.5 < _nav_gi < 100000): _nav_gi = None
+                    except: pass
+            # 嘗試抓折溢價率
+            if _nav_gi:
+                for _td_gi2 in _soup_gi.find_all('td'):
+                    if '折溢價' in _td_gi2.get_text(strip=True):
+                        _sib_gi2 = _td_gi2.find_next_sibling('td')
+                        if _sib_gi2:
+                            _m_p = _re_gi.search(r'([+-]?\d+\.?\d*)', _sib_gi2.get_text(strip=True))
+                            if _m_p:
+                                try: _prem_gi = float(_m_p.group(1))
+                                except: pass
+                        if _prem_gi is not None: break
+                _row_gi = {'date': _dt.date.today(), 'nav': _nav_gi}
+                if _prem_gi is not None: _row_gi['premium_pct'] = _prem_gi
+                print(f'[ETF NAV] {code} goodinfo: nav={_nav_gi} prem={_prem_gi}%')
+                return _pd_etfnav.DataFrame([_row_gi])
+            else:
+                print(f'[ETF NAV] {code} goodinfo: 找不到淨值欄位')
+        else:
+            print(f'[ETF NAV] {code} goodinfo: HTTP {_r_gi.status_code}')
+    except Exception as _e_gi:
+        print(f'[ETF NAV] goodinfo {code}: {_e_gi}')
 
     # ── 3. TWSE OpenAPI（僅在 NAS Proxy 設定時才嘗試，雲端 IP 封鎖）─────────
     try:
@@ -381,9 +438,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
                 print(f'[ETF NAV] yfinance {code}{_sfx3}: {_e3}')
                 break
 
-    # ── 最終兜底：≥30d 過舊 FinMind（僅在 MoneyDJ/yfinance 都失敗時）─────────
+    # ── 最終兜底：FinMind 過舊資料（goodinfo/MoneyDJ/yfinance 全部失敗時）────
     if _df_stale is not None and not _df_stale.empty:
-        print(f'[ETF NAV] {code} 最終兜底: 使用過舊FinMind資料({_days_stale}d)')
+        print(f'[ETF NAV] {code} 最終兜底: FinMind過舊資料({_days_stale}d)，所有即時來源失敗')
         return _df_stale
 
     return _pd_etfnav.DataFrame()
