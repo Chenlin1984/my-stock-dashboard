@@ -31,6 +31,7 @@ from daily_checklist import (
     margin_card, fetch_institutional, fetch_margin_balance,
     fetch_margin_maintenance_ratio, evaluate_market_status_v4_final,
     fetch_adl,
+    analyze_20d_chips,
     _fetch_otc_via_finmind,
     INTL_MAP, INTL_UNIT, TW_MAP, TW_UNIT, TECH_MAP, COLORS_7,
 )
@@ -2763,8 +2764,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     # ── 方案1: FinMind TaiwanMacroEconomics（景氣對策信號）──────────
                     try:
                         _fm_tok_n = _get_fm_token()
-                        # 固定 start_date 確保有足夠月份資料計算同比
-                        _p_n = {'dataset': 'TaiwanMacroEconomics', 'start_date': '2020-01-01'}
+                        # 固定 start_date 確保有足夠歷史月份（2015 確保 YoY 計算無空缺）
+                        _p_n = {'dataset': 'TaiwanMacroEconomics', 'start_date': '2015-01-01'}
                         if _fm_tok_n: _p_n['token'] = _fm_tok_n
                         _r_n = _s.get('https://api.finmindtrade.com/api/v4/data',
                                        params=_p_n, timeout=20, verify=False,
@@ -2871,8 +2872,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
 
                     def _fm_get7(ds):
-                        # start_date 必填，否則 FinMind 常回傳空值或 status=None
-                        _p = {'dataset': ds, 'start_date': '2020-01-01'}
+                        # start_date 必填；2015 確保 TaiwanMacroEconomics 有足夠歷史資料
+                        _p = {'dataset': ds, 'start_date': '2015-01-01'}
                         if _fm_tok7: _p['token'] = _fm_tok7
                         _r = _s_ex.get('https://api.finmindtrade.com/api/v4/data',
                                         params=_p, headers=_hdrs7, timeout=20, verify=False)
@@ -6268,6 +6269,48 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
                 f'<span style="font-size:13px;font-weight:700;color:{_bb_c};">{_bb_verdict_safe}</span>'
                 f'</div>', unsafe_allow_html=True
             )
+
+        # ══ G. 近 20 日籌碼集中度（外資+投信 vs 總成交量）═══════════
+        st.markdown('---')
+        st.markdown('#### 🔬 G. 近 20 日籌碼集中度')
+        with st.spinner(f'計算 {sid2} 近 20 日籌碼集中度...'):
+            _chip20 = analyze_20d_chips(sid2)
+        if _chip20.get('error'):
+            st.caption(f'⚫ 籌碼集中度取得失敗：{_chip20["error"]}')
+        else:
+            _sig20  = _chip20['signal']
+            _con20  = _chip20['concentration']   # % 集中度
+            _cty20  = _chip20['continuity']       # % 延續性
+            _days20 = _chip20['days']
+            _pos20  = _chip20['pos_days']
+            _sig20_c = ('#f85149' if '吸籌' in _sig20
+                        else ('#da3633' if '倒貨' in _sig20 else '#d29922'))
+            st.markdown(
+                f'<div style="background:#0d1117;border:1px solid {_sig20_c};'
+                f'border-radius:8px;padding:10px 14px;margin:6px 0;">'
+                f'<span style="font-size:14px;font-weight:900;color:{_sig20_c};">'
+                f'{_sig20}</span>'
+                f'<span style="font-size:11px;color:#8b949e;margin-left:12px;">'
+                f'近 {_days20} 日 | 外+投累計 {_chip20["total_net_k"]:.1f}千張 | '
+                f'成交量 {_chip20["total_vol_k"]:.1f}千張</span>'
+                f'</div>', unsafe_allow_html=True)
+            _g20c1, _g20c2 = st.columns(2)
+            with _g20c1:
+                st.metric(
+                    label='指標A：集中度（外+投淨買／總量）',
+                    value=f'{_con20:+.2f}%',
+                    delta='吸籌' if _con20 >= 0 else '倒貨',
+                    delta_color='normal' if _con20 >= 0 else 'inverse',
+                    help='> +5% 且延續性 > 50% → 大戶吸籌；< -5% → 大戶倒貨')
+                st.progress(min(abs(_con20) / 20.0, 1.0),
+                            text=f'集中度絕對值 {abs(_con20):.1f}% / 20%上限')
+            with _g20c2:
+                st.metric(
+                    label=f'指標B：延續性（{_days20}日中買超 {_pos20} 天）',
+                    value=f'{_cty20:.0f}%',
+                    help='> 50% 表示多數交易日外+投持續買超')
+                st.progress(_cty20 / 100.0,
+                            text=f'買超天數佔比 {_cty20:.0f}%')
 
         # ══ F. K線技術圖 ═══════════════════════════════════════
         st.markdown('---')
