@@ -331,18 +331,21 @@ def fetch_margin_maintenance_ratio():
     }
     _nas = get_nas_proxy()
 
-    # 方案1: TWSE（NAS Proxy 優先；無 Proxy 時直連）
-    try:
-        _res = _rq_mr.get(_url, headers=_headers, proxies=_nas, timeout=10)
-        _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
-        if _m:
-            _v = float(_m.group(1))
-            if 100 <= _v <= 500:
-                print(f'[維持率/TWSE] ✅ {_v}%')
-                return _v
-        print(f'[維持率/TWSE] ❌ regex未命中 head={_res.text[:150]!r}')
-    except Exception as _e1:
-        print(f'[維持率/TWSE] ❌ {type(_e1).__name__}: {_e1}')
+    # 方案1: TWSE（僅在 NAS Proxy 設定時才嘗試，避免雲端 IP 被封鎖白費 timeout）
+    if _nas:
+        try:
+            _res = _rq_mr.get(_url, headers=_headers, proxies=_nas, timeout=10, verify=False)
+            _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
+            if _m:
+                _v = float(_m.group(1))
+                if 100 <= _v <= 500:
+                    print(f'[維持率/NAS→TWSE] ✅ {_v}%')
+                    return _v
+            print(f'[維持率/NAS→TWSE] ❌ regex未命中 head={_res.text[:150]!r}')
+        except Exception as _e1:
+            print(f'[維持率/NAS→TWSE] ❌ {type(_e1).__name__}: {_e1}')
+    else:
+        print('[維持率/TWSE] ⏭️ 無 NAS Proxy，跳過直連（雲端 IP 會被封鎖）')
 
     # 方案2: HiStock BeautifulSoup（備援）
     try:
@@ -351,7 +354,7 @@ def fetch_margin_maintenance_ratio():
             'https://histock.tw/stock/margin.aspx',
             headers={**_headers, 'Accept': 'text/html,application/xhtml+xml',
                      'Referer': 'https://histock.tw/'},
-            proxies=_nas, timeout=15)
+            proxies=_nas, timeout=15, verify=False)
         if _r2.status_code == 200:
             _text = _BS(_r2.text, 'html.parser').get_text(' ', strip=True)
             _m2 = _re_mr.search(r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text)
