@@ -3882,15 +3882,33 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         st.markdown(f'<div style="color:#8b949e;font-size:11px;padding:1px 8px 6px 8px;">→ 建議行動：{_hye_act}</div>', unsafe_allow_html=True)
         if _tn3 > 5:
             st.markdown(f'<div style="color:#58a6ff;font-size:12px;padding:2px 6px;">• 投信買超 {_tn3:.1f}億 → 連續買超是加碼訊號</div>', unsafe_allow_html=True)
-        # 三大法人買賣超柱狀圖（Plotly 在 Streamlit Cloud 渲染異常，改用 st.bar_chart）
+        # 三大法人買賣超柱狀圖（直接用 plotly，繞過 st.bar_chart→altair 相容性問題）
         _zk3 = next((k for k in inst if '自營' in k), None)
-        _bc_df = pd.DataFrame({
-            '外資': [float(_fn3 or 0)],
-            '投信': [float(_tn3 or 0)],
-            '自營商': [float((inst.get(_zk3) or {}).get('net', 0) or 0)],
-        }, index=[str(st.session_state.get('_last_inst_date') or '今日')[:10]])
-        _bc_df[['外資', '投信', '自營商']] = _bc_df[['外資', '投信', '自營商']].astype(float)
-        st.bar_chart(_bc_df)
+        _bc_vals = [float(_fn3 or 0),
+                    float(_tn3 or 0),
+                    float((inst.get(_zk3) or {}).get('net', 0) or 0)]
+        _bc_colors = ['#58a6ff' if v >= 0 else '#f85149' for v in _bc_vals] + \
+                     ['#3fb950' if _bc_vals[1] >= 0 else '#f85149',
+                      '#ffd700' if _bc_vals[2] >= 0 else '#f85149']
+        _bc_colors = ['#58a6ff' if _bc_vals[0] >= 0 else '#f85149',
+                      '#3fb950' if _bc_vals[1] >= 0 else '#f85149',
+                      '#ffd700' if _bc_vals[2] >= 0 else '#f85149']
+        try:
+            import plotly.graph_objects as _go_bc
+            _fig_bc = _go_bc.Figure(_go_bc.Bar(
+                x=['外資', '投信', '自營商'], y=_bc_vals,
+                marker_color=_bc_colors, text=[f'{v:+.1f}億' for v in _bc_vals],
+                textposition='outside'))
+            _fig_bc.update_layout(
+                height=200, margin=dict(t=30, b=10, l=10, r=10),
+                paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+                font=dict(color='#e6edf3', size=12),
+                yaxis=dict(showgrid=False, zeroline=True,
+                           zerolinecolor='#484f58', showticklabels=False))
+            st.plotly_chart(_fig_bc, use_container_width=True,
+                            config={'displayModeBar': False})
+        except Exception as _bc_err:
+            st.caption(f'外資 {_bc_vals[0]:+.1f}億 ｜ 投信 {_bc_vals[1]:+.1f}億 ｜ 自營商 {_bc_vals[2]:+.1f}億')
     if margin:
         if margin >= 3400:
             _sql_mc = '#f85149'; _sql_mind = f'融資餘額 {margin:.0f}億'; _sql_mconcl = '極度危險，嚴防多殺多 → 行情尾端'; _sql_mact = '全面減碼，勿追高，準備逃命'
