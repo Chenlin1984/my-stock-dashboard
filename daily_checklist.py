@@ -312,79 +312,74 @@ def fetch_margin_balance(date_str=None):
 def fetch_margin_maintenance_ratio():
     """
     全市場融資維持率(%)
-    方案1: TWSE openapi.twse.com.tw（乾淨 JSON，不同 domain 較無 SSL 問題）
-    方案2: BeautifulSoup 爬取 鉅亨網 cnyes.com（第三方已算好的數字）
-    方案3: TWSE www.twse.com.tw MI_MARGN JSON（原有路徑，仍保留）
-    方案4: TWSE TWT93U JSON
+    方案1: TWSE www.twse.com.tw MI_MARGN JSON + regex（強制重寫版）
+    方案2: HiStock BeautifulSoup（備援）
     失敗時 return None，不拋出 Exception
     """
-    import re as _re_mr
-    from bs4 import BeautifulSoup
+    import requests as _rq_mr, re as _re_mr
+    from bs4 import BeautifulSoup as _BS_mr
 
-    def _parse_ratio(raw):
+    # [Bug修正] 原提供的 URL 含 Markdown 格式，此處還原為純字串
+    _TWSE_URL = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
+                 "?response=json&selectType=MS")
+    # [Bug修正] 函數名稱保持 fetch_margin_maintenance_ratio（呼叫端 app.py:2029 依賴此名稱）
+    _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+           "AppleWebKit/537.36 (KHTML, like Gecko) "
+           "Chrome/122.0.0.0 Safari/537.36")
+    _HDR_MR = {"User-Agent": _UA}
+
+    def _valid(v):
         try:
-            v = float(str(raw).replace(',', '').replace('%', '').strip())
-            if 100 <= v <= 500: return v
-        except Exception: pass
-        return None
+            fv = float(str(v).replace(',', '').replace('%', '').strip())
+            return fv if 100 <= fv <= 500 else None
+        except Exception:
+            return None
 
-    today = _tw_today_dl()
-    candidates = [today - datetime.timedelta(days=i)
-                  for i in range(14) if (today - datetime.timedelta(days=i)).weekday() < 5][:7]
-
-    # ── 方案 1: TWSE openapi（乾淨 JSON，無需日期參數）─────────────────
+    # ── 方案1: TWSE MI_MARGN regex（強制重寫邏輯）────────────────────
     try:
-        _r1 = _TWSE_CK.get(
-            'https://openapi.twse.com.tw/v1/marginTrading/MI_MARGN',
-            headers={**HDR, 'Accept': 'application/json'},
-            timeout=12)
-        print(f'[維持率/openapi] status={_r1.status_code}')
-        if _r1.status_code == 200:
-            _d1 = _r1.json()
-            _rows = _d1 if isinstance(_d1, list) else (_d1.get('data') or [])
-            # openapi 回傳最新一天全股票列表；取最後合計列
-            for _row in reversed(_rows):
-                for _k, _v in ((_row.items()) if isinstance(_row, dict) else []):
-                    if '維持率' in str(_k):
-                        _val = _parse_ratio(_v)
-                        if _val:
-                            print(f'[維持率/openapi] ✅ {_val}%  key={_k}')
-                            return _val
+        _res = _rq_mr.get(_TWSE_URL, headers=_HDR_MR, timeout=10)
+        if _res.status_code == 200:
+            # TWSE JSON notes 欄通常含「整體市場維持率：XXX.XX」
+            _m = _re_mr.search(r'整體市場維持率.*?(\d{3,4}(?:\.\d{1,2})?)', _res.text)
+            if _m:
+                _v = _valid(_m.group(1))
+                if _v:
+                    print(f'[維持率/TWSE-regex] ✅ {_v}%')
+                    return _v
+            print(f'[維持率/TWSE-regex] ❌ regex未命中，head={_res.text[:200]!r}')
+        else:
+            print(f'[維持率/TWSE-regex] status={_res.status_code}')
     except Exception as _e1:
-        print(f'[維持率/openapi] ❌ {type(_e1).__name__}: {_e1}')
+        print(f'[維持率/TWSE-regex] ❌ {type(_e1).__name__}: {_e1}')
 
-    # ── 方案 2: HiStock 融資維持率 ─────────────────────────────────────
+    # ── 方案2: HiStock BeautifulSoup（備援）──────────────────────────
     try:
-        _r_hs = _TWSE_CK.get(
+        _r_hs = _rq_mr.get(
             'https://histock.tw/stock/margin.aspx',
-            headers={**HDR,
-                     'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-                     'Referer': 'https://histock.tw/',
-                     'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8'},
+            headers={**_HDR_MR,
+                     'Accept': 'text/html,application/xhtml+xml',
+                     'Referer': 'https://histock.tw/'},
             timeout=15)
         print(f'[維持率/histock] status={_r_hs.status_code}')
         if _r_hs.status_code == 200:
-            _soup_hs = BeautifulSoup(_r_hs.text, 'html.parser')
-            _text_hs = _soup_hs.get_text(' ', strip=True)
-            # 優先：「整體維持率」或「維持率」後接數字
-            _m_hs = _re_mr.search(r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text_hs)
-            if not _m_hs:
-                # 備援：找頁面中 130~400 區間的浮點數（台股維持率正常範圍）
-                for _cand in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text_hs):
-                    _v_hs = _parse_ratio(_cand)
-                    if _v_hs:
-                        print(f'[維持率/histock-fallback] ✅ {_v_hs}%')
-                        return _v_hs
+            _text = _BS_mr(_r_hs.text, 'html.parser').get_text(' ', strip=True)
+            _m_hs = _re_mr.search(
+                r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text)
             if _m_hs:
-                _val_hs = _parse_ratio(_m_hs.group(1))
-                if _val_hs:
-                    print(f'[維持率/histock] ✅ {_val_hs}%')
-                    return _val_hs
+                _v_hs = _valid(_m_hs.group(1))
+                if _v_hs:
+                    print(f'[維持率/histock] ✅ {_v_hs}%')
+                    return _v_hs
+            # fallback：掃描頁面中符合維持率數值範圍的浮點數
+            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text):
+                _v_fb = _valid(_c)
+                if _v_fb:
+                    print(f'[維持率/histock-fallback] ✅ {_v_fb}%')
+                    return _v_fb
             print(f'[維持率/histock] ❌ 無法解析，head={_r_hs.text[:300]!r}')
-    except Exception as _e_hs:
-        print(f'[維持率/histock] ❌ {type(_e_hs).__name__}: {_e_hs}')
+    except Exception as _e2:
+        print(f'[維持率/histock] ❌ {type(_e2).__name__}: {_e2}')
 
-    # www.twse.com.tw 方案 3 / 4 已因持續 JSONDecodeError（TWSE bot 封鎖）而廢棄
     print('[維持率] ⚠️ 所有方案均失敗，回傳 None')
     return None
 
