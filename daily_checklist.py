@@ -7,6 +7,31 @@ daily_checklist.py v4 — 完全無需Token版
 import requests, pandas as pd, datetime, os, time
 import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# ── Proxy 存活快取（模組層級，60s TTL，避免代理斷線拖垮所有連線）──────────
+_proxy_health: dict = {}  # {url: (is_alive, checked_at)}
+_PROXY_TTL = 60
+
+def _proxy_alive(url: str, timeout: float = 2.0) -> bool:
+    """TCP 快測代理是否可達；結果快取 60s。"""
+    import socket, time as _t
+    from urllib.parse import urlparse
+    now = _t.time()
+    if url in _proxy_health:
+        alive, ts = _proxy_health[url]
+        if now - ts < _PROXY_TTL:
+            return alive
+    try:
+        _p = urlparse(url)
+        _h, _port = _p.hostname or 'localhost', _p.port or 3128
+        with socket.create_connection((_h, _port), timeout=timeout):
+            alive = True
+    except Exception:
+        alive = False
+    _proxy_health[url] = (alive, now)
+    if not alive:
+        print(f'[Proxy] ⚠️ {url} 無法連線，本輪跳過代理直連')
+    return alive
+
 def _bps():
     try:
         from tw_stock_data_fetcher import build_proxy_session as _b
@@ -20,10 +45,10 @@ _TWSE_CK = _bps()
 import streamlit as st
 
 def get_nas_proxy():
-    """從 st.secrets 或環境變數讀取 NAS 中繼站代理設定"""
+    """從 st.secrets 或環境變數讀取 NAS 中繼站代理設定（含存活探測）"""
     proxy_url = (getattr(st, 'secrets', {}).get('NAS_PROXY_URL')
                  or os.environ.get('NAS_PROXY_URL'))
-    if proxy_url:
+    if proxy_url and _proxy_alive(proxy_url):
         return {'http': proxy_url, 'https': proxy_url}
     return None
 

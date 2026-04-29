@@ -85,31 +85,56 @@ FIELD_ALIASES: dict[str, list[str]] = {
 # ─────────────────────────────────────────────
 # §3 Proxy Config
 # ─────────────────────────────────────────────
+_proxy_health_tfw: dict = {}
+_PROXY_TTL_TFW = 60
+
+def _proxy_alive_tfw(url: str, timeout: float = 2.0) -> bool:
+    """TCP 快測代理是否可達；結果快取 60s。"""
+    import socket, time as _t
+    from urllib.parse import urlparse
+    now = _t.time()
+    if url in _proxy_health_tfw:
+        alive, ts = _proxy_health_tfw[url]
+        if now - ts < _PROXY_TTL_TFW:
+            return alive
+    try:
+        _p = urlparse(url)
+        with socket.create_connection((_p.hostname or 'localhost', _p.port or 3128), timeout=timeout):
+            alive = True
+    except Exception:
+        alive = False
+    _proxy_health_tfw[url] = (alive, now)
+    if not alive:
+        print(f'[Proxy/tfw] ⚠️ {url} 無法連線，跳過代理')
+    return alive
+
 def _load_proxy_config() -> dict[str, str] | None:
-    """Read proxy settings: PROXY_URL (single key) → PROXY_HOST/PORT → OS env vars."""
+    """Read proxy settings: PROXY_URL (single key) → PROXY_HOST/PORT → OS env vars.
+    若代理 TCP 探測失敗，自動跳過（避免代理斷線拖垮所有連線）。"""
     import os as _os_proxy
+    _purl = None
     try:
         secrets = st.secrets
         # 優先：單一 PROXY_URL（Streamlit Cloud 格式）
         _purl = secrets.get("PROXY_URL", "")
-        if _purl:
-            return {"http": _purl, "https": _purl}
-        # 次選：分開的 HOST/PORT/USER/PASS
-        host = secrets.get("PROXY_HOST", "")
-        port = secrets.get("PROXY_PORT", "")
-        if host and port:
-            user   = secrets.get("PROXY_USER", "")
-            passwd = secrets.get("PROXY_PASS", "")
-            auth   = f"{user}:{passwd}@" if user else ""
-            _purl2 = f"http://{auth}{host}:{port}"
-            return {"http": _purl2, "https": _purl2}
+        if not _purl:
+            # 次選：分開的 HOST/PORT/USER/PASS
+            host = secrets.get("PROXY_HOST", "")
+            port = secrets.get("PROXY_PORT", "")
+            if host and port:
+                user   = secrets.get("PROXY_USER", "")
+                passwd = secrets.get("PROXY_PASS", "")
+                auth   = f"{user}:{passwd}@" if user else ""
+                _purl = f"http://{auth}{host}:{port}"
     except Exception:
         pass
-    # OS 環境變數 fallback
-    _hp  = _os_proxy.environ.get("HTTP_PROXY")  or _os_proxy.environ.get("http_proxy")
-    _hsp = _os_proxy.environ.get("HTTPS_PROXY") or _os_proxy.environ.get("https_proxy")
-    if _hp or _hsp:
-        return {"http": _hp or _hsp, "https": _hsp or _hp}
+    if not _purl:
+        # OS 環境變數 fallback
+        _hp  = _os_proxy.environ.get("HTTP_PROXY")  or _os_proxy.environ.get("http_proxy")
+        _hsp = _os_proxy.environ.get("HTTPS_PROXY") or _os_proxy.environ.get("https_proxy")
+        _purl = _hp or _hsp or ''
+    if _purl and _proxy_alive_tfw(_purl):
+        return {"http": _purl, "https": _purl}
     return None
 
 
