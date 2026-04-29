@@ -18,6 +18,15 @@ def _bps():
 
 _TWSE_CK = _bps()
 import streamlit as st
+
+def get_nas_proxy():
+    """從 st.secrets 或環境變數讀取 NAS 中繼站代理設定"""
+    proxy_url = (getattr(st, 'secrets', {}).get('NAS_PROXY_URL')
+                 or os.environ.get('NAS_PROXY_URL'))
+    if proxy_url:
+        return {'http': proxy_url, 'https': proxy_url}
+    return None
+
 import plotly.graph_objects as go
 
 FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN', '')
@@ -321,7 +330,8 @@ def fetch_margin_maintenance_ratio():
                       "Chrome/124.0.0.0 Safari/537.36"
     }
     try:
-        _res = _rq_mr.get(_url, headers=_headers, timeout=8)
+        _nas = get_nas_proxy()
+        _res = _rq_mr.get(_url, headers=_headers, proxies=_nas, timeout=10)
         _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
         if _m:
             return float(_m.group(1))
