@@ -312,20 +312,18 @@ def fetch_margin_balance(date_str=None):
 def fetch_margin_maintenance_ratio():
     """
     全市場融資維持率(%)
-    方案1: TWSE www.twse.com.tw MI_MARGN JSON + regex（強制重寫版）
+    方案1: TWSE www.twse.com.tw MI_MARGN JSON + regex（Chrome/124 bare requests）
     方案2: HiStock BeautifulSoup（備援）
     失敗時 return None，不拋出 Exception
     """
     import requests as _rq_mr, re as _re_mr
     from bs4 import BeautifulSoup as _BS_mr
 
-    # [Bug修正] 原提供的 URL 含 Markdown 格式，此處還原為純字串
     _TWSE_URL = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
                  "?response=json&selectType=MS")
-    # [Bug修正] 函數名稱保持 fetch_margin_maintenance_ratio（呼叫端 app.py:2029 依賴此名稱）
     _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
            "AppleWebKit/537.36 (KHTML, like Gecko) "
-           "Chrome/122.0.0.0 Safari/537.36")
+           "Chrome/124.0.0.0 Safari/537.36")
     _HDR_MR = {"User-Agent": _UA}
 
     def _valid(v):

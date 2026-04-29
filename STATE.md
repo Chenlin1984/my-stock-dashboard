@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.48.1 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.49 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #89 merged**（2026-04-29）— DSO N/A修復 + MJ新聞整合
+- **✅ PR #90 merged**（2026-04-29）— 融資維持率 Chrome/124 + NDC/Export 死亡迴圈消滅
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,17 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.49）
+
+### 全面棄用 FinMind Python 套件 + 改為 bare requests.get()
+
+| 項目 | 修復內容 |
+|------|---------|
+| **融資維持率 UA 升級** | `daily_checklist.py fetch_margin_maintenance_ratio()` Chrome/122 → Chrome/124；移除 Bug修正注解 |
+| **NDC 棄用 _mk_s()** | `app.py _fetch_ndc()` 改為 bare `requests.get()`；`msg=='success'` 條件判斷；`start_date='2023-01-01'`；`timeout=8` |
+| **Export 棄用 _mk_s() + iloc[-13]** | `app.py _fetch_export()` 改為 bare `requests.get()`；`msg=='success'`；`start_date='2022-01-01'`；`timeout=8`；YoY 改用 `iloc[-1]/iloc[-13]-1`（明確計算取代 pct_change(12)） |
+| **回傳格式相容** | 兩函數回傳格式維持 `{ndc_signal:{score,signal,date}}` / `{tw_export:{yoy,date,source}}`，上游 session_state 無需修改 |
 
 ## ✅ 最新異動（v10.48.1）
 
