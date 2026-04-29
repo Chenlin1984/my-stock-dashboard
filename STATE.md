@@ -2,9 +2,10 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.1 | branch `claude/analyze-test-coverage-070Kf`
-- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `NAS_PROXY_URL`
-- **✅ PR #96 merged**（2026-04-29）— ETF NAV 根因修復 + TWSE Swagger 動態路由
+- **版本**: v10.50.3 | branch `claude/analyze-test-coverage-070Kf`
+- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
+- **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
+- **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +23,18 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.50.3）
+
+### Proxy 斷線自動跳過 + ETF NAV 多路備援
+
+| 項目 | 修復內容 |
+|------|---------|
+| **Proxy 存活探測** | `daily_checklist.get_nas_proxy()` + `tw_stock_data_fetcher._load_proxy_config()` 均加入 TCP 探測（timeout=2s，結果快取 60s）；代理不可達自動切換直連，不再拖垮所有連線 |
+| **ETF NAV goodinfo** | `fetch_etf_nav_history` 新增 goodinfo.tw `StockDetail.asp` 為 path2（不受 TWSE IP 封鎖）；雙策略 BeautifulSoup + regex |
+| **FinMind 狀態碼寬鬆** | `_jstatus == 200` 改為排除已知錯誤碼，避免 proxy 環境 status=None 被誤判 |
+| **ETF NAV 瀑布重排** | 新順序：FinMind(≤14d) → goodinfo.tw → TWSE(NAS only) → MoneyDJ → yfinance → FinMind兜底 |
+| **ETF NAV 快取版本** | `ver=3 → 4` 強制清除舊空白快取 |
 
 ## ✅ 最新異動（v10.50.1）
 
