@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.48.1 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.49.2 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #89 merged**（2026-04-29）— DSO N/A修復 + MJ新聞整合
+- **✅ PR #90 merged**（2026-04-29）— 融資維持率 Chrome/124 + NDC/Export 死亡迴圈消滅
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,28 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.49.2）
+
+### 暴力精簡：三函數全部壓縮至最底層 bare requests
+
+| 項目 | 修復內容 |
+|------|---------|
+| **維持率函數 70→20 行** | `daily_checklist.py fetch_margin_maintenance_ratio()` 移除 HiStock BeautifulSoup 備援方案與 `_valid()` helper；單一路徑：bare `requests.get()` + regex `整體市場維持率.*?(\d+\.\d+)` |
+| **NDC 函數 35→15 行** | `app.py _fetch_ndc()` 移除 pandas DataFrame + to_numeric + sort；改為 URL 字串內嵌 query params + `data[-1]['value']` 直讀 |
+| **Export 函數 35→15 行** | `app.py _fetch_export()` 移除 params dict + column 重整；改為 `df.iloc[-1]/iloc[-13]` 直算 YoY |
+| **回傳格式相容** | 兩函數回傳格式維持 `{ndc_signal:{score,signal,date}}` / `{tw_export:{yoy,date,source}}`，上游 session_state 無需修改 |
+
+## ✅ 最新異動（v10.49）
+
+### 全面棄用 FinMind Python 套件 + 改為 bare requests.get()
+
+| 項目 | 修復內容 |
+|------|---------|
+| **融資維持率 UA 升級** | `daily_checklist.py fetch_margin_maintenance_ratio()` Chrome/122 → Chrome/124 |
+| **NDC 棄用 _mk_s()** | `app.py _fetch_ndc()` 改為 bare `requests.get()`；`msg=='success'`；`start_date='2023-01-01'`；`timeout=8` |
+| **Export 棄用 _mk_s() + iloc[-13]** | `app.py _fetch_export()` 改為 bare `requests.get()`；`msg=='success'`；`start_date='2022-01-01'`；`timeout=8`；YoY 改用 `iloc[-1]/iloc[-13]-1` |
+| **回傳格式相容** | 兩函數回傳格式維持 `{ndc_signal:{score,signal,date}}` / `{tw_export:{yoy,date,source}}` |
 
 ## ✅ 最新異動（v10.48.1）
 

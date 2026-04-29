@@ -2754,84 +2754,48 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     return {'_err_pmi': ' | '.join(_pmi_errs) or 'all failed'}
 
                 # ── 4. NDC 景氣對策信號 ────────────────────────────────────────────
-                # [強制重寫] 移除 data.gov.tw 多重迴圈；統一使用 FinMind TaiwanMacroEconomics
-                # data_id 精準指定指標，回傳格式維持 {'ndc_signal': {'score', 'signal', 'date'}}
                 def _fetch_ndc():
-                    import pandas as _pd6
-                    _s = _mk_s()
+                    import requests as _rq_n
                     _fm_tok_n = _get_fm_token()
-                    _p_n = {
-                        'dataset': 'TaiwanMacroEconomics',
-                        'data_id': '景氣對策信號(分)',
-                        'start_date': '2015-01-01',
-                    }
-                    if _fm_tok_n:
-                        _p_n['token'] = _fm_tok_n
+                    _url_n = ('https://api.finmindtrade.com/api/v4/data'
+                              '?dataset=TaiwanMacroEconomics'
+                              '&data_id=景氣對策信號(分)'
+                              '&start_date=2023-01-01'
+                              + (f'&token={_fm_tok_n}' if _fm_tok_n else ''))
                     try:
-                        _r_n = _s.get(
-                            'https://api.finmindtrade.com/api/v4/data',
-                            params=_p_n, timeout=20, verify=False,
-                            headers={'Authorization': f'Bearer {_fm_tok_n}'} if _fm_tok_n else {})
-                        _j_n = _r_n.json()
-                        _rows_n = _j_n.get('data') or []
-                        print(f'[Macro/NDC/FM] status={_j_n.get("status")} rows={len(_rows_n)}')
-                        if _rows_n:
-                            _df_n = _pd6.DataFrame(_rows_n)
-                            _df_n.columns = [str(c).lower() for c in _df_n.columns]
-                            if 'value' in _df_n.columns and 'date' in _df_n.columns:
-                                _df_n['_v'] = _pd6.to_numeric(_df_n['value'], errors='coerce')
-                                _df_n = _df_n.dropna(subset=['_v']).sort_values('date')
-                                if len(_df_n) > 0:
-                                    _last = _df_n.iloc[-1]
-                                    _sc_n = float(_last['_v'])
-                                    _date_n = str(_last['date'])[:10]
-                                    if 9.0 <= _sc_n <= 45.0:
-                                        print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
-                                        return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
-                                    print(f'[Macro/NDC/FM] ⚠️ score={_sc_n} 超出 9-45 合理範圍')
+                        _j_n = _rq_n.get(_url_n, timeout=8).json()
+                        _data_n = _j_n.get('data') or []
+                        print(f'[Macro/NDC/FM] msg={_j_n.get("msg")} rows={len(_data_n)}')
+                        if _j_n.get('msg') == 'success' and _data_n:
+                            _sc_n = float(_data_n[-1]['value'])
+                            _date_n = str(_data_n[-1]['date'])[:10]
+                            print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
+                            return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
                     except Exception as _e_n:
                         print(f'[Macro/NDC/FM] ❌ {type(_e_n).__name__}: {_e_n}')
                     return {'_err_ndc': 'FinMind TaiwanMacroEconomics failed'}
 
                 # ── 5. 台灣出口 YoY ────────────────────────────────────────────────
-                # [強制重寫] 統一使用 FinMind TaiwanMacroEconomics data_id='出口-總值'
-                # 回傳格式維持 {'tw_export': {'yoy', 'date', 'source'}} 配合上游 session state
                 def _fetch_export():
-                    import pandas as _pd7
-                    _s_ex = _mk_s()
+                    import requests as _rq_ex, pandas as _pd7
                     _fm_tok7 = _get_fm_token()
-                    _hdrs7 = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
-                    _p_ex = {
-                        'dataset': 'TaiwanMacroEconomics',
-                        'data_id': '出口-總值',
-                        'start_date': '2015-01-01',
-                    }
-                    if _fm_tok7:
-                        _p_ex['token'] = _fm_tok7
+                    _url_ex = ('https://api.finmindtrade.com/api/v4/data'
+                               '?dataset=TaiwanMacroEconomics'
+                               '&data_id=出口-總值'
+                               '&start_date=2022-01-01'
+                               + (f'&token={_fm_tok7}' if _fm_tok7 else ''))
                     try:
-                        _r_ex = _s_ex.get(
-                            'https://api.finmindtrade.com/api/v4/data',
-                            params=_p_ex, headers=_hdrs7, timeout=20, verify=False)
-                        _j_ex = _r_ex.json()
-                        _rows_ex = _j_ex.get('data') or []
-                        print(f'[Macro/Export/FM] status={_j_ex.get("status")} rows={len(_rows_ex)}')
-                        if _rows_ex:
-                            _df_ex = _pd7.DataFrame(_rows_ex)
-                            _df_ex.columns = [str(c).lower() for c in _df_ex.columns]
-                            if 'value' in _df_ex.columns and 'date' in _df_ex.columns:
-                                _df_ex['_v'] = _pd7.to_numeric(_df_ex['value'], errors='coerce')
-                                _df_ex = _df_ex.dropna(subset=['_v']).sort_values('date').reset_index(drop=True)
-                                if len(_df_ex) >= 13:
-                                    _df_ex['_yoy'] = _df_ex['_v'].pct_change(12) * 100
-                                    _valid = _df_ex.dropna(subset=['_yoy'])
-                                    if len(_valid) > 0:
-                                        _yoy_ex = round(float(_valid['_yoy'].iloc[-1]), 2)
-                                        _date_ex = str(_valid['date'].iloc[-1])[:7]
-                                        print(f'[Macro/Export/FM] ✅ YoY={_yoy_ex:.2f}% date={_date_ex}')
-                                        return {'tw_export': {'yoy': _yoy_ex, 'date': _date_ex, 'source': 'FinMind-ME'}}
-                                    print('[Macro/Export/FM] ⚠️ pct_change 全為 NaN')
-                                else:
-                                    print(f'[Macro/Export/FM] ⚠️ 資料不足 13 列（需12月YoY），got={len(_df_ex)}')
+                        _j_ex = _rq_ex.get(_url_ex, timeout=8).json()
+                        _data_ex = _j_ex.get('data') or []
+                        print(f'[Macro/Export/FM] msg={_j_ex.get("msg")} rows={len(_data_ex)}')
+                        if _j_ex.get('msg') == 'success' and len(_data_ex) >= 13:
+                            _df_ex = _pd7.DataFrame(_data_ex)
+                            _cur = float(_df_ex.iloc[-1]['value'])
+                            _prev = float(_df_ex.iloc[-13]['value'])
+                            _yoy_ex = round((_cur - _prev) / _prev * 100, 2)
+                            _date_ex = str(_df_ex.iloc[-1]['date'])[:7]
+                            print(f'[Macro/Export/FM] ✅ YoY={_yoy_ex:.2f}% date={_date_ex}')
+                            return {'tw_export': {'yoy': _yoy_ex, 'date': _date_ex, 'source': 'FinMind-ME'}}
                     except Exception as _e_ex:
                         print(f'[Macro/Export/FM] ❌ {type(_e_ex).__name__}: {_e_ex}')
                     return {'_err_export': 'FinMind TaiwanMacroEconomics 出口-總值 failed'}

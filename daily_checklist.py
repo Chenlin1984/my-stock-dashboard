@@ -310,79 +310,24 @@ def fetch_margin_balance(date_str=None):
 
 
 def fetch_margin_maintenance_ratio():
-    """
-    全市場融資維持率(%)
-    方案1: TWSE www.twse.com.tw MI_MARGN JSON + regex（強制重寫版）
-    方案2: HiStock BeautifulSoup（備援）
-    失敗時 return None，不拋出 Exception
-    """
-    import requests as _rq_mr, re as _re_mr
-    from bs4 import BeautifulSoup as _BS_mr
-
-    # [Bug修正] 原提供的 URL 含 Markdown 格式，此處還原為純字串
-    _TWSE_URL = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
-                 "?response=json&selectType=MS")
-    # [Bug修正] 函數名稱保持 fetch_margin_maintenance_ratio（呼叫端 app.py:2029 依賴此名稱）
-    _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-           "AppleWebKit/537.36 (KHTML, like Gecko) "
-           "Chrome/122.0.0.0 Safari/537.36")
-    _HDR_MR = {"User-Agent": _UA}
-
-    def _valid(v):
-        try:
-            fv = float(str(v).replace(',', '').replace('%', '').strip())
-            return fv if 100 <= fv <= 500 else None
-        except Exception:
-            return None
-
-    # ── 方案1: TWSE MI_MARGN regex（強制重寫邏輯）────────────────────
+    """透過 Raw HTTP API 抓取大盤融資維持率"""
+    import requests as _rq_mr
+    import re as _re_mr
+    _url = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
+            "?response=json&selectType=MS")
+    _headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/124.0.0.0 Safari/537.36"
+    }
     try:
-        _res = _rq_mr.get(_TWSE_URL, headers=_HDR_MR, timeout=10)
-        if _res.status_code == 200:
-            # TWSE JSON notes 欄通常含「整體市場維持率：XXX.XX」
-            _m = _re_mr.search(r'整體市場維持率.*?(\d{3,4}(?:\.\d{1,2})?)', _res.text)
-            if _m:
-                _v = _valid(_m.group(1))
-                if _v:
-                    print(f'[維持率/TWSE-regex] ✅ {_v}%')
-                    return _v
-            print(f'[維持率/TWSE-regex] ❌ regex未命中，head={_res.text[:200]!r}')
-        else:
-            print(f'[維持率/TWSE-regex] status={_res.status_code}')
-    except Exception as _e1:
-        print(f'[維持率/TWSE-regex] ❌ {type(_e1).__name__}: {_e1}')
-
-    # ── 方案2: HiStock BeautifulSoup（備援）──────────────────────────
-    try:
-        _r_hs = _rq_mr.get(
-            'https://histock.tw/stock/margin.aspx',
-            headers={**_HDR_MR,
-                     'Accept': 'text/html,application/xhtml+xml',
-                     'Referer': 'https://histock.tw/'},
-            timeout=15)
-        print(f'[維持率/histock] status={_r_hs.status_code}')
-        if _r_hs.status_code == 200:
-            _text = _BS_mr(_r_hs.text, 'html.parser').get_text(' ', strip=True)
-            _m_hs = _re_mr.search(
-                r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text)
-            if _m_hs:
-                _v_hs = _valid(_m_hs.group(1))
-                if _v_hs:
-                    print(f'[維持率/histock] ✅ {_v_hs}%')
-                    return _v_hs
-            # fallback：掃描頁面中符合維持率數值範圍的浮點數
-            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text):
-                _v_fb = _valid(_c)
-                if _v_fb:
-                    print(f'[維持率/histock-fallback] ✅ {_v_fb}%')
-                    return _v_fb
-            print(f'[維持率/histock] ❌ 無法解析，head={_r_hs.text[:300]!r}')
-    except Exception as _e2:
-        print(f'[維持率/histock] ❌ {type(_e2).__name__}: {_e2}')
-
-    print('[維持率] ⚠️ 所有方案均失敗，回傳 None')
-    return None
-
+        _res = _rq_mr.get(_url, headers=_headers, timeout=8)
+        _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
+        if _m:
+            return float(_m.group(1))
+        return None
+    except:
+        return None
 
 def evaluate_market_status_v4_final(current_price: float, ma_240: float,
                                     margin_maintenance_ratio: float,
