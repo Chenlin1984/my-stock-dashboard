@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.44 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.45 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
 - **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
 
@@ -22,6 +22,14 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.45 hotfix）
+
+### Streamlit HTML 顯示異常修復
+
+| 項目 | 修復內容 |
+|------|---------|
+| **HTML 渲染為純文字** | `.streamlit/config.toml` 新增 `enableMarkdownUnsafeHTML = true`；Streamlit Cloud 1.40+ 將 `unsafe_allow_html=True` 改為需顯式啟用，否則全頁 HTML/CSS 標籤均顯示為純文字 |
 
 ## ✅ 最新異動（v10.44）
 
