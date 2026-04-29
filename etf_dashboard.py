@@ -671,7 +671,8 @@ def render_etf_single(gemini_fn=None):
         return
 
     etf_name = info.get('longName') or info.get('shortName') or ticker
-    expense  = info.get('annualReportExpenseRatio') or info.get('totalExpenseRatio')
+    expense  = (info.get('annualReportExpenseRatio') or info.get('totalExpenseRatio')
+                or info.get('expenseRatio'))
     beta     = info.get('beta') or info.get('beta3Year')
     aum      = info.get('totalAssets')
 
@@ -3209,11 +3210,13 @@ def render_data_health_raw():
 
     _FREQ_LBL = {'daily': '日頻', 'monthly': '月頻', 'quarterly': '季頻', 'yearly': '不定期'}
 
-    def _row(name, date_str, freq='daily', error_msg=None):
+    def _row(name, date_str, freq='daily', error_msg=None, optional=False):
         _fl = _FREQ_LBL.get(freq, freq)
         if not date_str and error_msg:
             short = str(error_msg)[:55]
             return {'資料名稱': name, '頻率': _fl, '最後更新': f'❌ {short}', '狀態': '🔴'}
+        if not date_str and optional:
+            return {'資料名稱': name, '頻率': _fl, '最後更新': 'N/A（此股無此科目）', '狀態': '🟡'}
         icon, lbl = _light(date_str, freq)
         return {'資料名稱': name, '頻率': _fl, '最後更新': lbl, '狀態': icon}
 
@@ -3336,7 +3339,7 @@ def render_data_health_raw():
             rows.append(_row('存貨（FinMind 季 BS 時序）',
                              _last_date_col(_qte, '存貨'), 'quarterly'))
             rows.append(_row('合約負債（FinMind 季 BS 時序）',
-                             _last_date_col(_qte, '合約負債'), 'quarterly'))
+                             _last_date_col(_qte, '合約負債'), 'quarterly', optional=True))
             rows.append(_row('CapEx 資本支出（FinMind 季 CF 時序）',
                              _last_date_col(_qte, '資本支出'), 'quarterly'))
             # 股利
@@ -3374,7 +3377,8 @@ def render_data_health_raw():
             rows.append(_row(f'ETF Beta（yfinance .info）',
                              str(_dt_r.date.today()) if _e1.get('beta') is not None else None, 'daily'))
             rows.append(_row(f'ETF 費用率（yfinance .info）',
-                             str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily'))
+                             str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily',
+                             optional=True))
             # NAV 淨值
             _prem = _e1.get('premium') or {}
             _nav_ok = _prem.get('nav') is not None
