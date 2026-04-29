@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.47 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.48 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
+- **✅ PR #83 merged**（2026-04-28）— histock維持率 + analyze_20d_chips
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,17 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.48）
+
+### DSO N/A 根因修復 + 新聞整合至 MJ 財報體檢 AI Insight
+
+| 項目 | 修復內容 |
+|------|---------|
+| **DSO N/A 根因修復** | `data_loader.py` 在 `_fuzzy_bs` 之後新增第五層兜底：從 FinMind 原始列資料（`_bs_rows`）建立 DataFrame，對 `type`/`origin_name` 欄位執行 `str.contains('應收帳款', na=False)`，排除利息/所得稅等雜項後取 `max()`；修正力積電 (6770) 等非標準科目命名導致所有精確+模糊比對失敗的情況 |
+| **MJ 近期新聞整合** | `financial_health_engine.py` `_PROMPT_TEMPLATE` 新增 `<近期新聞>` 輸入區塊；`ai_insight` 輸出要求加入「請結合近期新聞，分析市場情緒與未來潛在的催化劑」 |
+| **analyze_financial_health 擴充** | 新增 `news_context: str = ""` 參數；有 `api_key + news_context` 時呼叫 Gemini 生成含新聞情緒的 `ai_insight`/`red_flags`；失敗靜默降級保留純計算結果 |
+| **app.py 新聞抓取** | 財報體檢前先呼叫 `_fetch_stock_news(sid2, name2, 3)` 抓取 3 則個股新聞，格式化後傳入 `analyze_financial_health()`；Tab3 批次比較路徑（`api_key=""`）不受影響 |
 
 ## ✅ 最新異動（v10.47 hotfix）
 
