@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.45 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.47 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
 - **✅ PR #81 merged**（2026-04-28）— 死亡迴圈斬斷 + FRED parse_dates + FinMind status=None
 
@@ -22,6 +22,16 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.47 hotfix）
+
+### altair/Python3.14 TypeError + Streamlit 版本鎖定
+
+| 項目 | 修復內容 |
+|------|---------|
+| **st.bar_chart altair crash** | `app.py:3893` `st.bar_chart(_bc_df)` → `plotly.graph_objects.Bar` 直繪；Python 3.14 + altair 5.x 環境下 `altair.vegalite` 已移除，st.bar_chart 內部呼叫觸發 TypeError |
+| **altair 版本鎖定** | `requirements.txt` 新增 `altair>=4.0.0,<5.0.0`，防止 5.x 再次引入相容性問題 |
+| **Streamlit 版本鎖定** | `requirements.txt` `streamlit>=1.32.0` → `>=1.36.0,<1.41.0`；避免 1.41+ 對 `unsafe_allow_html=True` 的 breaking change |
 
 ## ✅ 最新異動（v10.45 hotfix）
 
