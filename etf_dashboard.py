@@ -3368,10 +3368,13 @@ def render_data_health_raw():
             _pdf = _e1.get('price_df')
             rows.append(_row(f'ETF K線 OHLCV {tk}（yfinance auto_adjust=True）',
                              _last_date(_pdf), 'daily'))
-            # AUM / Beta / 費用率：原始 yfinance .info 欄位
-            _has_info = bool(_e1.get('aum') or _e1.get('beta') or _e1.get('expense'))
-            rows.append(_row(f'ETF 基本資訊 AUM/Beta/費用率（yfinance .info）',
-                             str(_dt_r.date.today()) if _has_info else None, 'daily'))
+            # AUM / Beta / 費用率：拆成個別行各自檢查
+            rows.append(_row(f'ETF 規模 AUM（yfinance .info）',
+                             str(_dt_r.date.today()) if _e1.get('aum') else None, 'daily'))
+            rows.append(_row(f'ETF Beta（yfinance .info）',
+                             str(_dt_r.date.today()) if _e1.get('beta') is not None else None, 'daily'))
+            rows.append(_row(f'ETF 費用率（yfinance .info）',
+                             str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily'))
             # NAV 淨值
             _prem = _e1.get('premium') or {}
             _nav_ok = _prem.get('nav') is not None
