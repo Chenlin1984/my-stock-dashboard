@@ -3177,6 +3177,18 @@ def render_data_health_raw():
             pass
         return None
 
+    def _last_date_col(df, col):
+        """從 DataFrame 取特定欄位有值的最新日期"""
+        try:
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                return None
+            if col not in df.columns:
+                return None
+            sub = df[df[col].notna()]
+            return _last_date(sub) if not sub.empty else None
+        except Exception:
+            return None
+
     def _light(date_str, freq='daily'):
         """回傳 (icon, label)；freq: daily / monthly / quarterly / yearly"""
         if not date_str:
@@ -3307,32 +3319,38 @@ def render_data_health_raw():
             name2 = _t2.get('name', sid2)
             st.markdown(f'**當前個股：{name2}（{sid2}）**')
             rows = []
-            rows.append(_row(f'K線 OHLCV（FinMind / yfinance）',
+            rows.append(_row('K線 OHLCV（FinMind / yfinance）',
                              _last_date(_t2.get('df')), 'daily'))
-            rows.append(_row(f'月營收（FinMind TaiwanStockMonthRevenue）',
+            rows.append(_row('月營收（FinMind TaiwanStockMonthRevenue）',
                              _last_date(_t2.get('rev')), 'monthly'))
-            rows.append(_row(f'季損益表 EPS/毛利率/利益率（FinMind TaiwanStockFinancialStatement）',
-                             _last_date(_t2.get('qtr')), 'quarterly'))
-            rows.append(_row(f'季 BS+CF 時序 存貨/合約負債/CapEx（FinMind）',
-                             _last_date(_t2.get('qtr_extra')), 'quarterly'))
-            # 合約負債（純 raw 值，非時序）
-            _cl2 = _t2.get('cl')
-            _cl2_date = (_last_date(_cl2) if isinstance(_cl2, _pd_r.DataFrame)
-                         else (str(_dt_r.date.today()) if _cl2 is not None else None))
-            rows.append(_row(f'合約負債（FinMind TaiwanStockBalanceSheet）',
-                             _cl2_date, 'quarterly'))
+            # qtr 拆成個別欄位
+            _qtr2 = _t2.get('qtr')
+            rows.append(_row('季營收（FinMind TaiwanStockFinancialStatement）',
+                             _last_date_col(_qtr2, '營收'), 'quarterly'))
+            rows.append(_row('EPS 每股盈餘（FinMind 季 IS）',
+                             _last_date_col(_qtr2, 'EPS'), 'quarterly'))
+            rows.append(_row('毛利率（FinMind 季 IS）',
+                             _last_date_col(_qtr2, '毛利率'), 'quarterly'))
+            # qtr_extra 拆成個別欄位（移除重複的合約負債 TaiwanStockBalanceSheet 行）
+            _qte = _t2.get('qtr_extra')
+            rows.append(_row('存貨（FinMind 季 BS 時序）',
+                             _last_date_col(_qte, '存貨'), 'quarterly'))
+            rows.append(_row('合約負債（FinMind 季 BS 時序）',
+                             _last_date_col(_qte, '合約負債'), 'quarterly'))
+            rows.append(_row('CapEx 資本支出（FinMind 季 CF 時序）',
+                             _last_date_col(_qte, '資本支出'), 'quarterly'))
             # 股利
             _yr = _t2.get('yearly') or []
             _yr_date = None
             if _yr:
                 _yr_raw = str(_yr[-1].get('year', ''))[:4]
                 _yr_date = f'{_yr_raw}-12-31' if _yr_raw.isdigit() else None
-            rows.append(_row(f'股利歷史（FinMind TaiwanStockDividend）', _yr_date, 'yearly'))
+            rows.append(_row('股利歷史（FinMind TaiwanStockDividend）', _yr_date, 'yearly'))
             # MJ 體檢財報
             _fh2 = st.session_state.get(f'_fh_{sid2}')
             _fh2_date = (str(_dt_r.date.today())
                          if _fh2 and not _fh2.get('error') else None)
-            rows.append(_row(f'MJ體檢財報原始 BS+CF+IS（FinMind 3 datasets）',
+            rows.append(_row('MJ體檢財報原始 BS+CF+IS（FinMind 3 datasets）',
                              _fh2_date, 'quarterly'))
             _tbl(rows)
             st.caption('⚠️ RSI / KD / 布林帶 / 健康度評分 / FGMS / SQ 等由 K線/財報計算，不顯示於此。')
