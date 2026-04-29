@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.49.2 | branch `claude/analyze-test-coverage-070Kf`
-- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `PROXY_URL`
-- **✅ PR #90 merged**（2026-04-29）— 融資維持率 Chrome/124 + NDC/Export 死亡迴圈消滅
+- **版本**: v10.49.3 | branch `claude/analyze-test-coverage-070Kf`
+- **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `NAS_PROXY_URL`
+- **✅ PR #91 merged**（2026-04-29）— bare requests 三函數精簡 + NAS Proxy 支援
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,16 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.49.3）
+
+### NAS Proxy 中繼站支援（繞過 TWSE 雲端 IP 封鎖）
+
+| 項目 | 修復內容 |
+|------|---------|
+| **get_nas_proxy() 新增** | `daily_checklist.py` 頂端新增 helper，讀取 `st.secrets['NAS_PROXY_URL']` 或 env var；返回 `{'http': url, 'https': url}` 或 `None` |
+| **維持率爬蟲掛載 Proxy** | `fetch_margin_maintenance_ratio()` 加入 `proxies=get_nas_proxy()`；NAS_PROXY_URL 未設定時降級為直連（不影響現有行為） |
+| **Secrets 設定說明** | Streamlit Cloud Settings → Secrets 加入 `NAS_PROXY_URL = "http://IP:PORT"`；有帳密寫 `http://帳號:密碼@IP:PORT` |
 
 ## ✅ 最新異動（v10.49.2）
 
