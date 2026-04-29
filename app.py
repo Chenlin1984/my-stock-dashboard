@@ -78,8 +78,10 @@ if api_key:
     os.environ['GEMINI_API_KEY'] = api_key
 
 def _get_fm_token():
-    """每次動態讀取最新 Token，避免 module-level 變數被快取到舊值"""
-    return os.environ.get('FINMIND_TOKEN', '')
+    """每次動態讀取最新 Token：st.secrets > os.environ"""
+    _tok = (getattr(st, 'secrets', {}).get('FINMIND_TOKEN')
+            or os.environ.get('FINMIND_TOKEN', ''))
+    return _tok
 
 st.set_page_config(page_title='台股AI戰情室 v3.0', layout='wide',
                    page_icon='📊', initial_sidebar_state='collapsed')
