@@ -2,9 +2,9 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.49.3 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.1 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY` + `NAS_PROXY_URL`
-- **✅ PR #91 merged**（2026-04-29）— bare requests 三函數精簡 + NAS Proxy 支援
+- **✅ PR #96 merged**（2026-04-29）— ETF NAV 根因修復 + TWSE Swagger 動態路由
 
 ## 🏗️ 核心模組
 | 檔案 | 職責 |
@@ -22,6 +22,20 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.50.1）
+
+### ETF NAV 根因修復 + TWSE Swagger 動態路由 + 瀑布重排
+
+| 項目 | 修復內容 |
+|------|---------|
+| **FinMind token 根因** | `etf_dashboard.py fetch_etf_nav_history()` 改用 `st.secrets` 優先讀取 `FINMIND_TOKEN`；Streamlit Cloud secrets 不自動匯出至 `os.environ`，舊寫法導致所有 ETF NAV 請求無認證 → 限速 → 空資料 |
+| **新鮮度閾值放寬** | FinMind ETF NAV 閾值 7d → 14d（涵蓋連假/公告延遲） |
+| **瀑布順序重排** | FinMind(≤14d) → FinMind 過舊(<30d，直接用，跳過封鎖的TWSE) → TWSE(僅NAS Proxy) → MoneyDJ → yfinance → FinMind兜底 |
+| **TWSE ETF NAV NAS Proxy** | TWSE OpenAPI ETF 端點加入 `proxies=get_nas_proxy()`，與 `fetch_margin_maintenance_ratio` 一致 |
+| **get_twse_route_map()** | `app.py` 新增，`@st.cache_data(ttl=24h)`，fetch swagger.json 建立 `{operationId: path}` 映射 |
+| **fetch_twse_openapi_by_id()** | `app.py` 新增，`@st.cache_data(ttl=1h)`，透過 operationId 動態查找路徑並回傳 DataFrame |
+| **get_etf_expense_ratio_safe()** | `etf_dashboard.py` 新增，安全讀取 yfinance 費用率，任何 key 缺失回傳 None |
 
 ## ✅ 最新異動（v10.49.3）
 
