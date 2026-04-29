@@ -2757,13 +2757,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 def _fetch_ndc():
                     import requests as _rq_n
                     _fm_tok_n = _get_fm_token()
-                    _url_n = ('https://api.finmindtrade.com/api/v4/data'
-                              '?dataset=TaiwanMacroEconomics'
-                              '&data_id=景氣對策信號(分)'
-                              '&start_date=2023-01-01'
-                              + (f'&token={_fm_tok_n}' if _fm_tok_n else ''))
+                    _p_n = {'dataset': 'TaiwanMacroEconomics',
+                            'data_id': '景氣對策信號(分)',
+                            'start_date': '2023-01-01'}
+                    if _fm_tok_n: _p_n['token'] = _fm_tok_n
                     try:
-                        _j_n = _rq_n.get(_url_n, timeout=8).json()
+                        _j_n = _rq_n.get('https://api.finmindtrade.com/api/v4/data',
+                                         params=_p_n, timeout=8).json()
                         _data_n = _j_n.get('data') or []
                         print(f'[Macro/NDC/FM] msg={_j_n.get("msg")} rows={len(_data_n)}')
                         if _j_n.get('msg') == 'success' and _data_n:
@@ -2779,13 +2779,13 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 def _fetch_export():
                     import requests as _rq_ex, pandas as _pd7
                     _fm_tok7 = _get_fm_token()
-                    _url_ex = ('https://api.finmindtrade.com/api/v4/data'
-                               '?dataset=TaiwanMacroEconomics'
-                               '&data_id=出口-總值'
-                               '&start_date=2022-01-01'
-                               + (f'&token={_fm_tok7}' if _fm_tok7 else ''))
+                    _p_ex = {'dataset': 'TaiwanMacroEconomics',
+                             'data_id': '出口-總值',
+                             'start_date': '2022-01-01'}
+                    if _fm_tok7: _p_ex['token'] = _fm_tok7
                     try:
-                        _j_ex = _rq_ex.get(_url_ex, timeout=8).json()
+                        _j_ex = _rq_ex.get('https://api.finmindtrade.com/api/v4/data',
+                                           params=_p_ex, timeout=8).json()
                         _data_ex = _j_ex.get('data') or []
                         print(f'[Macro/Export/FM] msg={_j_ex.get("msg")} rows={len(_data_ex)}')
                         if _j_ex.get('msg') == 'success' and len(_data_ex) >= 13:

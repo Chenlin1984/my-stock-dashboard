@@ -319,7 +319,7 @@ def fetch_margin_balance(date_str=None):
 
 
 def fetch_margin_maintenance_ratio():
-    """透過 Raw HTTP API 抓取大盤融資維持率"""
+    """透過 Raw HTTP API 抓取大盤融資維持率（TWSE + HiStock 備援）"""
     import requests as _rq_mr
     import re as _re_mr
     _url = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
@@ -329,15 +329,47 @@ def fetch_margin_maintenance_ratio():
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
                       "Chrome/124.0.0.0 Safari/537.36"
     }
+    _nas = get_nas_proxy()
+
+    # 方案1: TWSE（NAS Proxy 優先；無 Proxy 時直連）
     try:
-        _nas = get_nas_proxy()
         _res = _rq_mr.get(_url, headers=_headers, proxies=_nas, timeout=10)
         _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
         if _m:
-            return float(_m.group(1))
-        return None
-    except:
-        return None
+            _v = float(_m.group(1))
+            if 100 <= _v <= 500:
+                print(f'[維持率/TWSE] ✅ {_v}%')
+                return _v
+        print(f'[維持率/TWSE] ❌ regex未命中 head={_res.text[:150]!r}')
+    except Exception as _e1:
+        print(f'[維持率/TWSE] ❌ {type(_e1).__name__}: {_e1}')
+
+    # 方案2: HiStock BeautifulSoup（備援）
+    try:
+        from bs4 import BeautifulSoup as _BS
+        _r2 = _rq_mr.get(
+            'https://histock.tw/stock/margin.aspx',
+            headers={**_headers, 'Accept': 'text/html,application/xhtml+xml',
+                     'Referer': 'https://histock.tw/'},
+            proxies=_nas, timeout=15)
+        if _r2.status_code == 200:
+            _text = _BS(_r2.text, 'html.parser').get_text(' ', strip=True)
+            _m2 = _re_mr.search(r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text)
+            if _m2:
+                _v2 = float(_m2.group(1))
+                if 100 <= _v2 <= 500:
+                    print(f'[維持率/HiStock] ✅ {_v2}%')
+                    return _v2
+            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text):
+                _vf = float(_c)
+                if 100 <= _vf <= 500:
+                    print(f'[維持率/HiStock-fallback] ✅ {_vf}%')
+                    return _vf
+    except Exception as _e2:
+        print(f'[維持率/HiStock] ❌ {type(_e2).__name__}: {_e2}')
+
+    print('[維持率] ⚠️ 所有方案均失敗')
+    return None
 
 def evaluate_market_status_v4_final(current_price: float, ma_240: float,
                                     margin_maintenance_ratio: float,
