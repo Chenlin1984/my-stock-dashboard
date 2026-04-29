@@ -201,9 +201,11 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
     import os, datetime as _dt, requests as _rq_etfnav
     import pandas as _pd_etfnav
     code = ticker.replace('.TW', '').replace('.TWO', '')
-    token = os.environ.get('FINMIND_TOKEN', '')
+    # st.secrets 優先（Streamlit Cloud secrets 不自動匯出至 os.environ）
+    token = (getattr(st, 'secrets', {}).get('FINMIND_TOKEN')
+             or os.environ.get('FINMIND_TOKEN', ''))
     start = (_dt.date.today() - _dt.timedelta(days=days + 10)).strftime('%Y-%m-%d')
-    _df_stale = None   # path 4: stale FinMind fallback
+    _df_stale = None   # 備援：FinMind 過舊資料
     _days_stale = 999
 
     # ── 1. FinMind ETF NAV（試兩個 dataset 名稱 + 多種欄位名稱）───────────
@@ -212,7 +214,6 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
             _p = {'dataset': _ds1, 'data_id': code, 'start_date': start}
             if token: _p['token'] = token
             _r = _rq_etfnav.get('https://api.finmindtrade.com/api/v4/data', params=_p,
-                                  headers={'Authorization': f'Bearer {token}'} if token else {},
                                   timeout=15)
             _j = _r.json()
             _jstatus = _j.get('status')
@@ -235,9 +236,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
                 _days_stale = (_dt.date.today() - _latest_d).days
                 _df_stale   = _df[['date', 'nav']]   # 保留，供 path 4 備援
                 print(f'[ETF NAV] {code} {_ds1}(field={_nav_field}): {len(_df)} 筆, 最新={_latest_d}, 距今={_days_stale}d')
-                if _days_stale <= 7:           # 7天內視為新鮮，直接回傳
+                if _days_stale <= 14:          # 14天內視為可用（含連假/公告延遲）
                     return _df_stale
-                print(f'[ETF NAV] {_ds1} {code} 資料過舊({_days_stale}d)，改用 TWSE OpenAPI')
+                print(f'[ETF NAV] {_ds1} {code} 資料較舊({_days_stale}d)，嘗試其他來源')
                 break   # 找到資料就不再嘗試第二個 dataset
             else:
                 _msg = str(_j.get('msg', ''))[:80]
@@ -245,14 +246,18 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
         except Exception as _e1:
             print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
-    # ── 2. TWSE OpenAPI — 直讀同日 NAV + 市價 + 折溢價率(%) ──────────────
-    # 透過 fetch_twse_openapi_by_id 動態查找路徑（swagger 映射 + 1h 快取）
-    # 端點A：TaiwanStockPremiumDiscountRatio（含折溢價%）
-    # 端點B：TaiwanStockNetValue（NAV-only）
+    # ── 2. 過舊 FinMind 備援（< 30d）→ 比後續爬蟲更可靠；不必等 TWSE 連線失敗 ──
+    # TWSE openapi 在 Streamlit Cloud 永遠被 IP 封鎖，提前使用 FinMind 過舊資料
+    if _df_stale is not None and not _df_stale.empty and _days_stale < 30:
+        print(f'[ETF NAV] {code} 使用 FinMind 過舊資料({_days_stale}d)備援，跳過 TWSE')
+        return _df_stale
+
+    # ── 3. TWSE OpenAPI（僅在 NAS Proxy 設定時才嘗試，雲端 IP 封鎖）─────────
     try:
-        from app import fetch_twse_openapi_by_id as _twse_fetch
+        from daily_checklist import get_nas_proxy as _gnp_nav
+        _nas_nav = _gnp_nav()
     except Exception:
-        _twse_fetch = None
+        _nas_nav = None
 
     def _parse_twse_row(row_dict, ep_label):
         _nav2 = 0.0
@@ -282,36 +287,31 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
             return _r_out
         return None
 
-    for _op_id2 in ['TaiwanStockPremiumDiscountRatio', 'TaiwanStockNetValue']:
-        try:
-            if _twse_fetch is not None:
-                _df2 = _twse_fetch(_op_id2)
-            else:
-                # 降級：直接 HTTP（swagger 映射不可用時）
+    if _nas_nav:
+        for _op_id2 in ['TaiwanStockPremiumDiscountRatio', 'TaiwanStockNetValue']:
+            try:
                 _ep2 = f'https://openapi.twse.com.tw/v1/ETF/{_op_id2}'
                 _r2 = _rq_etfnav.get(_ep2, headers={'Accept': 'application/json',
                                                       'User-Agent': 'Mozilla/5.0'},
-                                      timeout=10, verify=False)
+                                      proxies=_nas_nav, timeout=10, verify=False)
                 _df2 = _pd_etfnav.DataFrame(_r2.json() if isinstance(_r2.json(), list) else [])
-            if _df2.empty:
-                print(f'[ETF NAV] TWSE {_op_id2}: 回傳空資料')
-                continue
-            _code_col = next((c for c in _df2.columns if '證券代號' in str(c) or c == 'code'), None)
-            if _code_col is None:
-                print(f'[ETF NAV] TWSE {_op_id2}: 找不到 證券代號 欄位，現有={list(_df2.columns)}')
-                continue
-            _match = _df2[_df2[_code_col].astype(str).str.strip() == code]
-            if _match.empty:
-                print(f'[ETF NAV] TWSE {_op_id2}: 找不到 {code}')
-                continue
-            _row_dict2 = _match.iloc[0].to_dict()
-            _out2 = _parse_twse_row(_row_dict2, _op_id2)
-            if _out2:
-                return _pd_etfnav.DataFrame([_out2])
-        except Exception as _e2:
-            print(f'[ETF NAV] TWSE {_op_id2} {code}: {_e2}')
+                if _df2.empty:
+                    print(f'[ETF NAV] TWSE {_op_id2}: 回傳空資料'); continue
+                _code_col = next((c for c in _df2.columns if '證券代號' in str(c) or c == 'code'), None)
+                if _code_col is None:
+                    print(f'[ETF NAV] TWSE {_op_id2}: 找不到 證券代號 欄位'); continue
+                _match = _df2[_df2[_code_col].astype(str).str.strip() == code]
+                if _match.empty:
+                    print(f'[ETF NAV] TWSE {_op_id2}: 找不到 {code}'); continue
+                _out2 = _parse_twse_row(_match.iloc[0].to_dict(), _op_id2)
+                if _out2:
+                    return _pd_etfnav.DataFrame([_out2])
+            except Exception as _e2:
+                print(f'[ETF NAV] TWSE {_op_id2} {code}: {_e2}')
+    else:
+        print(f'[ETF NAV] {code}: 無 NAS Proxy，跳過 TWSE openapi')
 
-    # ── 3. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
+    # ── 4. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
     try:
         from bs4 import BeautifulSoup as _BS4
         _hdrs_mdj = {
@@ -359,7 +359,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
     except Exception as _e_mdj:
         print(f'[ETF NAV] MoneyDJ {code}: {_e_mdj}')
 
-    # ── 4. yfinance ETF info.navPrice（加限速 retry）──────────────────────
+    # ── 5. yfinance ETF info.navPrice（加限速 retry）──────────────────────
     import time as _t3
     for _sfx3 in ('.TW', '.TWO'):
         for _retry3 in range(3):
@@ -381,9 +381,9 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
                 print(f'[ETF NAV] yfinance {code}{_sfx3}: {_e3}')
                 break
 
-    # ── 4. 過舊 FinMind 資料備援（比顯示 N/A 好）──────────────────────────
+    # ── 最終兜底：≥30d 過舊 FinMind（僅在 MoneyDJ/yfinance 都失敗時）─────────
     if _df_stale is not None and not _df_stale.empty:
-        print(f'[ETF NAV] {code} path4: 使用過舊FinMind資料({_days_stale}d)備援')
+        print(f'[ETF NAV] {code} 最終兜底: 使用過舊FinMind資料({_days_stale}d)')
         return _df_stale
 
     return _pd_etfnav.DataFrame()
