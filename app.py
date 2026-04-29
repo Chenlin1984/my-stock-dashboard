@@ -199,6 +199,51 @@ def fetch_price_data(sid, days):
     _save_cache('price', sid, (result, name), str(days))
     return result, name, None
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_twse_route_map() -> dict:
+    """動態解析 TWSE OpenAPI swagger.json，建立 operationId→路徑 映射"""
+    try:
+        _r = requests.get(
+            'https://openapi.twse.com.tw/v1/swagger.json',
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                     'Accept': 'application/json'},
+            timeout=10, verify=False)
+        _spec = _r.json()
+        _map = {}
+        for _path, _methods in (_spec.get('paths') or {}).items():
+            for _method_data in _methods.values():
+                _op_id = _method_data.get('operationId')
+                if _op_id:
+                    _map[_op_id] = _path
+        print(f'[TWSE/Swagger] ✅ 解析完成 {len(_map)} 個端點')
+        return _map
+    except Exception as _e:
+        print(f'[TWSE/Swagger] ❌ {type(_e).__name__}: {_e}')
+        return {}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_twse_openapi_by_id(operation_id: str) -> pd.DataFrame:
+    """透過 operationId 動態查找 TWSE OpenAPI 路徑並抓取資料"""
+    _route_map = get_twse_route_map()
+    _path = _route_map.get(operation_id)
+    if not _path:
+        print(f'[TWSE/OpenAPI] ⚠️ operationId={operation_id} 不在 swagger 映射中')
+        return pd.DataFrame()
+    _url = f'https://openapi.twse.com.tw/v1{_path}'
+    try:
+        _r = requests.get(
+            _url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                     'Accept': 'application/json'},
+            timeout=10, verify=False)
+        _data = _r.json()
+        if isinstance(_data, list):
+            return pd.DataFrame(_data)
+        return pd.DataFrame()
+    except Exception as _e:
+        print(f'[TWSE/OpenAPI] ❌ {operation_id}: {type(_e).__name__}: {_e}')
+        return pd.DataFrame()
+
 @st.cache_data(ttl=1800)
 def fetch_dividend_data(sid):
     avg_div, yearly, source = 0.0, [], ''
