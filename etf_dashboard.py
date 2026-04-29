@@ -88,6 +88,16 @@ def fetch_etf_info(ticker: str) -> dict:
     except Exception:
         return {}
 
+def get_etf_expense_ratio_safe(ticker: str):
+    """安全讀取 ETF 費用率，任何 key 缺失回傳 None 不崩潰"""
+    try:
+        info = fetch_etf_info(ticker)
+        return (info.get('annualReportExpenseRatio')
+                or info.get('totalExpenseRatio')
+                or info.get('expenseRatio'))
+    except Exception:
+        return None
+
 # ═══════════════════════════════════════════════════════════════
 # 計算函式
 # ═══════════════════════════════════════════════════════════════
@@ -236,53 +246,70 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 3) -> "pd.Data
             print(f'[ETF NAV] FinMind {_ds1} {code}: {_e1}')
 
     # ── 2. TWSE OpenAPI — 直讀同日 NAV + 市價 + 折溢價率(%) ──────────────
+    # 透過 fetch_twse_openapi_by_id 動態查找路徑（swagger 映射 + 1h 快取）
     # 端點A：TaiwanStockPremiumDiscountRatio（含折溢價%）
-    # 端點B：TaiwanStockNetValue（NAV-only，無收盤價，由 calc_premium_discount Path B 配 yfinance 收盤）
-    for _ep2 in [
-        'https://openapi.twse.com.tw/v1/ETF/TaiwanStockPremiumDiscountRatio',
-        'https://openapi.twse.com.tw/v1/ETF/TaiwanStockNetValue',
-    ]:
-        try:
-            _r2 = _rq_etfnav.get(
-                _ep2,
-                headers={'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0'},
-                timeout=10, verify=False)
-            for _row in _r2.json():
-                if str(_row.get('證券代號', '')).strip() == code:
-                    # 淨值欄位（多種可能的 key）
-                    for _nk in ['單位淨值', '淨值', 'NetAssetValue', 'nav']:
-                        _nv = str(_row.get(_nk, '')).replace(',', '').strip()
-                        if _nv:
-                            try: _nav2 = float(_nv); break
-                            except: pass
-                    else:
-                        _nav2 = 0.0
-                    _price2 = 0.0
-                    for _pk in ['收盤價', 'ClosingPrice', 'close']:
-                        _pv2 = str(_row.get(_pk, '')).replace(',', '').strip()
-                        if _pv2:
-                            try: _price2 = float(_pv2); break
-                            except: pass
-                    # 折溢價率（直接欄位優先）
-                    _prem_key = next((k for k in _row if '折溢價' in str(k)), None)
-                    _prem2 = None
-                    if _prem_key:
-                        try: _prem2 = float(str(_row[_prem_key]).replace('%', '').replace(',', '') or 0)
-                        except: pass
-                    if _prem2 is None and _nav2 > 0 and _price2 > 0:
-                        _prem2 = round((_price2 - _nav2) / _nav2 * 100, 2)
+    # 端點B：TaiwanStockNetValue（NAV-only）
+    try:
+        from app import fetch_twse_openapi_by_id as _twse_fetch
+    except Exception:
+        _twse_fetch = None
 
-                    if _nav2 > 0:
-                        _row_out = {'date': _dt.date.today(), 'nav': _nav2}
-                        if _price2 > 0:
-                            _row_out['price'] = _price2
-                        if _prem2 is not None:
-                            _row_out['premium_pct'] = _prem2
-                        print(f'[ETF NAV] {code} TWSE({_ep2.split("/")[-1]}): '
-                              f'nav={_nav2} price={_price2} prem={_prem2}%')
-                        return _pd_etfnav.DataFrame([_row_out])
+    def _parse_twse_row(row_dict, ep_label):
+        _nav2 = 0.0
+        for _nk in ['單位淨值', '淨值', 'NetAssetValue', 'nav']:
+            _nv = str(row_dict.get(_nk, '')).replace(',', '').strip()
+            if _nv:
+                try: _nav2 = float(_nv); break
+                except: pass
+        _price2 = 0.0
+        for _pk in ['收盤價', 'ClosingPrice', 'close']:
+            _pv2 = str(row_dict.get(_pk, '')).replace(',', '').strip()
+            if _pv2:
+                try: _price2 = float(_pv2); break
+                except: pass
+        _prem_key = next((k for k in row_dict if '折溢價' in str(k)), None)
+        _prem2 = None
+        if _prem_key:
+            try: _prem2 = float(str(row_dict[_prem_key]).replace('%', '').replace(',', '') or 0)
+            except: pass
+        if _prem2 is None and _nav2 > 0 and _price2 > 0:
+            _prem2 = round((_price2 - _nav2) / _nav2 * 100, 2)
+        if _nav2 > 0:
+            _r_out = {'date': _dt.date.today(), 'nav': _nav2}
+            if _price2 > 0: _r_out['price'] = _price2
+            if _prem2 is not None: _r_out['premium_pct'] = _prem2
+            print(f'[ETF NAV] {code} TWSE({ep_label}): nav={_nav2} price={_price2} prem={_prem2}%')
+            return _r_out
+        return None
+
+    for _op_id2 in ['TaiwanStockPremiumDiscountRatio', 'TaiwanStockNetValue']:
+        try:
+            if _twse_fetch is not None:
+                _df2 = _twse_fetch(_op_id2)
+            else:
+                # 降級：直接 HTTP（swagger 映射不可用時）
+                _ep2 = f'https://openapi.twse.com.tw/v1/ETF/{_op_id2}'
+                _r2 = _rq_etfnav.get(_ep2, headers={'Accept': 'application/json',
+                                                      'User-Agent': 'Mozilla/5.0'},
+                                      timeout=10, verify=False)
+                _df2 = _pd_etfnav.DataFrame(_r2.json() if isinstance(_r2.json(), list) else [])
+            if _df2.empty:
+                print(f'[ETF NAV] TWSE {_op_id2}: 回傳空資料')
+                continue
+            _code_col = next((c for c in _df2.columns if '證券代號' in str(c) or c == 'code'), None)
+            if _code_col is None:
+                print(f'[ETF NAV] TWSE {_op_id2}: 找不到 證券代號 欄位，現有={list(_df2.columns)}')
+                continue
+            _match = _df2[_df2[_code_col].astype(str).str.strip() == code]
+            if _match.empty:
+                print(f'[ETF NAV] TWSE {_op_id2}: 找不到 {code}')
+                continue
+            _row_dict2 = _match.iloc[0].to_dict()
+            _out2 = _parse_twse_row(_row_dict2, _op_id2)
+            if _out2:
+                return _pd_etfnav.DataFrame([_out2])
         except Exception as _e2:
-            print(f'[ETF NAV] TWSE {_ep2.split("/")[-1]} {code}: {_e2}')
+            print(f'[ETF NAV] TWSE {_op_id2} {code}: {_e2}')
 
     # ── 3. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
     try:
