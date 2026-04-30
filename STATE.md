@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.8 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.9 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -24,7 +24,25 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.50.8）
+## ✅ 最新異動（v10.50.9）
+
+### NDC 景氣燈號 + 台灣出口 YoY：接入主計總處官方 SDMX API
+
+**根本原因：** 所有現有方案均對 Streamlit Cloud 封鎖，FinMind Macro 已廢棄。
+
+**新增方案0（兩函數共用策略）：**
+- 數據源：`nstatdb.dgbas.gov.tw`（行政院主計總處總體統計資料庫，官方公開 API）
+- 格式：SDMX 2.1 JSON（`data.dataSets[0].series[skey].observations`）
+- 解析：遍歷所有 series key，依值範圍自動識別目標指標
+
+| 函數 | 功能代碼 | 識別邏輯 |
+|------|---------|---------|
+| `_fetch_ndc()` | A120101010 景氣指標 | 值 9–45 → 景氣對策信號綜合分數 |
+| `_fetch_export()` | A081201010 進出口貿易 | 值 -50~200 → YoY%; 值 10,000~200,000 → 出口值(百萬USD，再算YoY) |
+
+**注意：** 若 Streamlit Cloud 可連到 `nstatdb.dgbas.gov.tw`，方案0 將直接成功；否則 fallback 到現有方案1-4。
+
+## ✅ 舊版異動（v10.50.8）
 
 ### 融資維持率 + 個股財報三大 Bug 修復
 

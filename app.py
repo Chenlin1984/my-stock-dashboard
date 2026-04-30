@@ -2805,7 +2805,45 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     import requests as _rq_n, pandas as _pd_n, io as _io_n
                     _s_ndc = _rq_n.Session()
                     _s_ndc.verify = False
-                    _s_ndc.headers['User-Agent'] = 'Mozilla/5.0'
+                    _s_ndc.headers.update({'User-Agent': 'Mozilla/5.0',
+                                           'Accept': 'application/json'})
+
+                    def _sdmx_obs(j, skey):
+                        """SDMX 2.1 JSON → {YYYY-MM: float}"""
+                        try:
+                            tv  = j['structure']['dimensions']['observation'][0]['values']
+                            obs = j['data']['dataSets'][0]['series'][skey]['observations']
+                            return {tv[int(k)]['id']: float(v[0])
+                                    for k, v in obs.items() if v and v[0] is not None}
+                        except Exception:
+                            return {}
+
+                    # 方案0: 主計總處 DGBAS 官方 SDMX API（A120101010 景氣指標統計）
+                    # 景氣對策信號綜合分數 = 整數，範圍 9–45
+                    try:
+                        _r0 = _s_ndc.get(
+                            'https://nstatdb.dgbas.gov.tw/dgbasAll/webMain.aspx'
+                            '?sdmx/A120101010/&startTime=2023-01',
+                            timeout=15)
+                        print(f'[NDC/DGBAS] status={_r0.status_code} len={len(_r0.text)}')
+                        if _r0.status_code == 200 and _r0.text.strip():
+                            _j0 = _r0.json()
+                            _all_sk = list(_j0['data']['dataSets'][0].get('series', {}).keys())
+                            # 遍歷所有 series key，找值落在 9-45 的（= 景氣綜合分數）
+                            for _sk in sorted(_all_sk):
+                                _d0 = _sdmx_obs(_j0, _sk)
+                                if not _d0:
+                                    continue
+                                _ym0 = max(_d0.keys())
+                                _sv0 = _d0[_ym0]
+                                if 9 <= _sv0 <= 45:
+                                    _sv0i = int(round(_sv0))
+                                    print(f'[NDC/DGBAS] ✅ skey={_sk} score={_sv0i} period={_ym0}')
+                                    return {'ndc_signal': {'score': _sv0i,
+                                                           'signal': None, 'date': _ym0}}
+                            print(f'[NDC/DGBAS] ❌ 無9-45分值 keys={_all_sk}')
+                    except Exception as _e0:
+                        print(f'[NDC/DGBAS] ❌ {type(_e0).__name__}: {_e0}')
 
                     # 方案1: data.gov.tw dataset 6099「景氣指標及燈號」(CSV 或 ODS)
                     try:
@@ -2975,7 +3013,62 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     import requests as _rq_ex, pandas as _pd7, io as _io_ex
                     _s_ex = _rq_ex.Session()
                     _s_ex.verify = False
-                    _s_ex.headers['User-Agent'] = 'Mozilla/5.0'
+                    _s_ex.headers.update({'User-Agent': 'Mozilla/5.0',
+                                          'Accept': 'application/json'})
+
+                    def _sdmx_obs_ex(j, skey):
+                        """SDMX 2.1 JSON → {YYYY-MM: float}"""
+                        try:
+                            tv  = j['structure']['dimensions']['observation'][0]['values']
+                            obs = j['data']['dataSets'][0]['series'][skey]['observations']
+                            return {tv[int(k)]['id']: float(v[0])
+                                    for k, v in obs.items() if v and v[0] is not None}
+                        except Exception:
+                            return {}
+
+                    # 方案0: 主計總處 DGBAS 官方 SDMX API（A081201010 進出口貿易總值）
+                    # 各 series key 依 INDICATOR 維度排列：出口值 / 進口值 / YoY%
+                    try:
+                        _r0_ex = _s_ex.get(
+                            'https://nstatdb.dgbas.gov.tw/dgbasAll/webMain.aspx'
+                            '?sdmx/A081201010/&startTime=2022-01',
+                            timeout=15)
+                        print(f'[Export/DGBAS] status={_r0_ex.status_code} len={len(_r0_ex.text)}')
+                        if _r0_ex.status_code == 200 and _r0_ex.text.strip():
+                            _j0_ex = _r0_ex.json()
+                            _all_ex = _j0_ex['data']['dataSets'][0].get('series', {})
+                            _yoy_d = {}   # YoY% series（值 -50 到 200）
+                            _exp_d = {}   # 出口值 series（值 10,000-200,000 百萬USD）
+                            for _sk_ex in sorted(_all_ex.keys()):
+                                _d_ex = _sdmx_obs_ex(_j0_ex, _sk_ex)
+                                if len(_d_ex) < 2:
+                                    continue
+                                _recent = sorted(_d_ex.keys())[-3:]
+                                _avg = sum(_d_ex[k] for k in _recent) / len(_recent)
+                                if -50 <= _avg <= 200 and _avg != 0:
+                                    _yoy_d = _d_ex
+                                    print(f'[Export/DGBAS] YoY series skey={_sk_ex} avg={_avg:.1f}%')
+                                elif 10000 <= _avg <= 200000:
+                                    _exp_d = _d_ex
+                                    print(f'[Export/DGBAS] value series skey={_sk_ex} avg={_avg:.0f}M')
+                            # 優先用 YoY% series（已計算，直接取用）
+                            if _yoy_d:
+                                _ym_ex0 = max(_yoy_d.keys())
+                                _yoy_v0 = round(_yoy_d[_ym_ex0], 2)
+                                print(f'[Export/DGBAS/YoY] ✅ {_yoy_v0:+.1f}% period={_ym_ex0}')
+                                return {'tw_export': {'yoy': _yoy_v0, 'date': _ym_ex0, 'source': 'DGBAS'}}
+                            # 次選：出口值 series，自行計算 YoY
+                            if _exp_d:
+                                _syms = sorted(_exp_d.keys())
+                                _lat  = _syms[-1]
+                                _ly   = f'{int(_lat[:4])-1}{_lat[4:]}'
+                                if _ly in _exp_d and _exp_d[_ly] != 0:
+                                    _yc = round((_exp_d[_lat] - _exp_d[_ly]) / abs(_exp_d[_ly]) * 100, 2)
+                                    print(f'[Export/DGBAS/calc] ✅ YoY={_yc:+.1f}% period={_lat}')
+                                    return {'tw_export': {'yoy': _yc, 'date': _lat, 'source': 'DGBAS'}}
+                            print(f'[Export/DGBAS] ❌ keys={list(_all_ex.keys())}')
+                    except Exception as _e0_ex:
+                        print(f'[Export/DGBAS] ❌ {type(_e0_ex).__name__}: {_e0_ex}')
 
                     # 方案1: FRED CSV — VALEXPTWM052N (IMF台灣出口，月度，無需API Key)
                     # 同模式已在 M1B/CPI 成功使用
