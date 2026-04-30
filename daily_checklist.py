@@ -345,9 +345,10 @@ def fetch_margin_balance(date_str=None):
 
 def fetch_margin_maintenance_ratio():
     """
-    大盤融資維持率 v4 — 無日期迴圈，嚴防死亡迴圈
-    方案1: TWSE exchangeReport/MI_MARGN（不帶日期，自動最新），timeout=5
-    方案2: 鉅亨網 CNYES JSON API
+    大盤融資維持率 v5 — 三方案防死亡迴圈
+    方案1: TWSE rwd/zh/marginTrading/MI_MARGN（取代307舊端點）最多3個交易日
+    方案2: TWSE OpenAPI v1 marginTrading
+    方案3: HiStock BeautifulSoup
     """
     import requests as _rq_mr, re as _re_mr
     _hdrs = {
@@ -357,55 +358,87 @@ def fetch_margin_maintenance_ratio():
         "Accept": "application/json,text/plain,*/*",
     }
 
-    # 方案1: TWSE exchangeReport/MI_MARGN — 不帶日期自動回傳最新交易日，無迴圈
-    try:
-        _r1 = _rq_mr.get(
-            'https://www.twse.com.tw/exchangeReport/MI_MARGN',
-            params={'response': 'json', 'selectType': 'MS'},
-            headers=_hdrs, timeout=5, verify=False)
-        if _r1.status_code == 200 and _r1.text.strip():
-            _j1 = _r1.json()
-            # TWSE title 欄位通常含 "整體市場維持率: XX.XX%"
-            _txt1 = str(_j1.get('title', '')) + ' ' + str(_j1.get('notes', ''))
-            _m1 = _re_mr.search(r'維持率[^\d]{0,15}(\d{2,3}(?:\.\d{1,2})?)', _txt1)
-            if _m1:
-                _v1 = float(_m1.group(1))
-                if 100 <= _v1 <= 500:
-                    print(f'[維持率/TWSE-exchange] ✅ {_v1}%')
-                    return _v1
-            # 若 title 沒有，掃全文
-            _m1b = _re_mr.search(r'維持率[^\d]{0,15}(\d{2,3}(?:\.\d{1,2})?)', _r1.text)
-            if _m1b:
-                _v1b = float(_m1b.group(1))
-                if 100 <= _v1b <= 500:
-                    print(f'[維持率/TWSE-exchange-fulltext] ✅ {_v1b}%')
-                    return _v1b
-            print(f'[維持率/TWSE-exchange] ❌ stat={_j1.get("stat")} title={str(_j1.get("title",""))[:80]!r}')
-        else:
-            print(f'[維持率/TWSE-exchange] ❌ status={_r1.status_code} empty={not _r1.text.strip()}')
-    except Exception as _e1:
-        print(f'[維持率/TWSE-exchange] ❌ {type(_e1).__name__}: {_e1}')
+    def _parse_ratio(text):
+        """從任意文字中提取維持率數值（100~500 範圍）"""
+        for _pat in [r'維持率[^\d]{0,10}(\d{3}(?:\.\d{1,2})?)',
+                     r'(\d{3}(?:\.\d{1,2})?)%?\s*維持率']:
+            _m = _re_mr.search(_pat, text)
+            if _m:
+                v = float(_m.group(1))
+                if 100 <= v <= 500:
+                    return v
+        return None
 
-    # 方案2: 鉅亨網 CNYES — 融資融券概況 JSON
+    # 方案1: TWSE rwd endpoint — exchangeReport 已改返回307，改用 rwd
+    _today = _tw_today_dl()
+    _candidates = []
+    _d = _today
+    for _ in range(6):
+        if _d.weekday() < 5:
+            _candidates.append(_d)
+        _d -= datetime.timedelta(days=1)
+        if len(_candidates) >= 3:
+            break
+
+    for _cand in _candidates:
+        _ds = _cand.strftime('%Y%m%d')
+        for _sel in ['MS']:
+            try:
+                _r1 = _rq_mr.get(
+                    'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                    params={'response': 'json', 'date': _ds, 'selectType': _sel},
+                    headers=_hdrs, timeout=5, verify=False)
+                if _r1.status_code != 200 or not _r1.text.strip():
+                    print(f'[維持率/TWSE-rwd/{_ds}] ❌ status={_r1.status_code}')
+                    continue
+                _j1 = _r1.json()
+                if _j1.get('stat') != 'OK':
+                    print(f'[維持率/TWSE-rwd/{_ds}] ❌ stat={_j1.get("stat")}')
+                    continue
+                # 掃 title + notes + 全文
+                _full = (str(_j1.get('title', '')) + ' ' +
+                         str(_j1.get('notes', '')) + ' ' + _r1.text)
+                _v1 = _parse_ratio(_full)
+                if _v1:
+                    print(f'[維持率/TWSE-rwd/{_ds}] ✅ {_v1}%')
+                    return _v1
+                # 也掃 data 最後一列所有欄位（有些版本把維持率放在資料列）
+                _data1 = _j1.get('data') or []
+                _fields1 = [str(f) for f in (_j1.get('fields') or [])]
+                _ratio_idx = next((i for i, f in enumerate(_fields1)
+                                   if '維持率' in f), None)
+                if _ratio_idx is not None and _data1:
+                    for _row1 in reversed(_data1):
+                        if len(_row1) > _ratio_idx:
+                            try:
+                                _rv = float(str(_row1[_ratio_idx]).replace(',', '').replace('%', ''))
+                                if 100 <= _rv <= 500:
+                                    print(f'[維持率/TWSE-rwd/{_ds}/col] ✅ {_rv}%')
+                                    return _rv
+                            except Exception:
+                                pass
+                print(f'[維持率/TWSE-rwd/{_ds}] ❌ 無維持率欄位 fields={_fields1[:6]}')
+            except Exception as _e1:
+                print(f'[維持率/TWSE-rwd/{_ds}] ❌ {type(_e1).__name__}: {_e1}')
+
+    # 方案2: TWSE OpenAPI v1 — 新版無需日期
     try:
         _r2 = _rq_mr.get(
-            'https://ws.api.cnyes.com/ws/api/v1/charting/history',
-            params={'resolution': 'D', 'symbol': 'TWS:MARGIN_RATE:STOCK',
-                    'from': int(__import__('time').time()) - 86400 * 5,
-                    'to':   int(__import__('time').time())},
-            headers={**_hdrs, 'Referer': 'https://www.cnyes.com/'},
+            'https://openapi.twse.com.tw/v1/marginTrading/MiMargin',
+            headers={**_hdrs, 'Accept': 'application/json'},
             timeout=5, verify=False)
-        if _r2.status_code == 200:
-            _j2 = _r2.json()
-            _cs = _j2.get('data', {}).get('c') or []
-            if _cs:
-                _v2 = float(_cs[-1])
-                if 100 <= _v2 <= 500:
-                    print(f'[維持率/CNYES] ✅ {_v2}%')
+        if _r2.status_code == 200 and _r2.text.strip():
+            _j2 = _r2.json() if isinstance(_r2.json(), list) else []
+            if isinstance(_r2.json(), dict):
+                _j2 = _r2.json().get('data') or []
+            for _row2 in _j2:
+                _v2 = _parse_ratio(str(_row2))
+                if _v2:
+                    print(f'[維持率/OpenAPI] ✅ {_v2}%')
                     return _v2
-        print(f'[維持率/CNYES] ❌ status={_r2.status_code}')
+        print(f'[維持率/OpenAPI] ❌ status={_r2.status_code}')
     except Exception as _e2:
-        print(f'[維持率/CNYES] ❌ {type(_e2).__name__}: {_e2}')
+        print(f'[維持率/OpenAPI] ❌ {type(_e2).__name__}: {_e2}')
 
     # 方案3: HiStock BeautifulSoup（最後備援）
     try:
@@ -417,12 +450,10 @@ def fetch_margin_maintenance_ratio():
             timeout=5, verify=False)
         if _r3.status_code == 200:
             _text3 = _BS(_r3.text, 'html.parser').get_text(' ', strip=True)
-            _m3 = _re_mr.search(r'維持率[^0-9]{0,20}?(\d{3,4}(?:\.\d{1,2})?)', _text3)
-            if _m3:
-                _v3 = float(_m3.group(1))
-                if 100 <= _v3 <= 500:
-                    print(f'[維持率/HiStock] ✅ {_v3}%')
-                    return _v3
+            _v3 = _parse_ratio(_text3)
+            if _v3:
+                print(f'[維持率/HiStock] ✅ {_v3}%')
+                return _v3
     except Exception as _e3:
         print(f'[維持率/HiStock] ❌ {type(_e3).__name__}: {_e3}')
 
