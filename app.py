@@ -2856,7 +2856,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     if 9 <= _sc_n2 <= 45:
                                         print(f'[Macro/NDC/gov] ✅ score={_sc_n2} date={_dt_n2}')
                                         return {'ndc_signal': {'score': _sc_n2, 'signal': None, 'date': _dt_n2}}
-                        print(f'[Macro/NDC/gov] ❌ res_id={_res_id} recs={len(_recs if "_recs" in dir() else [])}')
+                        print(f'[Macro/NDC/gov] ❌ res_id={_res_id}')
                     except Exception as _e_gov:
                         print(f'[Macro/NDC/gov] ❌ {type(_e_gov).__name__}: {_e_gov}')
 
