@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.5 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.6 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -24,7 +24,33 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.50.5）
+## ✅ 最新異動（v10.50.6）
+
+### 三大資料源修復：維持率/NDC/出口
+
+**問題根因（由 Streamlit Cloud log 確認）：**
+- `[維持率/TWSE-exchange] ❌ status=307` — TWSE `exchangeReport/MI_MARGN` 改為重定向，`requests` 遵循 307 後端點消失
+- `[NDC/gov6099] ❌ csv_url=None` — data.gov.tw API v2 resources 只有 ODS 格式，不含 CSV key
+- `[Export/gov-mof] ❌ JSONDecodeError` — data.gov.tw CKAN 缺少 Accept header 返回空 body
+- `[NDC/OECD-CLI] ❌ 404 NOT FOUND` — OECD CLI 不含台灣，series `TWN.LOLITOAA.ST.M` 不存在
+- `[Export/dbn] ❌ ReadTimeout` — db.nomics 在 Streamlit Cloud 環境 timeout >15s
+
+**修復內容：**
+1. `daily_checklist.py` `fetch_margin_maintenance_ratio()` v5
+   - 捨棄 `exchangeReport/MI_MARGN`（307），改用 `rwd/zh/marginTrading/MI_MARGN`（已驗證可用）
+   - 抽共用 `_parse_ratio()` helper，掃 title + notes + data 欄位 + 全文
+   - 新增方案2：TWSE OpenAPI v1 `marginTrading/MiMargin`
+   - 保留方案3 HiStock BeautifulSoup
+2. `app.py` `_fetch_ndc()`
+   - 方案1 修復：接受 ODS/XLS/XLSX 格式，用 `pd.read_excel(engine='odf')` 讀取
+   - 方案2 改為：NDC 官網 JSON API（取代失效的 OECD CLI Taiwan）
+   - 方案3 新增：data.nat.gov.tw 備用域名
+   - 移除次要 OECD CLI 台灣備援（series 不存在）
+3. `app.py` `_fetch_export()`
+   - 方案1 改為：FRED CSV `VALEXPTWM052N`（IMF 台灣月度出口，同 M1B/CPI 模式，無需 key）
+   - 方案2 保留 data.gov.tw CKAN + 加 `Accept: application/json` header
+
+## ✅ 舊版異動（v10.50.5）
 
 ### 斬斷死亡迴圈 + FinMind TaiwanMacroEconomics 廢棄修復
 

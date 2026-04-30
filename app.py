@@ -2807,22 +2807,40 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _s_ndc.verify = False
                     _s_ndc.headers['User-Agent'] = 'Mozilla/5.0'
 
-                    # 方案1: data.gov.tw dataset 6099「景氣指標及燈號」CSV
+                    # 方案1: data.gov.tw dataset 6099「景氣指標及燈號」(CSV 或 ODS)
                     try:
                         _pkg_r = _s_ndc.get(
                             'https://data.gov.tw/api/v2/rest/dataset/6099',
                             timeout=5)
-                        _csv_url = None
-                        for _rr in _pkg_r.json().get('resources', []):
-                            if _rr.get('format', '').upper() == 'CSV':
-                                _csv_url = _rr.get('url') or _rr.get('download_url')
+                        _csv_url = None; _csv_fmt = 'csv'
+                        _resources = _pkg_r.json().get('resources', [])
+                        # 先找 CSV，再找 ODS/XLS，最後取第一個任意資源
+                        for _fmt_try in ('csv', 'ods', 'xls', 'xlsx', ''):
+                            for _rr in _resources:
+                                _rr_fmt = _rr.get('format', '').lower()
+                                if _fmt_try and _rr_fmt != _fmt_try:
+                                    continue
+                                _u = (_rr.get('download_url') or _rr.get('url')
+                                      or _rr.get('accessURL') or _rr.get('downloadURL'))
+                                if _u:
+                                    _csv_url = _u; _csv_fmt = _rr_fmt or 'csv'
+                                    break
+                            if _csv_url:
                                 break
                         if _csv_url:
                             _csv_r = _s_ndc.get(_csv_url, timeout=10)
-                            _df_n = _pd_n.read_csv(
-                                _io_n.StringIO(_csv_r.content.decode('utf-8-sig', errors='ignore')))
-                            _sc_col = next((c for c in _df_n.columns if '綜合分數' in c or ('分數' in c and '景氣' in c)), None)
-                            _dt_col = next((c for c in _df_n.columns if c.upper() in ('DATE', '日期', 'YEAR_MONTH') or '日期' in c), None)
+                            if _csv_fmt in ('ods', 'xls', 'xlsx'):
+                                _eng = 'odf' if _csv_fmt == 'ods' else None
+                                _df_n = _pd_n.read_excel(
+                                    _io_n.BytesIO(_csv_r.content), engine=_eng)
+                            else:
+                                _df_n = _pd_n.read_csv(
+                                    _io_n.StringIO(_csv_r.content.decode('utf-8-sig', errors='ignore')))
+                            _sc_col = next((c for c in _df_n.columns
+                                            if '綜合分數' in c or ('分數' in c and '景氣' in c)), None)
+                            _dt_col = next((c for c in _df_n.columns
+                                            if c.upper() in ('DATE', '日期', 'YEAR_MONTH')
+                                            or '日期' in c or '年月' in c), None)
                             if _sc_col and _dt_col:
                                 _df_n = _df_n.dropna(subset=[_sc_col])
                                 _last_n = _df_n.iloc[-1]
@@ -2831,30 +2849,87 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                 if 9 <= _sc_n <= 45:
                                     print(f'[NDC/gov6099] ✅ score={_sc_n} date={_dt_n}')
                                     return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _dt_n}}
-                        print(f'[NDC/gov6099] ❌ csv_url={_csv_url}')
+                        print(f'[NDC/gov6099] ❌ csv_url={_csv_url} fmt={_csv_fmt}')
                     except Exception as _e_g:
                         print(f'[NDC/gov6099] ❌ {type(_e_g).__name__}: {_e_g}')
 
-                    # 方案2: OECD CLI (Leading Indicator) via db.nomics — 直連不走 proxy
+                    # 方案2: NDC 開放資料 API（index.ndc.gov.tw 後端JSON）
+                    # OECD MEI_CLI 不含台灣，改直接向 NDC 官網爬 JSON
                     try:
-                        for _cli_sid in ['OECD/MEI_CLI/TWN.LOLITOAA.ST.M',
-                                         'OECD/MEI_CLI/TWN.LOLITONO.ST.M']:
-                            _tcli_df = _dbn_px(_s_ndc, _cli_sid)
-                            if _tcli_df is None or len(_tcli_df) < 3: continue
-                            _tcli_df['_v'] = _pd_n.to_numeric(_tcli_df['value'], errors='coerce')
-                            _tcli_df = _tcli_df.dropna(subset=['_v'])
-                            if not len(_tcli_df): continue
-                            _cli_v = float(_tcli_df['_v'].iloc[-1])
-                            _cli_d = str(_tcli_df['period'].iloc[-1])[:10]
-                            # CLI → NDC 分數近似映射
-                            _psc = (36.0 if _cli_v >= 101.5 else
-                                    28.0 if _cli_v >= 100.5 else
-                                    22.0 if _cli_v >= 99.5  else
-                                    17.0 if _cli_v >= 98.5  else 12.0)
-                            print(f'[NDC/OECD-CLI] ✅ {_cli_sid} CLI={_cli_v:.2f} → NDC≈{_psc}')
-                            return {'ndc_signal': {'score': _psc, 'signal': None, 'date': _cli_d}}
-                    except Exception as _e_cli:
-                        print(f'[NDC/OECD-CLI] ❌ {type(_e_cli).__name__}: {_e_cli}')
+                        for _ndc_url in [
+                            'https://index.ndc.gov.tw/n/api/zh_tw/data/eco/signal',
+                            'https://index.ndc.gov.tw/n/api/zh_tw/data/eco',
+                            'https://index.ndc.gov.tw/n/zh_tw/data/eco/signal',
+                        ]:
+                            try:
+                                _rn2 = _s_ndc.get(_ndc_url, timeout=5,
+                                                  headers={'Accept': 'application/json, text/javascript, */*'})
+                                if _rn2.status_code != 200:
+                                    continue
+                                _jn2 = _rn2.json()
+                                # 嘗試多種 JSON 結構
+                                _score_n2 = None; _date_n2 = None
+                                if isinstance(_jn2, dict):
+                                    for _k in ('score', 'composite_score', 'total_score', 'signal_score'):
+                                        if _k in _jn2:
+                                            _score_n2 = float(_jn2[_k]); break
+                                    if _score_n2 is None and _jn2.get('data'):
+                                        _d2 = _jn2['data']
+                                        if isinstance(_d2, list) and _d2:
+                                            _d2 = _d2[-1]
+                                        if isinstance(_d2, dict):
+                                            for _k in ('score', 'composite_score', 'total_score'):
+                                                if _k in _d2:
+                                                    _score_n2 = float(_d2[_k]); break
+                                elif isinstance(_jn2, list) and _jn2:
+                                    _row2 = _jn2[-1]
+                                    for _k in ('score', 'composite_score', 'total_score'):
+                                        if _k in _row2:
+                                            _score_n2 = float(_row2[_k]); break
+                                if _score_n2 and 9 <= _score_n2 <= 45:
+                                    print(f'[NDC/api] ✅ score={_score_n2} url={_ndc_url}')
+                                    return {'ndc_signal': {'score': _score_n2, 'signal': None,
+                                                           'date': str(_date_n2 or '')[:10]}}
+                            except Exception:
+                                pass
+                    except Exception as _e_n2:
+                        print(f'[NDC/api] ❌ {type(_e_n2).__name__}: {_e_n2}')
+
+                    # 方案3: data.nat.gov.tw（data.gov.tw 的備用域名）
+                    try:
+                        _pkg3 = _s_ndc.get(
+                            'https://data.nat.gov.tw/api/v2/rest/dataset/6099',
+                            timeout=5)
+                        _csv_url3 = None; _csv_fmt3 = 'csv'
+                        for _rr3 in (_pkg3.json().get('resources') or []):
+                            _u3 = (_rr3.get('download_url') or _rr3.get('url'))
+                            if _u3:
+                                _csv_url3 = _u3
+                                _csv_fmt3 = _rr3.get('format', 'csv').lower()
+                                break
+                        if _csv_url3:
+                            _cr3 = _s_ndc.get(_csv_url3, timeout=10)
+                            if _csv_fmt3 in ('ods', 'xls', 'xlsx'):
+                                _df3 = _pd_n.read_excel(_io_n.BytesIO(_cr3.content),
+                                                        engine='odf' if _csv_fmt3 == 'ods' else None)
+                            else:
+                                _df3 = _pd_n.read_csv(
+                                    _io_n.StringIO(_cr3.content.decode('utf-8-sig', errors='ignore')))
+                            _sc3 = next((c for c in _df3.columns
+                                         if '綜合分數' in c or ('分數' in c and '景氣' in c)), None)
+                            _dt3 = next((c for c in _df3.columns
+                                         if '日期' in c or '年月' in c), None)
+                            if _sc3 and _dt3:
+                                _df3 = _df3.dropna(subset=[_sc3])
+                                _lrow3 = _df3.iloc[-1]
+                                _sv3 = float(str(_lrow3[_sc3]).replace(',', ''))
+                                if 9 <= _sv3 <= 45:
+                                    print(f'[NDC/nat6099] ✅ score={_sv3}')
+                                    return {'ndc_signal': {'score': _sv3, 'signal': None,
+                                                           'date': str(_lrow3[_dt3])[:10]}}
+                        print(f'[NDC/nat6099] ❌ csv_url={_csv_url3}')
+                    except Exception as _e3:
+                        print(f'[NDC/nat6099] ❌ {type(_e3).__name__}: {_e3}')
 
                     return {'_err_ndc': 'NDC 景氣對策信號所有方案失敗'}
 
@@ -2865,20 +2940,47 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _s_ex.verify = False
                     _s_ex.headers['User-Agent'] = 'Mozilla/5.0'
 
-                    # 方案1: data.gov.tw dataset 6099「景氣指標及燈號」— 內含出口先行指標
-                    # 同時搜尋財政部/海關出口統計 CSV
+                    # 方案1: FRED CSV — VALEXPTWM052N (IMF台灣出口，月度，無需API Key)
+                    # 同模式已在 M1B/CPI 成功使用
+                    try:
+                        _r_fred = _s_ex.get(
+                            'https://fred.stlouisfed.org/graph/fredgraph.csv',
+                            params={'id': 'VALEXPTWM052N'},
+                            timeout=10)
+                        print(f'[Export/FRED] status={_r_fred.status_code}')
+                        if _r_fred.status_code == 200 and _r_fred.text.strip():
+                            _df_fred = _pd7.read_csv(
+                                _io_ex.StringIO(_r_fred.text),
+                                names=['date', 'value'], skiprows=1)
+                            _df_fred['value'] = _pd7.to_numeric(_df_fred['value'], errors='coerce')
+                            _df_fred = _df_fred.dropna(subset=['value'])
+                            if len(_df_fred) >= 13:
+                                _cur_f = float(_df_fred['value'].iloc[-1])
+                                _prev_f = float(_df_fred['value'].iloc[-13])
+                                if _prev_f and _prev_f != 0:
+                                    _yoy_f = round((_cur_f - _prev_f) / abs(_prev_f) * 100, 2)
+                                    _date_f = str(_df_fred['date'].iloc[-1])[:7]
+                                    print(f'[Export/FRED] ✅ YoY={_yoy_f:.2f}% date={_date_f}')
+                                    return {'tw_export': {'yoy': _yoy_f, 'date': _date_f, 'source': 'FRED'}}
+                    except Exception as _e_fred:
+                        print(f'[Export/FRED] ❌ {type(_e_fred).__name__}: {_e_fred}')
+
+                    # 方案2: data.gov.tw CKAN — 財政部進出口統計（加 Accept header 防空 body）
                     try:
                         _pkg2 = _s_ex.get(
                             'https://data.gov.tw/api/3/action/package_search',
                             params={'q': '進出口貿易統計', 'fq': 'organization:mof', 'rows': 5},
-                            timeout=5).json()
+                            headers={'Accept': 'application/json'},
+                            timeout=5)
+                        _pkg2_j = _pkg2.json()
                         _res_id2 = None
-                        for _pk2 in ((_pkg2.get('result') or {}).get('results') or []):
+                        for _pk2 in ((_pkg2_j.get('result') or {}).get('results') or []):
                             for _rs2 in (_pk2.get('resources') or []):
-                                if _rs2.get('format', '').upper() == 'CSV':
+                                if _rs2.get('format', '').upper() in ('CSV', 'TEXT'):
                                     _res_id2 = _rs2.get('url') or _rs2.get('download_url')
                                     break
-                            if _res_id2: break
+                            if _res_id2:
+                                break
                         if _res_id2:
                             _csv_ex = _s_ex.get(_res_id2, timeout=10)
                             _df_ex = _pd7.read_csv(
@@ -2900,28 +3002,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _e_gov2:
                         print(f'[Export/gov-mof] ❌ {type(_e_gov2).__name__}: {_e_gov2}')
 
-                    # 方案2: db.nomics OECD Taiwan 出口 — 直連不走 proxy
-                    try:
-                        for _exp_sid in [
-                            'OECD/MEI/TWN.XTEXVA01.SA.Q',     # exports seasonal adj quarterly
-                            'OECD/MEI/TWN.XTEXVA01.ST.Q',     # short-term stats quarterly
-                            'OECD/MEI_BOP6/TWN.B.CA.G.C.A.USD.Q',  # BOP goods credits quarterly
-                        ]:
-                            _exp_df = _dbn_px(_s_ex, _exp_sid)
-                            if _exp_df is None or len(_exp_df) < 5: continue
-                            _exp_df['_v'] = _pd7.to_numeric(_exp_df['value'], errors='coerce')
-                            _exp_df = _exp_df.dropna(subset=['_v'])
-                            if len(_exp_df) < 5: continue
-                            _cur_e = float(_exp_df['_v'].iloc[-1])
-                            _prev_e = float(_exp_df['_v'].iloc[-5])  # 5 quarters ago ≈ YoY
-                            if _prev_e and _prev_e != 0:
-                                _yoy_e = round((_cur_e - _prev_e) / abs(_prev_e) * 100, 2)
-                                _date_e = str(_exp_df['period'].iloc[-1])[:7]
-                                print(f'[Export/dbn] ✅ {_exp_sid} YoY={_yoy_e:.2f}% date={_date_e}')
-                                return {'tw_export': {'yoy': _yoy_e, 'date': _date_e, 'source': 'OECD-dbn'}}
-                    except Exception as _e_dbn:
-                        print(f'[Export/dbn] ❌ {type(_e_dbn).__name__}: {_e_dbn}')
-
                     return {'_err_export': 'Taiwan 出口 YoY 所有方案失敗'}
 
                 # ── 並行執行（5 個獨立資料源同時跑，總時間 = max 而非 sum）──────
@@ -2940,37 +3020,10 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             if _part: _r.update(_part)
                         except Exception as _e: print(f'[Macro] ❌ {_futs_mc.get(_fut_mc, "?")}: {_e}')
 
-                # NDC CLI 代理（並行完成後，若 FinMind TaiwanMacroEconomics 失敗才啟動）
+                # NDC 備援（_fetch_ndc 三方案皆失敗時才到此）
                 if 'ndc_signal' not in _r:
-                    _cli_val, _cli_date = None, None
-                    import pandas as _pd8
-                    # 走 proxy 的 dbnomics OECD CLI Taiwan（取代 dbnomics library 直連）
-                    _s_ndc2 = _mk_s()
-                    for _tw_cli_s in ['OECD/MEI_CLI/TWN.LOLITOAA.ST.M',
-                                      'OECD/MEI_CLI/TWN.LOLITONO.ST.M',
-                                      'OECD/MEI/TWN.LORSGPRT.ST.M']:
-                        try:
-                            _tcli_df = _dbn_px(_s_ndc2, _tw_cli_s)
-                            if _tcli_df is None or len(_tcli_df) < 3: continue
-                            _tcli_df['_v'] = _pd8.to_numeric(_tcli_df['value'], errors='coerce')
-                            _tcli_df = _tcli_df.dropna(subset=['_v'])
-                            if len(_tcli_df) == 0: continue
-                            _cli_val  = float(_tcli_df['_v'].iloc[-1])
-                            _cli_date = str(_tcli_df['period'].iloc[-1])[:10]
-                            print(f'[Macro/NDC/TW-CLI] ✅ {_tw_cli_s} val={_cli_val:.2f} date={_cli_date}')
-                            break
-                        except Exception as _te: print(f'[Macro/NDC/TW-CLI] ❌ {_tw_cli_s}: {_te}')
-                    if _cli_val is not None:
-                        if _cli_val >= 101.5:   _psc = 36.0
-                        elif _cli_val >= 100.5: _psc = 28.0
-                        elif _cli_val >= 100.0: _psc = 24.0
-                        elif _cli_val >= 99.0:  _psc = 19.0
-                        else:                   _psc = 13.0
-                        _r['ndc_signal'] = {'score': _psc, 'signal': None,
-                                            'date': _cli_date or '', '_is_proxy': True}
-                        print(f'[Macro/NDC] ⚠️ CLI={_cli_val:.2f} 代理→NDC近似={_psc:.0f}分')
-                    else:
-                        print('[Macro/NDC] ⚠️ FinMind NDC 失敗且CLI代理無資料，ndc_signal 缺漏')
+                    # OECD CLI 不含台灣，此備援已廢棄，直接標記缺漏
+                    print('[Macro/NDC] ⚠️ _fetch_ndc 三方案失敗，ndc_signal 缺漏')
 
                 print(f'[Macro] 完成 keys={list(_r.keys())}')
                 return _r if _r else None
