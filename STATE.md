@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.7 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.8 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -24,7 +24,34 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.50.7）
+## ✅ 最新異動（v10.50.8）
+
+### 融資維持率 + 個股財報三大 Bug 修復
+
+**融資維持率 `fetch_margin_maintenance_ratio()` v7：**
+- **移除** 錯誤 FinMind dataset `TaiwanTotalExchangeMarginMaintenance`（返回 HTTP 400，dataset 不存在）
+- **新增 方案0**：TWSE rwd + NAS proxy（若 `NAS_PROXY_URL` 存活，透過台灣 IP 繞過 Streamlit Cloud 封鎖）
+- **抽出** `_twse_rwd_parse()` 共用 helper（方案0/1 共用，避免重複）
+- **新增 方案3**：wantgoo.com BeautifulSoup（`margin-statistics` + `investortool/margin`，第三方源與 TWSE 無關）
+- **強化 方案4**（HiStock）：改用定向 DOM 搜尋取代全文正則，提高命中率
+
+**個股財報 Bug 1：應收帳款/DSO + 總負債/負債比 科目查無（`data_loader.py`）：**
+- `_fuzzy_bs()` 新增全形/半形空白正規化（`replace(' ','').replace('　','')`），解決「負 債 總 計」等帶空白的 IFRS 科目名稱無法匹配問題
+- 新增 **Pandas regex 終極兜底**：建立 DataFrame，正規化所有空白後用 `str.contains('應收帳款|應收票據')` 及 `str.contains('負債總計|負債合計|負債總額')` 進行最後一道比對
+
+**個股財報 Bug 2：現金流量允當比率禁止單季估算（`financial_health_engine.py`）：**
+- 完全移除 `b_val = round(ocf / b_denom * 100, 1)` 單季推估（即 `1Q估` 邏輯）
+- `insufficient_data`（上市未滿5年）→ 顯示 `N/A（年份不足...）`，狀態 `Fail`
+- 其他錯誤 → 顯示 `N/A（5年歷史資料未取得）`，狀態 `N/A`
+
+**個股財報 Bug 3：診斷面板連動（`app.py` + `etf_dashboard.py`）：**
+- `app.py`：體檢完成後額外存 `st.session_state[f'_fin_raw_{sid2}'] = _fin_raw`
+- `etf_dashboard.py` 診斷 Tab 個股區塊新增三行：
+  - `DSO科目（應收帳款與票據）` — ar_days > 0 → 🟢，否則 🔴
+  - `負債科目（總負債）` — liab > 0 → 🟢，否則 🔴
+  - `5年歷史現金流（允當比率）` — b_item_5y.status=="ok" → 🟢，否則 🔴
+
+## ✅ 舊版異動（v10.50.7）
 
 ### 繼續修復三大資料源（第二輪）
 

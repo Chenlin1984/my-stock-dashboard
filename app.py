@@ -7192,6 +7192,8 @@ padding:12px 16px;margin:8px 0;">
                             _fh_out = analyze_financial_health(api_key, sid2, _fin_raw,
                                                                news_context=_mj_news_str)
                             st.session_state[_fh_key2] = _fh_out
+                            # 保存原始財報數據供診斷面板使用（ar_days/liab/b_item_5y 等）
+                            st.session_state[f'_fin_raw_{sid2}'] = _fin_raw
                     except Exception as _fh_exc:
                         st.session_state[_fh_key2] = {'error': True, 'ai_insight': f'財報體檢發生例外：{_fh_exc}'}
             _fh = st.session_state.get(_fh_key2)

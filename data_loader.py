@@ -1631,23 +1631,26 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         assets = cur_assets + _non_cur_assets
         print(f"[fetch_fin] {stock_id} 資產合計查無，改用 流動({cur_assets:.0f})+非流動({_non_cur_assets:.0f})={assets:.0f}千")
     # AR：L1 先加總分開列示的票據+帳款+關係人（避免與合計行重疊）
-    # 涵蓋：舊格式（淨額/關係人）+ IFRS 括號格式（非關係人）/（關係人）+ 含稅格式
+    # 涵蓋：舊格式（淨額/關係人）+ IFRS 括號格式（非關係人）/（關係人）+ 含稅格式 + em-dash 變體
     ar = _vsum(_bs, _lat, [
         "應收票據淨額", "應收帳款淨額", "應收帳款－關係人淨額", "應收款項",
         "應收帳款（非關係人）", "應收帳款（關係人）",
         "應收帳款（非關係人）淨額", "應收帳款（關係人）淨額",
+        "應收帳款－非關係人淨額",          # em-dash 非關係人淨額（新增）
         "應收票據（非關係人）", "應收票據（關係人）",
         "應收帳款-非關係人", "應收帳款-關係人",
     ])
     # L2 若 L1 = 0，改抓合併列示的合計行（不與 L1 混加，避免重複計算）
     if ar == 0:
         ar = _vsum(_bs, _lat, ["應收帳款及票據", "應收帳款及票據淨額",
+                                "應收票據及帳款淨額",                    # 新增
                                 "應收票據及應收帳款", "應收帳款",
                                 "應收帳款（含稅）", "應收帳款淨額（含稅）"])
     if ar == 0:
         ar = _v(_bs, _lat, ["AccountsReceivable", "應收帳款淨額", "應收帳款",
                              "NoteAndAccountsReceivable", "應收帳款及票據應收款",
                              "應收票據及帳款", "應收帳款（淨額）", "貿易應收款及其他應收款",
+                             "貿易及其他應收款",                          # 新增：外資掛牌台企
                              "應收帳款，淨額", "貿易應收款",
                              "應收款項", "應收款項合計", "應收帳款及其他應收款",
                              "ReceivablesNet", "NetReceivables",
@@ -1707,11 +1710,12 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
         print(f"[fetch_fin] {stock_id} 資產欄位查無資料，改用 權益+負債 計算: {round(assets/1e3)}千")
 
     # 模糊比對兜底：從 BS 所有欄位取最大值（合計行通常是最大的）
+    # 正規化 key：去除全形/半形空白，確保「負 債 總 計」等全形空白格式能匹配
     _bs_slot = _bs.get(_lat, {})
     def _fuzzy_bs(_inc, _exc=()):
         _best = 0.0
         for _fk, _fvv in _bs_slot.items():
-            _fks = str(_fk)
+            _fks = str(_fk).replace(' ', '').replace('　', '')
             if all(_i in _fks for _i in _inc) and not any(_e in _fks for _e in _exc):
                 try:
                     _ffv = float(str(_fvv).replace(",", "") or 0)
@@ -1734,6 +1738,36 @@ def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
             ar = _fuzzy_bs(["合約資產"])  # IFRS 15 合約資產
         if ar > 0:
             print(f"[fetch_fin] {stock_id} ar 模糊比對: {ar:.0f}千")
+
+    # ── Pandas regex 終極兜底：正規化所有空白後做 str.contains，抓全形空白科目 ──
+    if (ar == 0 or liab == 0) and _bs_slot:
+        try:
+            import pandas as _pd_regex
+            _bsdf = _pd_regex.DataFrame(
+                list(_bs_slot.items()), columns=['type', 'value']
+            )
+            _bsdf['type_n'] = _bsdf['type'].str.replace(r'\s+|　', '', regex=True)
+            _bsdf['val_n'] = _pd_regex.to_numeric(
+                _bsdf['value'].astype(str).str.replace(',', '', regex=False),
+                errors='coerce'
+            )
+            _bsdf = _bsdf[_bsdf['val_n'].notna() & (_bsdf['val_n'] > 0)]
+            if ar == 0:
+                _ar_mask = (_bsdf['type_n'].str.contains('應收帳款|應收票據', regex=True, na=False) &
+                            ~_bsdf['type_n'].str.contains('利息|所得稅|員工|遞延|退稅', regex=True, na=False))
+                if _ar_mask.any():
+                    ar = float(_bsdf.loc[_ar_mask, 'val_n'].max())
+                    print(f"[fetch_fin] {stock_id} ar pandas-regex兜底: {ar:.0f}千 "
+                          f"type={_bsdf.loc[_ar_mask, 'type'].iloc[0]!r}")
+            if liab == 0:
+                _lb_mask = (_bsdf['type_n'].str.contains('負債總計|負債合計|負債總額', regex=True, na=False) &
+                            ~_bsdf['type_n'].str.contains('非流動|流動負債', regex=True, na=False))
+                if _lb_mask.any():
+                    liab = float(_bsdf.loc[_lb_mask, 'val_n'].max())
+                    print(f"[fetch_fin] {stock_id} liab pandas-regex兜底: {liab:.0f}千 "
+                          f"type={_bsdf.loc[_lb_mask, 'type'].iloc[0]!r}")
+        except Exception as _e_regex:
+            print(f"[fetch_fin] {stock_id} pandas-regex兜底異常: {_e_regex}")
 
     # ── FinMind 原始列 str.contains 兜底（非標準科目命名，如力積電等）──
     if ar == 0 and _bs_rows:

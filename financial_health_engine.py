@@ -414,23 +414,19 @@ def _no_ai_survival(fd: dict) -> dict:
     inv_p = fd.get("存貨前期(千)", 0) or 0
     a_val = round(ocf / cl * 100, 1) if cl > 0 else None
     a_st = ("Pass" if a_val and a_val > 100 else "Fail") if a_val is not None else "N/A"
-    # B項：現金流量允當比率
+    # B項：現金流量允當比率（必須使用 5 年歷史資料，禁止單季推估）
     # 優先使用呼叫方預填的 5 年精確值（fetch_5_years_cash_flow 回傳）
     _b5 = fd.get("b_item_5y") or {}
     if _b5.get("status") == "ok" and _b5.get("ratio") is not None:
         b_val     = _b5["ratio"]
         b_display = _b5["label"]                          # e.g. "127.3%（5年實際）"
         b_st      = "Pass" if b_val >= 100 else "Fail"
+    elif _b5.get("status") == "insufficient_data":
+        # 上市未滿5年或年份資料不足：明確標示無法計算
+        b_val, b_display, b_st = None, f"N/A（{_b5.get('label','上市未滿5年')}）", "Fail"
     else:
-        # fallback：單季估算
-        inv_inc = max(inv - inv_p, 0)
-        b_denom = capex + inv_inc + div
-        if b_denom > 0:
-            b_val     = round(ocf / b_denom * 100, 1)
-            b_display = f"{b_val:.1f}%(1Q估)"
-            b_st      = "Pass" if b_val >= 100 else "Fail"
-        else:
-            b_val, b_display, b_st = None, "N/A", "N/A"
+        # 5年資料抓取失敗（API 錯誤）：顯示 N/A，不使用單季估算
+        b_val, b_display, b_st = None, "N/A（5年歷史資料未取得）", "N/A"
     c_val = round((ocf - div) / (ppe + lt) * 100, 1) if (ppe + lt) > 0 else None
     c_st = ("Pass" if c_val and c_val > 10 else "Fail") if c_val is not None else "N/A"
     rule_st = "Pass" if (a_st in ("Pass", "N/A") and b_st in ("Pass", "N/A") and c_st in ("Pass", "N/A")) else "Fail"
