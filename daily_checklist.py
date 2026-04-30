@@ -231,22 +231,21 @@ def fetch_institutional(date_str=None):
 # ═══════════════════════════════════════════════
 def fetch_margin_balance(date_str=None):
     """
-    融資餘額抓取 v2 — 三層備援：
-    1. TWSE MI_MARGN (selectType=MS 上市，抓最後合計行)
-    2. TWSE MI_MARGN (selectType=ALL 全市場)
-    3. FinMind TaiwanStockTotalMarginPurchaseShortSale
+    融資餘額抓取 v3 — 兩層備援（TWSE → FinMind）
+    改動：限最多嘗試 4 個交易日；JSONDecodeError 立即 break，避免死亡迴圈
     單位：億元
     """
+    import json as _json_mb
     today = _tw_today_dl()
-    # 往前最多找15個交易日
     candidates = []
     d = today
-    for _ in range(20):
+    for _ in range(8):
         if d.weekday() < 5:
             candidates.append(d)
         d -= datetime.timedelta(days=1)
-        if len(candidates) >= 15: break
+        if len(candidates) >= 4: break  # 最多回溯 4 個交易日
 
+    _json_err_count = 0
     for _d in candidates:
         ds = _d.strftime('%Y%m%d')
         for _sel in ['MS', 'ALL']:
@@ -255,24 +254,20 @@ def fetch_margin_balance(date_str=None):
                     'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
                     params={'date': ds, 'selectType': _sel, 'response': 'json'},
                     headers={**HDR, 'Referer': 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html'},
-                    timeout=15)
+                    timeout=5)
                 j = r.json()
                 if j.get('stat') != 'OK':
                     continue
                 data = j.get('data', [])
                 if not data:
                     continue
-                # 找 fields 確認欄位
                 fields = [str(f) for f in j.get('fields', [])]
                 print(f'[融資/{_sel}/{ds}] fields={fields[:8]}')
-                # 動態找「融資餘額」欄位 index
                 margin_col = next(
                     (i for i, f in enumerate(fields)
                      if '融資' in f and '餘額' in f and '限' not in f), None)
                 if margin_col is None:
-                    # 嘗試固定 index（舊格式 index=6）
                     margin_col = 6
-                # 全市場合計通常在最後一行（台股總計）
                 for row in reversed(data):
                     if len(row) <= margin_col: continue
                     raw = str(row[margin_col]).replace(',', '').replace(' ', '')
@@ -280,22 +275,26 @@ def fetch_margin_balance(date_str=None):
                         v = float(raw)
                     except:
                         continue
-                    # TWSE 融資餘額單位：千元
-                    # 2500億 = 250,000,000千元
-                    if v > 100_000_000:   # > 1兆千元 → 太大，跳過
+                    if v > 100_000_000:
                         continue
-                    if v > 10_000_000:    # > 100億千元 = > 1000億元 → 合理
-                        result = round(v / 100_000, 1)  # 千元→億元
+                    if v > 10_000_000:
+                        result = round(v / 100_000, 1)
                         print(f'[融資/{_sel}/{ds}] ✅ col{margin_col}: {v:.0f}千元 = {result}億')
                         return result
-                    elif v > 1_000_000:   # > 10億千元 = > 100億元 → 也可能是對的（單位可能是萬元）
-                        result = round(v / 10_000, 1)   # 萬元→億元
-                        if 500 < result < 10000:        # 合理範圍 500~10000億
+                    elif v > 1_000_000:
+                        result = round(v / 10_000, 1)
+                        if 500 < result < 10000:
                             print(f'[融資/{_sel}/{ds}] ✅ col{margin_col}(萬元): {v:.0f} = {result}億')
                             return result
+            except _json_mb.JSONDecodeError:
+                _json_err_count += 1
+                print(f'[融資/{_sel}/{ds}] ⚠️ 空回應，停止 TWSE 重試')
+                if _json_err_count >= 2:
+                    break  # 連續 2 次空回應，放棄 TWSE
             except Exception as _e:
                 print(f'[融資/{_sel}/{ds}] {_e}')
-        pass  # removed sleep for speed：0.3→0.1
+        if _json_err_count >= 2:
+            break
 
     # FinMind 備援
     # Token 優先順序：1.傳入參數 2.環境變數 3.模組變數
@@ -345,88 +344,85 @@ def fetch_margin_balance(date_str=None):
 
 
 def fetch_margin_maintenance_ratio():
-    """透過 Raw HTTP API 抓取大盤融資維持率（TWSE rwd + exchangeReport + HiStock 備援）"""
-    import requests as _rq_mr
-    import re as _re_mr
-    _headers = {
+    """
+    大盤融資維持率 v4 — 無日期迴圈，嚴防死亡迴圈
+    方案1: TWSE exchangeReport/MI_MARGN（不帶日期，自動最新），timeout=5
+    方案2: 鉅亨網 CNYES JSON API
+    """
+    import requests as _rq_mr, re as _re_mr
+    _hdrs = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/124.0.0.0 Safari/537.36",
+                      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html",
+        "Accept": "application/json,text/plain,*/*",
     }
-    _nas = get_nas_proxy()
 
-    # 方案1: TWSE rwd/zh/marginTrading/MI_MARGN — 無需代理（與 fetch_margin_balance 相同路徑）
-    # 取最近15個交易日中最新一筆，解析 notes/hints 欄位尋找 整體市場維持率
+    # 方案1: TWSE exchangeReport/MI_MARGN — 不帶日期自動回傳最新交易日，無迴圈
     try:
-        import datetime as _dt_mr
-        _today_mr = _dt_mr.date.today()
-        for _back in range(10):
-            _d_mr = _today_mr - _dt_mr.timedelta(days=_back)
-            if _d_mr.weekday() >= 5:
-                continue
-            _ds_mr = _d_mr.strftime('%Y%m%d')
-            _r1 = _TWSE_CK.get(
-                'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
-                params={'date': _ds_mr, 'selectType': 'MS', 'response': 'json'},
-                headers=_headers, timeout=10)
+        _r1 = _rq_mr.get(
+            'https://www.twse.com.tw/exchangeReport/MI_MARGN',
+            params={'response': 'json', 'selectType': 'MS'},
+            headers=_hdrs, timeout=5, verify=False)
+        if _r1.status_code == 200 and _r1.text.strip():
             _j1 = _r1.json()
-            if _j1.get('stat') != 'OK':
-                continue
-            # 維持率可能在 title / notes 欄位
-            _full_text = str(_j1)
-            _m1 = _re_mr.search(r'維持率[^\d]{0,20}(\d{2,3}(?:\.\d{1,2})?)', _full_text)
+            # TWSE title 欄位通常含 "整體市場維持率: XX.XX%"
+            _txt1 = str(_j1.get('title', '')) + ' ' + str(_j1.get('notes', ''))
+            _m1 = _re_mr.search(r'維持率[^\d]{0,15}(\d{2,3}(?:\.\d{1,2})?)', _txt1)
             if _m1:
                 _v1 = float(_m1.group(1))
                 if 100 <= _v1 <= 500:
-                    print(f'[維持率/TWSE-rwd/{_ds_mr}] ✅ {_v1}%')
+                    print(f'[維持率/TWSE-exchange] ✅ {_v1}%')
                     return _v1
-            print(f'[維持率/TWSE-rwd/{_ds_mr}] stat=OK 但未找到維持率，繼續往前')
-            break  # stat OK 但沒有維持率，不需繼續往前找
-    except Exception as _e0:
-        print(f'[維持率/TWSE-rwd] ❌ {type(_e0).__name__}: {_e0}')
+            # 若 title 沒有，掃全文
+            _m1b = _re_mr.search(r'維持率[^\d]{0,15}(\d{2,3}(?:\.\d{1,2})?)', _r1.text)
+            if _m1b:
+                _v1b = float(_m1b.group(1))
+                if 100 <= _v1b <= 500:
+                    print(f'[維持率/TWSE-exchange-fulltext] ✅ {_v1b}%')
+                    return _v1b
+            print(f'[維持率/TWSE-exchange] ❌ stat={_j1.get("stat")} title={str(_j1.get("title",""))[:80]!r}')
+        else:
+            print(f'[維持率/TWSE-exchange] ❌ status={_r1.status_code} empty={not _r1.text.strip()}')
+    except Exception as _e1:
+        print(f'[維持率/TWSE-exchange] ❌ {type(_e1).__name__}: {_e1}')
 
-    # 方案2: TWSE exchangeReport/MI_MARGN?response=json（直連，title 欄位含維持率）
-    _url2 = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
-             "?response=json&selectType=MS")
-    for _px in ([_nas] if _nas else []) + [None]:
-        try:
-            _res2 = _rq_mr.get(_url2, headers=_headers,
-                               proxies=_px, timeout=10, verify=False)
-            _m2 = _re_mr.search(r'維持率[^\d]{0,20}(\d{2,3}(?:\.\d{1,2})?)', _res2.text)
-            if _m2:
-                _v2 = float(_m2.group(1))
+    # 方案2: 鉅亨網 CNYES — 融資融券概況 JSON
+    try:
+        _r2 = _rq_mr.get(
+            'https://ws.api.cnyes.com/ws/api/v1/charting/history',
+            params={'resolution': 'D', 'symbol': 'TWS:MARGIN_RATE:STOCK',
+                    'from': int(__import__('time').time()) - 86400 * 5,
+                    'to':   int(__import__('time').time())},
+            headers={**_hdrs, 'Referer': 'https://www.cnyes.com/'},
+            timeout=5, verify=False)
+        if _r2.status_code == 200:
+            _j2 = _r2.json()
+            _cs = _j2.get('data', {}).get('c') or []
+            if _cs:
+                _v2 = float(_cs[-1])
                 if 100 <= _v2 <= 500:
-                    _tag = 'NAS→' if _px else '直連'
-                    print(f'[維持率/exchangeReport/{_tag}] ✅ {_v2}%')
+                    print(f'[維持率/CNYES] ✅ {_v2}%')
                     return _v2
-            print(f'[維持率/exchangeReport] ❌ regex未命中 head={_res2.text[:120]!r}')
-            break  # 成功取回但沒比對到，不用再試直連
-        except Exception as _e2:
-            print(f'[維持率/exchangeReport] ❌ {type(_e2).__name__}: {_e2}')
+        print(f'[維持率/CNYES] ❌ status={_r2.status_code}')
+    except Exception as _e2:
+        print(f'[維持率/CNYES] ❌ {type(_e2).__name__}: {_e2}')
 
-    # 方案3: HiStock BeautifulSoup
+    # 方案3: HiStock BeautifulSoup（最後備援）
     try:
         from bs4 import BeautifulSoup as _BS
         _r3 = _rq_mr.get(
             'https://histock.tw/stock/margin.aspx',
-            headers={**_headers, 'Accept': 'text/html,application/xhtml+xml',
+            headers={**_hdrs, 'Accept': 'text/html,application/xhtml+xml',
                      'Referer': 'https://histock.tw/'},
-            proxies=_nas, timeout=15, verify=False)
+            timeout=5, verify=False)
         if _r3.status_code == 200:
             _text3 = _BS(_r3.text, 'html.parser').get_text(' ', strip=True)
-            _m3 = _re_mr.search(
-                r'(?:整體|市場)?維持率[^0-9]{0,20}?(\d{3,4}(?:\.\d{1,2})?)', _text3)
+            _m3 = _re_mr.search(r'維持率[^0-9]{0,20}?(\d{3,4}(?:\.\d{1,2})?)', _text3)
             if _m3:
                 _v3 = float(_m3.group(1))
                 if 100 <= _v3 <= 500:
                     print(f'[維持率/HiStock] ✅ {_v3}%')
                     return _v3
-            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text3):
-                _vf = float(_c)
-                if 100 <= _vf <= 500:
-                    print(f'[維持率/HiStock-fallback] ✅ {_vf}%')
-                    return _vf
     except Exception as _e3:
         print(f'[維持率/HiStock] ❌ {type(_e3).__name__}: {_e3}')
 

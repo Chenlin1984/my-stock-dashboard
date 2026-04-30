@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.4 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.5 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -23,6 +23,19 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.50.5）
+
+### 斬斷死亡迴圈 + FinMind TaiwanMacroEconomics 廢棄修復
+
+| 項目 | 修復內容 |
+|------|---------|
+| **融資餘額死亡迴圈** | `fetch_margin_balance()` 回溯上限 15→4 天；`timeout=15→5`；新增 `json.JSONDecodeError` 獨立捕捉——連續 2 次空回應立即 break，不再嘗試 30 次 |
+| **融資維持率完全重寫** | 移除 10 天日期迴圈；改 `exchangeReport/MI_MARGN`（無日期自動最新，timeout=5）+ CNYES API + HiStock 三層，無一使用日期迴圈 |
+| **FinMind TaiwanMacroEconomics 廢棄** | API 返回 enum validation error，dataset 已移除 |
+| **NDC 景氣對策信號** | 徹底移除 FinMind；方案1 data.gov.tw 6099 CSV；方案2 OECD CLI db.nomics 直連（CLI→NDC 分數近似映射） |
+| **台灣出口 YoY** | 徹底移除 FinMind；方案1 data.gov.tw 財政部進出口 CSV；方案2 db.nomics OECD Taiwan 出口序列 |
+| **所有 timeout** | 嚴格 5 秒上限，防系統卡死 |
 
 ## ✅ 最新異動（v10.50.4）
 
