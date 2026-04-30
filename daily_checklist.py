@@ -345,9 +345,10 @@ def fetch_margin_balance(date_str=None):
 
 def fetch_margin_maintenance_ratio():
     """
-    大盤融資維持率 v5 — 三方案防死亡迴圈
-    方案1: TWSE rwd/zh/marginTrading/MI_MARGN（取代307舊端點）最多3個交易日
-    方案2: TWSE OpenAPI v1 marginTrading
+    大盤融資維持率 v6 — 四方案防死亡迴圈
+    方案0: FinMind TaiwanTotalExchangeMarginMaintenance（最可靠）
+    方案1: TWSE rwd/zh/marginTrading/MI_MARGN 最多3個交易日
+    方案2: TWSE OpenAPI v1
     方案3: HiStock BeautifulSoup
     """
     import requests as _rq_mr, re as _re_mr
@@ -359,7 +360,6 @@ def fetch_margin_maintenance_ratio():
     }
 
     def _parse_ratio(text):
-        """從任意文字中提取維持率數值（100~500 範圍）"""
         for _pat in [r'維持率[^\d]{0,10}(\d{3}(?:\.\d{1,2})?)',
                      r'(\d{3}(?:\.\d{1,2})?)%?\s*維持率']:
             _m = _re_mr.search(_pat, text)
@@ -369,7 +369,34 @@ def fetch_margin_maintenance_ratio():
                     return v
         return None
 
-    # 方案1: TWSE rwd endpoint — exchangeReport 已改返回307，改用 rwd
+    # 方案0: FinMind TaiwanTotalExchangeMarginMaintenance (有 Token 最可靠)
+    _fm_tok_mr = (os.environ.get('FINMIND_TOKEN', '') or FINMIND_TOKEN)
+    if _fm_tok_mr:
+        try:
+            import pandas as _pd_mr
+            _start_mr = (_tw_today_dl() - datetime.timedelta(days=14)).strftime('%Y-%m-%d')
+            _r0 = _rq_mr.get(
+                'https://api.finmindtrade.com/api/v4/data',
+                params={'dataset': 'TaiwanTotalExchangeMarginMaintenance',
+                        'start_date': _start_mr, 'token': _fm_tok_mr},
+                headers={'Authorization': f'Bearer {_fm_tok_mr}'},
+                timeout=20, verify=False)
+            _j0 = _r0.json()
+            print(f'[維持率/FM] status={_j0.get("status")} rows={len(_j0.get("data",[]))}')
+            if _j0.get('status') == 200 and _j0.get('data'):
+                _df0 = _pd_mr.DataFrame(_j0['data'])
+                print(f'[維持率/FM] columns={list(_df0.columns)}')
+                for _mc in _df0.columns:
+                    if any(k in _mc.lower() for k in ('maintain', 'ratio', 'rate', '維持')):
+                        _v0_raw = _df0.sort_values('date').iloc[-1][_mc]
+                        _v0 = float(_pd_mr.to_numeric(_v0_raw, errors='coerce') or 0)
+                        if 100 <= _v0 <= 500:
+                            print(f'[維持率/FM] ✅ col={_mc} val={_v0}%')
+                            return _v0
+        except Exception as _e0:
+            print(f'[維持率/FM] ❌ {type(_e0).__name__}: {_e0}')
+
+
     _today = _tw_today_dl()
     _candidates = []
     _d = _today

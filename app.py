@@ -2812,20 +2812,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         _pkg_r = _s_ndc.get(
                             'https://data.gov.tw/api/v2/rest/dataset/6099',
                             timeout=5)
-                        _csv_url = None; _csv_fmt = 'csv'
+                        _csv_url = None; _csv_fmt = 'ods'
                         _resources = _pkg_r.json().get('resources', [])
-                        # 先找 CSV，再找 ODS/XLS，最後取第一個任意資源
-                        for _fmt_try in ('csv', 'ods', 'xls', 'xlsx', ''):
-                            for _rr in _resources:
-                                _rr_fmt = _rr.get('format', '').lower()
-                                if _fmt_try and _rr_fmt != _fmt_try:
-                                    continue
-                                _u = (_rr.get('download_url') or _rr.get('url')
-                                      or _rr.get('accessURL') or _rr.get('downloadURL'))
-                                if _u:
-                                    _csv_url = _u; _csv_fmt = _rr_fmt or 'csv'
-                                    break
-                            if _csv_url:
+                        # 調試：印出第一個資源的所有 key，方便排查 URL 欄位名稱
+                        if _resources:
+                            print(f'[NDC/gov6099] resource[0] keys={list(_resources[0].keys())} fmt={_resources[0].get("format")}')
+                        # 先嘗試已知 URL 欄位，再用 rid 建構下載路徑
+                        for _rr in _resources:
+                            _rr_fmt = _rr.get('format', 'ods').lower()
+                            # 嘗試所有可能的 URL 欄位
+                            _u = (_rr.get('download_url') or _rr.get('url')
+                                  or _rr.get('accessURL') or _rr.get('downloadURL')
+                                  or _rr.get('link') or _rr.get('file_url'))
+                            if not _u:
+                                # data.gov.tw CKAN: 用 rid/id 建構下載 URL
+                                _rid = _rr.get('rid') or _rr.get('id') or _rr.get('resource_id')
+                                if _rid:
+                                    _u = f'https://data.gov.tw/api/v2/rest/dataset/export/{_rid}'
+                            if _u:
+                                _csv_url = _u; _csv_fmt = _rr_fmt or 'ods'
+                                print(f'[NDC/gov6099] try url={_csv_url[:80]} fmt={_csv_fmt}')
                                 break
                         if _csv_url:
                             _csv_r = _s_ndc.get(_csv_url, timeout=10)
@@ -2895,41 +2901,72 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     except Exception as _e_n2:
                         print(f'[NDC/api] ❌ {type(_e_n2).__name__}: {_e_n2}')
 
-                    # 方案3: data.nat.gov.tw（data.gov.tw 的備用域名）
+                    # 方案3: data.nat.gov.tw — 同 data.gov.tw 但備用域名，附 rid URL 建構
+                    for _gov3_base in ['https://data.nat.gov.tw', 'https://data.gov.tw']:
+                        try:
+                            _pkg3 = _s_ndc.get(
+                                f'{_gov3_base}/api/v2/rest/dataset/6099', timeout=5)
+                            _csv_url3 = None; _csv_fmt3 = 'ods'
+                            for _rr3 in (_pkg3.json().get('resources') or []):
+                                _rr3_fmt = _rr3.get('format', 'ods').lower()
+                                _u3 = (_rr3.get('download_url') or _rr3.get('url')
+                                       or _rr3.get('accessURL') or _rr3.get('link'))
+                                if not _u3:
+                                    _rid3 = _rr3.get('rid') or _rr3.get('id')
+                                    if _rid3:
+                                        _u3 = f'{_gov3_base}/api/v2/rest/dataset/export/{_rid3}'
+                                if _u3:
+                                    _csv_url3 = _u3; _csv_fmt3 = _rr3_fmt; break
+                            if _csv_url3:
+                                _cr3 = _s_ndc.get(_csv_url3, timeout=10)
+                                _df3 = (_pd_n.read_excel(_io_n.BytesIO(_cr3.content),
+                                                         engine='odf' if _csv_fmt3 == 'ods' else None)
+                                        if _csv_fmt3 in ('ods', 'xls', 'xlsx')
+                                        else _pd_n.read_csv(
+                                            _io_n.StringIO(_cr3.content.decode('utf-8-sig', errors='ignore'))))
+                                _sc3 = next((c for c in _df3.columns
+                                             if '綜合分數' in c or ('分數' in c and '景氣' in c)), None)
+                                _dt3 = next((c for c in _df3.columns if '日期' in c or '年月' in c), None)
+                                if _sc3 and _dt3:
+                                    _df3 = _df3.dropna(subset=[_sc3])
+                                    _lrow3 = _df3.iloc[-1]
+                                    _sv3 = float(str(_lrow3[_sc3]).replace(',', ''))
+                                    if 9 <= _sv3 <= 45:
+                                        print(f'[NDC/gov3] ✅ score={_sv3} base={_gov3_base}')
+                                        return {'ndc_signal': {'score': _sv3, 'signal': None,
+                                                               'date': str(_lrow3[_dt3])[:10]}}
+                            print(f'[NDC/gov3] ❌ base={_gov3_base} csv_url={_csv_url3}')
+                        except Exception as _e3:
+                            print(f'[NDC/gov3] ❌ base={_gov3_base} {type(_e3).__name__}: {_e3}')
+
+                    # 方案4: NDC 行動版網頁 BeautifulSoup（JavaScript 較少，可直接解析）
                     try:
-                        _pkg3 = _s_ndc.get(
-                            'https://data.nat.gov.tw/api/v2/rest/dataset/6099',
-                            timeout=5)
-                        _csv_url3 = None; _csv_fmt3 = 'csv'
-                        for _rr3 in (_pkg3.json().get('resources') or []):
-                            _u3 = (_rr3.get('download_url') or _rr3.get('url'))
-                            if _u3:
-                                _csv_url3 = _u3
-                                _csv_fmt3 = _rr3.get('format', 'csv').lower()
-                                break
-                        if _csv_url3:
-                            _cr3 = _s_ndc.get(_csv_url3, timeout=10)
-                            if _csv_fmt3 in ('ods', 'xls', 'xlsx'):
-                                _df3 = _pd_n.read_excel(_io_n.BytesIO(_cr3.content),
-                                                        engine='odf' if _csv_fmt3 == 'ods' else None)
-                            else:
-                                _df3 = _pd_n.read_csv(
-                                    _io_n.StringIO(_cr3.content.decode('utf-8-sig', errors='ignore')))
-                            _sc3 = next((c for c in _df3.columns
-                                         if '綜合分數' in c or ('分數' in c and '景氣' in c)), None)
-                            _dt3 = next((c for c in _df3.columns
-                                         if '日期' in c or '年月' in c), None)
-                            if _sc3 and _dt3:
-                                _df3 = _df3.dropna(subset=[_sc3])
-                                _lrow3 = _df3.iloc[-1]
-                                _sv3 = float(str(_lrow3[_sc3]).replace(',', ''))
-                                if 9 <= _sv3 <= 45:
-                                    print(f'[NDC/nat6099] ✅ score={_sv3}')
-                                    return {'ndc_signal': {'score': _sv3, 'signal': None,
-                                                           'date': str(_lrow3[_dt3])[:10]}}
-                        print(f'[NDC/nat6099] ❌ csv_url={_csv_url3}')
-                    except Exception as _e3:
-                        print(f'[NDC/nat6099] ❌ {type(_e3).__name__}: {_e3}')
+                        import re as _re_ndc
+                        from bs4 import BeautifulSoup as _BS_ndc
+                        for _ndc_m_url in [
+                            'https://index.ndc.gov.tw/m/zh_tw/data/eco/signal',
+                            'https://index.ndc.gov.tw/m/zh_tw',
+                        ]:
+                            try:
+                                _rm4 = _s_ndc.get(_ndc_m_url, timeout=8)
+                                if _rm4.status_code != 200:
+                                    continue
+                                _soup4 = _BS_ndc(_rm4.text, 'html.parser')
+                                _txt4 = _soup4.get_text(' ', strip=True)
+                                # 找 "景氣對策信號綜合判斷分數" 附近的數字
+                                _m4 = _re_ndc.search(
+                                    r'(?:綜合分數|對策信號分數|綜合判斷分數)[^\d]{0,20}(\d{1,2}(?:\.\d{1,2})?)',
+                                    _txt4)
+                                if _m4:
+                                    _sv4 = float(_m4.group(1))
+                                    if 9 <= _sv4 <= 45:
+                                        print(f'[NDC/mobile-BS4] ✅ score={_sv4} url={_ndc_m_url}')
+                                        return {'ndc_signal': {'score': _sv4, 'signal': None, 'date': ''}}
+                                print(f'[NDC/mobile-BS4] ❌ no score found url={_ndc_m_url} len={len(_txt4)}')
+                            except Exception:
+                                pass
+                    except Exception as _e4:
+                        print(f'[NDC/mobile-BS4] ❌ {type(_e4).__name__}: {_e4}')
 
                     return {'_err_ndc': 'NDC 景氣對策信號所有方案失敗'}
 
