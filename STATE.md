@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.6 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.7 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -24,7 +24,25 @@
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
 
-## ✅ 最新異動（v10.50.6）
+## ✅ 最新異動（v10.50.7）
+
+### 繼續修復三大資料源（第二輪）
+
+**新的問題觀察（由部署後 log 分析）：**
+- `[維持率] ⚠️ 所有方案均失敗` — TWSE rwd 對所有日期返回空 JSON，CNYES symbol 仍錯
+- `[NDC/gov6099] resource keys={...}` — 等待 debug log 確認 URL 欄位名稱
+- `[Export/FRED]` — v10.50.6 部署後需等 cache 過期才見效
+
+**修復內容：**
+1. `daily_checklist.py` `fetch_margin_maintenance_ratio()` v6
+   - 新增方案0: FinMind `TaiwanTotalExchangeMarginMaintenance`（有 Token 最可靠）
+   - 動態偵測欄位名稱（contain 'maintain'/'ratio'/'rate'）
+2. `app.py` `_fetch_ndc()`
+   - 方案1 加強：印出 resource[0] 所有 key（debug），改用 `rid`/`id` 建構 URL
+   - 方案3 加強：遍歷 data.gov.tw + data.nat.gov.tw，均支援 rid URL
+   - 方案4 新增：NDC 行動版網頁 BeautifulSoup 解析（index.ndc.gov.tw/m/）
+
+## ✅ 舊版異動（v10.50.6）
 
 ### 三大資料源修復：維持率/NDC/出口
 
