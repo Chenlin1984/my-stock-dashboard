@@ -2805,47 +2805,50 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     import requests as _rq_n
                     _fm_tok_n = _get_fm_token()
 
-                    # 方案1: FinMind TaiwanMacroEconomics
+                    # 方案1: FinMind TaiwanMacroEconomics（含 Authorization header）
                     _p_n = {'dataset': 'TaiwanMacroEconomics',
                             'data_id': '景氣對策信號(分)',
-                            'start_date': '2023-01-01'}
+                            'start_date': '2022-01-01'}
                     if _fm_tok_n: _p_n['token'] = _fm_tok_n
+                    _hdrs_fm_n = {'Authorization': f'Bearer {_fm_tok_n}'} if _fm_tok_n else {}
                     try:
                         _j_n = _rq_n.get('https://api.finmindtrade.com/api/v4/data',
-                                         params=_p_n, timeout=8).json()
+                                         params=_p_n, headers=_hdrs_fm_n, timeout=10).json()
                         _data_n = _j_n.get('data') or []
+                        _msg_n = str(_j_n.get('msg', '')).lower()
                         print(f'[Macro/NDC/FM] msg={_j_n.get("msg")} rows={len(_data_n)}')
-                        if _j_n.get('msg') == 'success' and _data_n:
+                        if _msg_n == 'success' and _data_n:
                             _sc_n = float(_data_n[-1]['value'])
                             _date_n = str(_data_n[-1]['date'])[:10]
                             print(f'[Macro/NDC/FM] ✅ score={_sc_n} date={_date_n}')
                             return {'ndc_signal': {'score': _sc_n, 'signal': None, 'date': _date_n}}
-                        print(f'[Macro/NDC/FM] ❌ msg={_j_n.get("msg")} detail={_j_n.get("detail","")}')
+                        print(f'[Macro/NDC/FM] ❌ msg={_j_n.get("msg")} status={_j_n.get("status")} detail={_j_n.get("detail","")}')
                     except Exception as _e_n:
                         print(f'[Macro/NDC/FM] ❌ {type(_e_n).__name__}: {_e_n}')
 
-                    # 方案2: data.gov.tw 景氣燈號（package search → datastore）
+                    # 方案2: data.gov.tw CKAN v3 action API（景氣燈號）
                     try:
                         _pkg = _rq_n.get(
-                            'https://data.gov.tw/api/v2/rest/package/search',
-                            params={'q': '景氣燈號', 'organization': 'ndceva', 'limit': 3},
-                            timeout=8).json()
+                            'https://data.gov.tw/api/3/action/package_search',
+                            params={'q': '景氣對策信號', 'fq': 'organization:ndceva', 'rows': 5},
+                            timeout=10).json()
                         _res_id = None
-                        for _pk in (_pkg.get('result') or {}).get('results') or []:
-                            for _rs in _pk.get('resources') or []:
-                                if _rs.get('format', '').upper() in ('CSV', 'JSON', 'XLSX', 'XLS'):
+                        for _pk in ((_pkg.get('result') or {}).get('results') or []):
+                            for _rs in (_pk.get('resources') or []):
+                                if _rs.get('format', '').upper() in ('CSV', 'JSON'):
                                     _res_id = _rs.get('id')
                                     break
                             if _res_id: break
                         if _res_id:
                             _dj = _rq_n.get(
-                                f'https://data.gov.tw/api/v2/rest/datastore/{_res_id}',
-                                params={'limit': 3, 'sort': '日期 DESC'},
-                                timeout=8).json()
-                            _recs = (_dj.get('result') or {}).get('records') or []
+                                f'https://data.gov.tw/api/3/action/datastore_search',
+                                params={'resource_id': _res_id, 'limit': 5,
+                                        'sort': '日期 desc'},
+                                timeout=10).json()
+                            _recs = ((_dj.get('result') or {}).get('records') or [])
                             if _recs:
                                 _r0 = _recs[0]
-                                _sc_key = next((k for k in _r0 if '分' in k or 'score' in k.lower() or '燈' in k), None)
+                                _sc_key = next((k for k in _r0 if '分' in k or 'score' in k.lower()), None)
                                 _dt_key = next((k for k in _r0 if '日期' in k or 'date' in k.lower()), None)
                                 if _sc_key and _dt_key:
                                     _sc_n2 = float(str(_r0[_sc_key]).replace(',', '') or 0)
@@ -2853,6 +2856,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                                     if 9 <= _sc_n2 <= 45:
                                         print(f'[Macro/NDC/gov] ✅ score={_sc_n2} date={_dt_n2}')
                                         return {'ndc_signal': {'score': _sc_n2, 'signal': None, 'date': _dt_n2}}
+                        print(f'[Macro/NDC/gov] ❌ res_id={_res_id}')
                     except Exception as _e_gov:
                         print(f'[Macro/NDC/gov] ❌ {type(_e_gov).__name__}: {_e_gov}')
 
@@ -2863,17 +2867,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     import requests as _rq_ex, pandas as _pd7, re as _re_ex
                     _fm_tok7 = _get_fm_token()
 
-                    # 方案1: FinMind TaiwanMacroEconomics
+                    # 方案1: FinMind TaiwanMacroEconomics（含 Authorization header）
                     _p_ex = {'dataset': 'TaiwanMacroEconomics',
                              'data_id': '出口-總值',
-                             'start_date': '2022-01-01'}
+                             'start_date': '2021-01-01'}
                     if _fm_tok7: _p_ex['token'] = _fm_tok7
+                    _hdrs_fm_ex = {'Authorization': f'Bearer {_fm_tok7}'} if _fm_tok7 else {}
                     try:
                         _j_ex = _rq_ex.get('https://api.finmindtrade.com/api/v4/data',
-                                           params=_p_ex, timeout=8).json()
+                                           params=_p_ex, headers=_hdrs_fm_ex, timeout=10).json()
                         _data_ex = _j_ex.get('data') or []
+                        _msg_ex = str(_j_ex.get('msg', '')).lower()
                         print(f'[Macro/Export/FM] msg={_j_ex.get("msg")} rows={len(_data_ex)}')
-                        if _j_ex.get('msg') == 'success' and len(_data_ex) >= 13:
+                        if _msg_ex == 'success' and len(_data_ex) >= 13:
                             _df_ex = _pd7.DataFrame(_data_ex)
                             _cur = float(_df_ex.iloc[-1]['value'])
                             _prev = float(_df_ex.iloc[-13]['value'])
@@ -2881,40 +2887,66 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _date_ex = str(_df_ex.iloc[-1]['date'])[:7]
                             print(f'[Macro/Export/FM] ✅ YoY={_yoy_ex:.2f}% date={_date_ex}')
                             return {'tw_export': {'yoy': _yoy_ex, 'date': _date_ex, 'source': 'FinMind-ME'}}
-                        print(f'[Macro/Export/FM] ❌ msg={_j_ex.get("msg")} detail={_j_ex.get("detail","")}')
+                        print(f'[Macro/Export/FM] ❌ msg={_j_ex.get("msg")} status={_j_ex.get("status")} detail={_j_ex.get("detail","")}')
                     except Exception as _e_ex:
                         print(f'[Macro/Export/FM] ❌ {type(_e_ex).__name__}: {_e_ex}')
 
-                    # 方案2: data.gov.tw 外銷訂單統計 YoY（經濟部統計處）
+                    # 方案2: data.gov.tw CKAN v3 — 財政部出口統計
                     try:
                         _pkg2 = _rq_ex.get(
-                            'https://data.gov.tw/api/v2/rest/package/search',
-                            params={'q': '外銷訂單', 'organization': 'moea', 'limit': 3},
-                            timeout=8).json()
+                            'https://data.gov.tw/api/3/action/package_search',
+                            params={'q': '出口值', 'fq': 'organization:mof', 'rows': 5},
+                            timeout=10).json()
                         _res_id2 = None
-                        for _pk2 in (_pkg2.get('result') or {}).get('results') or []:
-                            for _rs2 in _pk2.get('resources') or []:
+                        for _pk2 in ((_pkg2.get('result') or {}).get('results') or []):
+                            for _rs2 in (_pk2.get('resources') or []):
                                 if _rs2.get('format', '').upper() in ('CSV', 'JSON'):
                                     _res_id2 = _rs2.get('id')
                                     break
                             if _res_id2: break
                         if _res_id2:
                             _dj2 = _rq_ex.get(
-                                f'https://data.gov.tw/api/v2/rest/datastore/{_res_id2}',
-                                params={'limit': 3, 'sort': '年月 DESC'},
-                                timeout=8).json()
-                            _recs2 = (_dj2.get('result') or {}).get('records') or []
-                            if _recs2:
-                                _r02 = _recs2[0]
-                                _yoy_key = next((k for k in _r02 if 'yoy' in k.lower() or '年增' in k or '增率' in k), None)
-                                _dt_key2 = next((k for k in _r02 if '年月' in k or '日期' in k or 'date' in k.lower()), None)
-                                if _yoy_key and _dt_key2:
-                                    _yv = float(str(_r02[_yoy_key]).replace(',', '') or 0)
-                                    _dv = str(_r02[_dt_key2])[:7]
-                                    print(f'[Macro/Export/gov] ✅ YoY={_yv:.2f}% date={_dv}')
-                                    return {'tw_export': {'yoy': _yv, 'date': _dv, 'source': 'MOEA-外銷訂單'}}
+                                'https://data.gov.tw/api/3/action/datastore_search',
+                                params={'resource_id': _res_id2, 'limit': 15,
+                                        'sort': '年月 desc'},
+                                timeout=10).json()
+                            _recs2 = ((_dj2.get('result') or {}).get('records') or [])
+                            if len(_recs2) >= 13:
+                                _val_key = next((k for k in _recs2[0]
+                                                 if '出口' in k and '值' in k and '增' not in k), None)
+                                _dt_key2 = next((k for k in _recs2[0]
+                                                 if '年月' in k or '日期' in k), None)
+                                if _val_key and _dt_key2:
+                                    _cur2 = float(str(_recs2[0][_val_key]).replace(',', '') or 0)
+                                    _prev2 = float(str(_recs2[12][_val_key]).replace(',', '') or 1)
+                                    if _prev2:
+                                        _yoy2 = round((_cur2 - _prev2) / _prev2 * 100, 2)
+                                        _dv2 = str(_recs2[0][_dt_key2])[:7]
+                                        print(f'[Macro/Export/gov] ✅ YoY={_yoy2:.2f}% date={_dv2}')
+                                        return {'tw_export': {'yoy': _yoy2, 'date': _dv2, 'source': 'MOF-出口'}}
+                        print(f'[Macro/Export/gov] ❌ res_id={_res_id2}')
                     except Exception as _e_gov2:
                         print(f'[Macro/Export/gov] ❌ {type(_e_gov2).__name__}: {_e_gov2}')
+
+                    # 方案3: db.nomics OECD Taiwan Exports
+                    try:
+                        _s_exp = _mk_s()
+                        for _exp_sid in ['OECD/MEI_BOP6/TWN.B.CA.G.C.C.A.USD.Q',
+                                         'IMF/BOP/Q.TW.BCA_BP6_USD']:
+                            _exp_df = _dbn_px(_s_exp, _exp_sid)
+                            if _exp_df is None or len(_exp_df) < 5: continue
+                            _exp_df['_v'] = _pd7.to_numeric(_exp_df['value'], errors='coerce')
+                            _exp_df = _exp_df.dropna(subset=['_v'])
+                            if len(_exp_df) < 5: continue
+                            _cur_e = float(_exp_df['_v'].iloc[-1])
+                            _prev_e = float(_exp_df['_v'].iloc[-5]) if len(_exp_df) >= 5 else None
+                            if _prev_e and _prev_e != 0:
+                                _yoy_e = round((_cur_e - _prev_e) / abs(_prev_e) * 100, 2)
+                                _date_e = str(_exp_df['period'].iloc[-1])[:7]
+                                print(f'[Macro/Export/dbn] ✅ {_exp_sid} YoY={_yoy_e:.2f}% date={_date_e}')
+                                return {'tw_export': {'yoy': _yoy_e, 'date': _date_e, 'source': 'OECD-dbn'}}
+                    except Exception as _e_dbn:
+                        print(f'[Macro/Export/dbn] ❌ {type(_e_dbn).__name__}: {_e_dbn}')
 
                     return {'_err_export': 'FinMind TaiwanMacroEconomics 出口-總值 failed'}
 

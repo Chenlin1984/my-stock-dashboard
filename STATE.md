@@ -2,7 +2,7 @@
 
 ## 📌 當前狀態
 - **專案**: 台股 AI 戰情室（Streamlit Cloud + GitHub，Python 3.x）
-- **版本**: v10.50.3 | branch `claude/analyze-test-coverage-070Kf`
+- **版本**: v10.50.4 | branch `claude/analyze-test-coverage-070Kf`
 - **部署**: Streamlit Cloud，需設定 `FINMIND_TOKEN` + `GEMINI_API_KEY`
 - **⚠️ NAS_PROXY_URL / PROXY_URL 設定代理斷線時請移除**，程式已有自動探測備援
 - **✅ PR #98 merged**（2026-04-29）— Proxy 存活探測 + ETF NAV goodinfo 備援
@@ -23,6 +23,16 @@
 | `leading_indicators.py` | 外資期貨/PCR/ADL 先行指標 |
 | `ai_engine.py` | Gemini AI 個股分析 |
 | `risk_control.py` | 停損停利/倉位控制 |
+
+## ✅ 最新異動（v10.50.4）
+
+### 三項資料抓取失敗修復
+
+| 項目 | 修復內容 |
+|------|---------|
+| **FINMIND_TOKEN 優先序** | `daily_checklist.py` 模組層 token 改用 `st.secrets` 優先（`os.environ` 在 Streamlit Cloud 匯入時為空）|
+| **融資維持率% 取得失敗** | `fetch_margin_maintenance_ratio()` 移除 NAS Proxy 閘門；新增方案1直連 `rwd/zh/marginTrading/MI_MARGN`（同 fetch_margin_balance 已驗證路徑）；方案2 先 Proxy 再直連 |
+| **NDC/出口 FinMind 失敗** | `_fetch_ndc()` + `_fetch_export()` 補上 `Authorization: Bearer` header；data.gov.tw 備援升級至 CKAN v3 action API；出口新增第三層 db.nomics OECD |
 
 ## ✅ 最新異動（v10.50.3）
 

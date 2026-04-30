@@ -54,7 +54,8 @@ def get_nas_proxy():
 
 import plotly.graph_objects as go
 
-FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN', '')
+FINMIND_TOKEN = (getattr(st, 'secrets', {}).get('FINMIND_TOKEN', '')
+                 or os.environ.get('FINMIND_TOKEN', ''))
 HDR = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -344,57 +345,90 @@ def fetch_margin_balance(date_str=None):
 
 
 def fetch_margin_maintenance_ratio():
-    """透過 Raw HTTP API 抓取大盤融資維持率（TWSE + HiStock 備援）"""
+    """透過 Raw HTTP API 抓取大盤融資維持率（TWSE rwd + exchangeReport + HiStock 備援）"""
     import requests as _rq_mr
     import re as _re_mr
-    _url = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
-            "?response=json&selectType=MS")
     _headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/124.0.0.0 Safari/537.36"
+                      "Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html",
     }
     _nas = get_nas_proxy()
 
-    # 方案1: TWSE（僅在 NAS Proxy 設定時才嘗試，避免雲端 IP 被封鎖白費 timeout）
-    if _nas:
-        try:
-            _res = _rq_mr.get(_url, headers=_headers, proxies=_nas, timeout=10, verify=False)
-            _m = _re_mr.search(r'整體市場維持率.*?(\d+\.\d+)', _res.text)
-            if _m:
-                _v = float(_m.group(1))
-                if 100 <= _v <= 500:
-                    print(f'[維持率/NAS→TWSE] ✅ {_v}%')
-                    return _v
-            print(f'[維持率/NAS→TWSE] ❌ regex未命中 head={_res.text[:150]!r}')
-        except Exception as _e1:
-            print(f'[維持率/NAS→TWSE] ❌ {type(_e1).__name__}: {_e1}')
-    else:
-        print('[維持率/TWSE] ⏭️ 無 NAS Proxy，跳過直連（雲端 IP 會被封鎖）')
+    # 方案1: TWSE rwd/zh/marginTrading/MI_MARGN — 無需代理（與 fetch_margin_balance 相同路徑）
+    # 取最近15個交易日中最新一筆，解析 notes/hints 欄位尋找 整體市場維持率
+    try:
+        import datetime as _dt_mr
+        _today_mr = _dt_mr.date.today()
+        for _back in range(10):
+            _d_mr = _today_mr - _dt_mr.timedelta(days=_back)
+            if _d_mr.weekday() >= 5:
+                continue
+            _ds_mr = _d_mr.strftime('%Y%m%d')
+            _r1 = _TWSE_CK.get(
+                'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                params={'date': _ds_mr, 'selectType': 'MS', 'response': 'json'},
+                headers=_headers, timeout=10)
+            _j1 = _r1.json()
+            if _j1.get('stat') != 'OK':
+                continue
+            # 維持率可能在 title / notes 欄位
+            _full_text = str(_j1)
+            _m1 = _re_mr.search(r'維持率[^\d]{0,20}(\d{2,3}(?:\.\d{1,2})?)', _full_text)
+            if _m1:
+                _v1 = float(_m1.group(1))
+                if 100 <= _v1 <= 500:
+                    print(f'[維持率/TWSE-rwd/{_ds_mr}] ✅ {_v1}%')
+                    return _v1
+            print(f'[維持率/TWSE-rwd/{_ds_mr}] stat=OK 但未找到維持率，繼續往前')
+            break  # stat OK 但沒有維持率，不需繼續往前找
+    except Exception as _e0:
+        print(f'[維持率/TWSE-rwd] ❌ {type(_e0).__name__}: {_e0}')
 
-    # 方案2: HiStock BeautifulSoup（備援）
+    # 方案2: TWSE exchangeReport/MI_MARGN?response=json（直連，title 欄位含維持率）
+    _url2 = ("https://www.twse.com.tw/exchangeReport/MI_MARGN"
+             "?response=json&selectType=MS")
+    for _px in ([_nas] if _nas else []) + [None]:
+        try:
+            _res2 = _rq_mr.get(_url2, headers=_headers,
+                               proxies=_px, timeout=10, verify=False)
+            _m2 = _re_mr.search(r'維持率[^\d]{0,20}(\d{2,3}(?:\.\d{1,2})?)', _res2.text)
+            if _m2:
+                _v2 = float(_m2.group(1))
+                if 100 <= _v2 <= 500:
+                    _tag = 'NAS→' if _px else '直連'
+                    print(f'[維持率/exchangeReport/{_tag}] ✅ {_v2}%')
+                    return _v2
+            print(f'[維持率/exchangeReport] ❌ regex未命中 head={_res2.text[:120]!r}')
+            break  # 成功取回但沒比對到，不用再試直連
+        except Exception as _e2:
+            print(f'[維持率/exchangeReport] ❌ {type(_e2).__name__}: {_e2}')
+
+    # 方案3: HiStock BeautifulSoup
     try:
         from bs4 import BeautifulSoup as _BS
-        _r2 = _rq_mr.get(
+        _r3 = _rq_mr.get(
             'https://histock.tw/stock/margin.aspx',
             headers={**_headers, 'Accept': 'text/html,application/xhtml+xml',
                      'Referer': 'https://histock.tw/'},
             proxies=_nas, timeout=15, verify=False)
-        if _r2.status_code == 200:
-            _text = _BS(_r2.text, 'html.parser').get_text(' ', strip=True)
-            _m2 = _re_mr.search(r'(?:整體)?維持率[^0-9]{0,15}?(\d{3,4}(?:\.\d{1,2})?)', _text)
-            if _m2:
-                _v2 = float(_m2.group(1))
-                if 100 <= _v2 <= 500:
-                    print(f'[維持率/HiStock] ✅ {_v2}%')
-                    return _v2
-            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text):
+        if _r3.status_code == 200:
+            _text3 = _BS(_r3.text, 'html.parser').get_text(' ', strip=True)
+            _m3 = _re_mr.search(
+                r'(?:整體|市場)?維持率[^0-9]{0,20}?(\d{3,4}(?:\.\d{1,2})?)', _text3)
+            if _m3:
+                _v3 = float(_m3.group(1))
+                if 100 <= _v3 <= 500:
+                    print(f'[維持率/HiStock] ✅ {_v3}%')
+                    return _v3
+            for _c in _re_mr.findall(r'(\d{3,4}\.\d{2})', _text3):
                 _vf = float(_c)
                 if 100 <= _vf <= 500:
                     print(f'[維持率/HiStock-fallback] ✅ {_vf}%')
                     return _vf
-    except Exception as _e2:
-        print(f'[維持率/HiStock] ❌ {type(_e2).__name__}: {_e2}')
+    except Exception as _e3:
+        print(f'[維持率/HiStock] ❌ {type(_e3).__name__}: {_e3}')
 
     print('[維持率] ⚠️ 所有方案均失敗')
     return None
