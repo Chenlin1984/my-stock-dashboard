@@ -345,11 +345,12 @@ def fetch_margin_balance(date_str=None):
 
 def fetch_margin_maintenance_ratio():
     """
-    大盤融資維持率 v6 — 四方案防死亡迴圈
-    方案0: FinMind TaiwanTotalExchangeMarginMaintenance（最可靠）
-    方案1: TWSE rwd/zh/marginTrading/MI_MARGN 最多3個交易日
+    大盤融資維持率 v7 — 五方案防死亡迴圈
+    方案0: TWSE rwd (NAS proxy 加速，Streamlit Cloud IP 被封需透過 NAS 中繼)
+    方案1: TWSE rwd 直連（最多3個交易日回溯）
     方案2: TWSE OpenAPI v1
-    方案3: HiStock BeautifulSoup
+    方案3: wantgoo.com BeautifulSoup（第三方台股資料源）
+    方案4: HiStock BeautifulSoup
     """
     import requests as _rq_mr, re as _re_mr
     _hdrs = {
@@ -361,41 +362,42 @@ def fetch_margin_maintenance_ratio():
 
     def _parse_ratio(text):
         for _pat in [r'維持率[^\d]{0,10}(\d{3}(?:\.\d{1,2})?)',
-                     r'(\d{3}(?:\.\d{1,2})?)%?\s*維持率']:
-            _m = _re_mr.search(_pat, text)
+                     r'(\d{3}(?:\.\d{1,2})?)%?\s*維持率',
+                     r'(\d{3}(?:\.\d{1,2})?)%?\s*Maintenance']:
+            _m = _re_mr.search(_pat, str(text))
             if _m:
                 v = float(_m.group(1))
                 if 100 <= v <= 500:
                     return v
         return None
 
-    # 方案0: FinMind TaiwanTotalExchangeMarginMaintenance (有 Token 最可靠)
-    _fm_tok_mr = (os.environ.get('FINMIND_TOKEN', '') or FINMIND_TOKEN)
-    if _fm_tok_mr:
+    def _twse_rwd_parse(r):
+        """從 TWSE rwd JSON response 嘗試抽出維持率"""
+        if r.status_code != 200 or not r.text.strip():
+            return None
         try:
-            import pandas as _pd_mr
-            _start_mr = (_tw_today_dl() - datetime.timedelta(days=14)).strftime('%Y-%m-%d')
-            _r0 = _rq_mr.get(
-                'https://api.finmindtrade.com/api/v4/data',
-                params={'dataset': 'TaiwanTotalExchangeMarginMaintenance',
-                        'start_date': _start_mr, 'token': _fm_tok_mr},
-                headers={'Authorization': f'Bearer {_fm_tok_mr}'},
-                timeout=20, verify=False)
-            _j0 = _r0.json()
-            print(f'[維持率/FM] status={_j0.get("status")} rows={len(_j0.get("data",[]))}')
-            if _j0.get('status') == 200 and _j0.get('data'):
-                _df0 = _pd_mr.DataFrame(_j0['data'])
-                print(f'[維持率/FM] columns={list(_df0.columns)}')
-                for _mc in _df0.columns:
-                    if any(k in _mc.lower() for k in ('maintain', 'ratio', 'rate', '維持')):
-                        _v0_raw = _df0.sort_values('date').iloc[-1][_mc]
-                        _v0 = float(_pd_mr.to_numeric(_v0_raw, errors='coerce') or 0)
-                        if 100 <= _v0 <= 500:
-                            print(f'[維持率/FM] ✅ col={_mc} val={_v0}%')
-                            return _v0
-        except Exception as _e0:
-            print(f'[維持率/FM] ❌ {type(_e0).__name__}: {_e0}')
-
+            j = r.json()
+        except Exception:
+            return None
+        if j.get('stat') != 'OK':
+            return None
+        # 掃 title + notes + 全文
+        v = _parse_ratio(str(j.get('title', '')) + ' ' + str(j.get('notes', '')) + ' ' + r.text)
+        if v:
+            return v
+        # 掃 data 各列的欄位索引
+        _fields = [str(f) for f in (j.get('fields') or [])]
+        _ridx = next((i for i, f in enumerate(_fields) if '維持率' in f), None)
+        if _ridx is not None:
+            for _row in reversed(j.get('data') or []):
+                if len(_row) > _ridx:
+                    try:
+                        _rv = float(str(_row[_ridx]).replace(',', '').replace('%', ''))
+                        if 100 <= _rv <= 500:
+                            return _rv
+                    except Exception:
+                        pass
+        return None
 
     _today = _tw_today_dl()
     _candidates = []
@@ -407,82 +409,128 @@ def fetch_margin_maintenance_ratio():
         if len(_candidates) >= 3:
             break
 
+    # 方案0: TWSE rwd + NAS proxy（若代理存活，Streamlit Cloud 外部 IP 封鎖問題可繞過）
+    _nas_proxy = get_nas_proxy()
+    if _nas_proxy:
+        for _cand0 in _candidates:
+            _ds0 = _cand0.strftime('%Y%m%d')
+            try:
+                _r0 = _rq_mr.get(
+                    'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                    params={'response': 'json', 'date': _ds0, 'selectType': 'MS'},
+                    headers=_hdrs, timeout=8, verify=False, proxies=_nas_proxy)
+                _v0 = _twse_rwd_parse(_r0)
+                if _v0:
+                    print(f'[維持率/TWSE-proxy/{_ds0}] ✅ {_v0}%')
+                    return _v0
+                print(f'[維持率/TWSE-proxy/{_ds0}] ❌ status={_r0.status_code}')
+            except Exception as _e0:
+                print(f'[維持率/TWSE-proxy/{_ds0}] ❌ {type(_e0).__name__}: {_e0}')
+                break  # proxy 失敗就不再嘗試其他日期
+
+    # 方案1: TWSE rwd 直連（回溯最近 3 個交易日）
     for _cand in _candidates:
         _ds = _cand.strftime('%Y%m%d')
-        for _sel in ['MS']:
+        try:
+            _r1 = _rq_mr.get(
+                'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
+                params={'response': 'json', 'date': _ds, 'selectType': 'MS'},
+                headers=_hdrs, timeout=5, verify=False)
+            _v1 = _twse_rwd_parse(_r1)
+            if _v1:
+                print(f'[維持率/TWSE-rwd/{_ds}] ✅ {_v1}%')
+                return _v1
+            print(f'[維持率/TWSE-rwd/{_ds}] ❌ status={_r1.status_code}')
+        except Exception as _e1:
+            print(f'[維持率/TWSE-rwd/{_ds}] ❌ {type(_e1).__name__}: {_e1}')
+
+    # 方案2: TWSE OpenAPI v1
+    for _proxy2 in ([_nas_proxy] if _nas_proxy else []) + [None]:
+        try:
+            _r2 = _rq_mr.get(
+                'https://openapi.twse.com.tw/v1/marginTrading/MiMargin',
+                headers={**_hdrs, 'Accept': 'application/json'},
+                timeout=5, verify=False, proxies=_proxy2)
+            if _r2.status_code == 200 and _r2.text.strip():
+                try:
+                    _j2 = _r2.json()
+                    _rows2 = _j2 if isinstance(_j2, list) else (_j2.get('data') or [])
+                    for _row2 in _rows2:
+                        _v2 = _parse_ratio(str(_row2))
+                        if _v2:
+                            _tag2 = 'proxy' if _proxy2 else 'direct'
+                            print(f'[維持率/OpenAPI/{_tag2}] ✅ {_v2}%')
+                            return _v2
+                except Exception:
+                    pass
+            print(f'[維持率/OpenAPI] ❌ status={_r2.status_code}')
+        except Exception as _e2:
+            print(f'[維持率/OpenAPI] ❌ {type(_e2).__name__}: {_e2}')
+        if _proxy2 is None:
+            break  # 只跑一次直連
+
+    # 方案3: wantgoo.com（台灣第三方資料源，與 TWSE IP 封鎖無關）
+    _wg_urls = [
+        'https://www.wantgoo.com/stock/51/margin-statistics',
+        'https://www.wantgoo.com/investortool/margin',
+    ]
+    try:
+        from bs4 import BeautifulSoup as _BS3
+        _wg_hdrs = {**_hdrs,
+                    'Referer': 'https://www.wantgoo.com/',
+                    'Accept': 'text/html,application/xhtml+xml,*/*'}
+        for _wg_url in _wg_urls:
             try:
-                _r1 = _rq_mr.get(
-                    'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN',
-                    params={'response': 'json', 'date': _ds, 'selectType': _sel},
-                    headers=_hdrs, timeout=5, verify=False)
-                if _r1.status_code != 200 or not _r1.text.strip():
-                    print(f'[維持率/TWSE-rwd/{_ds}] ❌ status={_r1.status_code}')
-                    continue
-                _j1 = _r1.json()
-                if _j1.get('stat') != 'OK':
-                    print(f'[維持率/TWSE-rwd/{_ds}] ❌ stat={_j1.get("stat")}')
-                    continue
-                # 掃 title + notes + 全文
-                _full = (str(_j1.get('title', '')) + ' ' +
-                         str(_j1.get('notes', '')) + ' ' + _r1.text)
-                _v1 = _parse_ratio(_full)
-                if _v1:
-                    print(f'[維持率/TWSE-rwd/{_ds}] ✅ {_v1}%')
-                    return _v1
-                # 也掃 data 最後一列所有欄位（有些版本把維持率放在資料列）
-                _data1 = _j1.get('data') or []
-                _fields1 = [str(f) for f in (_j1.get('fields') or [])]
-                _ratio_idx = next((i for i, f in enumerate(_fields1)
-                                   if '維持率' in f), None)
-                if _ratio_idx is not None and _data1:
-                    for _row1 in reversed(_data1):
-                        if len(_row1) > _ratio_idx:
-                            try:
-                                _rv = float(str(_row1[_ratio_idx]).replace(',', '').replace('%', ''))
-                                if 100 <= _rv <= 500:
-                                    print(f'[維持率/TWSE-rwd/{_ds}/col] ✅ {_rv}%')
-                                    return _rv
-                            except Exception:
-                                pass
-                print(f'[維持率/TWSE-rwd/{_ds}] ❌ 無維持率欄位 fields={_fields1[:6]}')
-            except Exception as _e1:
-                print(f'[維持率/TWSE-rwd/{_ds}] ❌ {type(_e1).__name__}: {_e1}')
+                _r3 = _rq_mr.get(_wg_url, headers=_wg_hdrs, timeout=8, verify=False)
+                if _r3.status_code == 200 and len(_r3.text) > 500:
+                    _soup3 = _BS3(_r3.text, 'html.parser')
+                    # 先嘗試找含「維持率」的 td/th 並取同行數值
+                    for _el in _soup3.find_all(string=_re_mr.compile('維持率')):
+                        _par = _el.parent
+                        if _par:
+                            _sib = _par.find_next_sibling()
+                            if _sib:
+                                _v3s = _parse_ratio(_sib.get_text())
+                                if _v3s:
+                                    print(f'[維持率/wantgoo] ✅ {_v3s}% ({_wg_url})')
+                                    return _v3s
+                    # 全文 fallback
+                    _v3t = _parse_ratio(_soup3.get_text(' ', strip=True))
+                    if _v3t:
+                        print(f'[維持率/wantgoo/fulltext] ✅ {_v3t}% ({_wg_url})')
+                        return _v3t
+                    print(f'[維持率/wantgoo] ❌ 無維持率資料 ({_wg_url})')
+            except Exception as _e3i:
+                print(f'[維持率/wantgoo] ❌ {type(_e3i).__name__}: {_e3i} ({_wg_url})')
+    except ImportError:
+        print('[維持率/wantgoo] ❌ bs4 未安裝')
 
-    # 方案2: TWSE OpenAPI v1 — 新版無需日期
+    # 方案4: HiStock BeautifulSoup（最後備援）
     try:
-        _r2 = _rq_mr.get(
-            'https://openapi.twse.com.tw/v1/marginTrading/MiMargin',
-            headers={**_hdrs, 'Accept': 'application/json'},
-            timeout=5, verify=False)
-        if _r2.status_code == 200 and _r2.text.strip():
-            _j2 = _r2.json() if isinstance(_r2.json(), list) else []
-            if isinstance(_r2.json(), dict):
-                _j2 = _r2.json().get('data') or []
-            for _row2 in _j2:
-                _v2 = _parse_ratio(str(_row2))
-                if _v2:
-                    print(f'[維持率/OpenAPI] ✅ {_v2}%')
-                    return _v2
-        print(f'[維持率/OpenAPI] ❌ status={_r2.status_code}')
-    except Exception as _e2:
-        print(f'[維持率/OpenAPI] ❌ {type(_e2).__name__}: {_e2}')
-
-    # 方案3: HiStock BeautifulSoup（最後備援）
-    try:
-        from bs4 import BeautifulSoup as _BS
-        _r3 = _rq_mr.get(
+        from bs4 import BeautifulSoup as _BS4
+        _r4 = _rq_mr.get(
             'https://histock.tw/stock/margin.aspx',
             headers={**_hdrs, 'Accept': 'text/html,application/xhtml+xml',
                      'Referer': 'https://histock.tw/'},
-            timeout=5, verify=False)
-        if _r3.status_code == 200:
-            _text3 = _BS(_r3.text, 'html.parser').get_text(' ', strip=True)
-            _v3 = _parse_ratio(_text3)
-            if _v3:
-                print(f'[維持率/HiStock] ✅ {_v3}%')
-                return _v3
-    except Exception as _e3:
-        print(f'[維持率/HiStock] ❌ {type(_e3).__name__}: {_e3}')
+            timeout=8, verify=False)
+        if _r4.status_code == 200:
+            _soup4 = _BS4(_r4.text, 'html.parser')
+            # 嘗試含「維持率」的欄位定向搜尋
+            for _el4 in _soup4.find_all(string=_re_mr.compile('維持率')):
+                _par4 = _el4.parent
+                if _par4:
+                    _sib4 = _par4.find_next_sibling()
+                    if _sib4:
+                        _v4s = _parse_ratio(_sib4.get_text())
+                        if _v4s:
+                            print(f'[維持率/HiStock] ✅ {_v4s}%')
+                            return _v4s
+            _v4 = _parse_ratio(_soup4.get_text(' ', strip=True))
+            if _v4:
+                print(f'[維持率/HiStock/fulltext] ✅ {_v4}%')
+                return _v4
+    except Exception as _e4:
+        print(f'[維持率/HiStock] ❌ {type(_e4).__name__}: {_e4}')
 
     print('[維持率] ⚠️ 所有方案均失敗')
     return None

@@ -3439,6 +3439,38 @@ def render_data_health_raw():
                          if _fh2 and not _fh2.get('error') else None)
             rows.append(_row('MJ體檢財報原始 BS+CF+IS（FinMind 3 datasets）',
                              _fh2_date, 'quarterly'))
+            # ── 財報科目連動診斷（從 _fin_raw_{sid2} 讀取原始計算值）──
+            _fin_raw2 = st.session_state.get(f'_fin_raw_{sid2}') or {}
+            if _fh2_date and _fin_raw2:
+                _ar2_days = float(_fin_raw2.get('應收帳款天數') or 0)
+                _liab2    = float(_fin_raw2.get('總負債(千)') or 0)
+                _b5_2     = _fin_raw2.get('b_item_5y') or {}
+                # DSO科目
+                _dso_ok  = _ar2_days > 0
+                rows.append({
+                    '資料名稱': 'DSO科目（應收帳款與票據）',
+                    '頻率': '季頻',
+                    '最後更新': f'{_ar2_days:.1f} 天' if _dso_ok else '科目查無（IFRS命名未匹配）',
+                    '狀態': '🟢' if _dso_ok else '🔴',
+                })
+                # 負債科目
+                _liab_ok = _liab2 > 0
+                rows.append({
+                    '資料名稱': '負債科目（總負債）',
+                    '頻率': '季頻',
+                    '最後更新': (f'{_liab2/1e3:.1f} 百萬' if _liab2 >= 1e3
+                                 else f'{_liab2:.0f} 千') if _liab_ok else '科目查無（IFRS命名未匹配）',
+                    '狀態': '🟢' if _liab_ok else '🔴',
+                })
+                # 5年歷史現金流（允當比率）
+                _b5_ok = _b5_2.get('status') == 'ok'
+                _b5_lbl = _b5_2.get('label', '未取得')
+                rows.append({
+                    '資料名稱': '5年歷史現金流（允當比率）',
+                    '頻率': '年頻',
+                    '最後更新': _b5_lbl,
+                    '狀態': '🟢' if _b5_ok else '🔴',
+                })
             _tbl(rows)
             st.caption('⚠️ RSI / KD / 布林帶 / 健康度評分 / FGMS / SQ 等由 K線/財報計算，不顯示於此。')
 
